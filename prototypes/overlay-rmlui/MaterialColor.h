@@ -80,33 +80,10 @@ inline Color ClearSurface(Color backdrop,float tint,int mode,float strength) {
 }
 inline float LinearLuma(Color c) {for(auto& v:c)v=v<=.04045f?v/12.92f:std::pow((v+.055f)/1.055f,2.4f);return .2126f*c[0]+.7152f*c[1]+.0722f*c[2];}
 inline float Contrast(Color a,Color b) {const float x=LinearLuma(a),y=LinearLuma(b);return (std::max(x,y)+.05f)/(std::min(x,y)+.05f);}
-inline Color ClearHeading(Color accent,Color backdrop) {
-    // Screen alone dilutes the game's chroma with the scene. Recover the hue
-    // first, then move perceptual lightness only as far as readability needs.
+inline Color ClearHeading(Color accent) {
+    // One stable Screen treatment for the entire theme. Sampling individual
+    // headings made the same game alternate between dark, pale and vivid ink.
     const auto vivid=Saturation(accent,150);
-    if(Contrast(vivid,backdrop)>=3.f)return vivid;
-    const bool darken=LinearLuma(backdrop)>.25f;
-    const bool brightYellow=YellowFamily(accent)&&*std::max_element(accent.begin(),accent.end())>.9f
-        &&*std::max_element(accent.begin(),accent.end())-*std::min_element(accent.begin(),accent.end())>.6f;
-    for(int step=0;step<=50;++step){
-        const float lightness=darken?.80f-step*.01f:.50f+step*.01f;
-        const auto candidate=AccentTone(vivid,lightness);
-        // A bright yellow must remain yellow, never become olive or brown.
-        if(brightYellow&&MuddyShade(candidate))continue;
-        if(Contrast(candidate,backdrop)>=3.f)return candidate;
-    }
-    return vivid;
-}
-inline float HeadingShadowOpacity(Color ink,Color backdrop) {
-    // Some vivid yellows cannot darken far enough without becoming olive.
-    // Keep their hue and give only the letter silhouettes a soft contact shade.
-    if(!YellowFamily(ink)||MuddyShade(ink)||Contrast(ink,backdrop)>=3.f)return 0;
-    const Color shade{.075f,.07f,.06f};
-    for(int step=1;step<=16;++step){
-        const float opacity=step/16.f;Color contact{};
-        for(size_t i=0;i<3;++i)contact[i]=backdrop[i]*(1-opacity)+shade[i]*opacity;
-        if(Contrast(ink,contact)>=3.5f)return std::min(.875f,opacity+.25f);
-    }
-    return .875f;
+    return LinearLuma(vivid)>.55f?vivid:Blend({.12f,.12f,.12f},vivid,Mode("screen"));
 }
 }

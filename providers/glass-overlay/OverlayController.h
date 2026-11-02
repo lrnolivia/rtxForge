@@ -318,12 +318,16 @@ struct Controller : Rml::EventListener
         return base;
     }
     std::string AccentTone(size_t slot,bool heading,Backdrop::SceneColor local={}) {
-        auto source=accent;const auto base=AccentBackdrop(slot,local);
+        auto source=accent;
+        // Headings share a theme reference, including across detached windows.
+        // Scene adaptation belongs to the glass, not each heading's ink.
+        const float headingBase=(appearance==1||AccentLight())?.86f:.12f;
+        const auto base=heading?MaterialColor::Color{headingBase,headingBase,headingBase}:AccentBackdrop(slot,local);
         const auto& mode=heading?headingAccentBlend:controlAccentBlend;const float strength=(heading?headingAccentStrength:controlAccentStrength)/100.f;
         auto mixed=MaterialColor::Blend(base,source,MaterialColor::Mode(mode));
         if(mode=="screen"&&MaterialColor::LinearLuma(source)>.55f)mixed=source;
         for(size_t i=0;i<3;++i)source[i]+=(mixed[i]-source[i])*strength;
-        if(heading&&BaseAppearance()==3&&!customTheme)source=MaterialColor::ClearHeading(accent,base);
+        if(heading&&BaseAppearance()==3&&!customTheme)source=MaterialColor::ClearHeading(accent);
         if(appearance==1||AccentLight()){
             const float contrast=(MaterialColor::LinearLuma(base)+.05f)/(MaterialColor::LinearLuma(source)+.05f);
             if(MaterialColor::YellowFamily(accent)){
@@ -341,25 +345,14 @@ struct Controller : Rml::EventListener
         std::erase_if(clearForeground,[&](auto* e){return !alive.contains(e);});
         if(BaseAppearance()!=3){for(auto* e:clearForeground){e->RemoveProperty("color");e->RemoveProperty("image-color");e->RemoveProperty("font-effect");}clearForeground.clear();return;}
         for(auto* e:elements){bool panel=false,menu=false;for(auto* p=e;p;p=p->GetParentNode()){if(p->IsClassSet("glass"))panel=true;if(p->GetId()=="settings-menu"||p->GetTagName()=="selectbox")menu=true;}if(!panel||menu)continue;
-            Rml::Element* heading=nullptr;size_t slot=0;for(auto* p=e;p;p=p->GetParentNode()){if(p->GetTagName()=="h1"||p->GetTagName()=="h2"||p->GetTagName()=="h3")heading=p;if(p->GetId()=="inspector")slot=1;else if(p->GetId()=="welcome")slot=2;else if(p->GetId()=="type-panel")slot=3;}
+            Rml::Element* heading=nullptr;for(auto* p=e;p;p=p->GetParentNode())if(p->GetTagName()=="h1"||p->GetTagName()=="h2"||p->GetTagName()=="h3")heading=p;
             clearForeground.insert(e);
-            Backdrop::SceneColor sampled{};if(heading){const auto at=heading->GetAbsoluteOffset(Rml::BoxArea::Border),size=heading->GetBox().GetSize(Rml::BoxArea::Border);sampled=backdrop.Background(at.x,at.y,size.x,size.y);}
-            const auto property=e->IsClassSet("glyph")?"image-color":"color";const auto desired=heading?AccentTone(slot,true,sampled):"#f5f1eaff";
+            const auto property=e->IsClassSet("glyph")?"image-color":"color";const auto desired=heading?AccentTone(0,true):"#f5f1eaff";
             const auto packed=std::stoul(desired.substr(1),nullptr,16);const Rml::Colourb color{Rml::byte(packed>>24),Rml::byte(packed>>16),Rml::byte(packed>>8),Rml::byte(packed)};
             const auto* local=e->GetLocalProperty(property);if(!local||local->Get<Rml::Colourb>()!=color)e->SetProperty(property,desired);
-            std::string effect="none";
-            if(heading&&textDepth&&!customTheme){
-                auto surface=AccentBackdrop(slot,sampled);std::vector<Rml::Colourb> fills;
-                // Inner translucent cards brighten the ink's actual ground.
-                // Include them when choosing its contact shade, never a row box.
-                for(auto* p=heading;p&&!p->IsClassSet("glass");p=p->GetParentNode())
-                    if(const auto* fill=p->GetProperty("background-color"))fills.push_back(fill->Get<Rml::Colourb>());
-                for(auto fill=fills.rbegin();fill!=fills.rend();++fill){const float alpha=fill->alpha/255.f;const MaterialColor::Color rgb{fill->red/255.f,fill->green/255.f,fill->blue/255.f};for(size_t i=0;i<3;++i)surface[i]=surface[i]*(1-alpha)+rgb[i]*alpha;}
-                const float opacity=MaterialColor::HeadingShadowOpacity({color.red/255.f,color.green/255.f,color.blue/255.f},surface);
-                if(opacity>0)effect="glow(1dp 1dp 0dp 1dp "+Hex(.075f,.07f,.06f,opacity)+")";
-            }
-            const auto* currentEffect=e->GetLocalProperty("font-effect");
-            if(!currentEffect||currentEffect->ToString()!=effect)e->SetProperty("font-effect",effect);
+            // Keep the existing subtle material-wide text depth. Never add a
+            // second, high-opacity shadow or outline to individual headings.
+            if(e->GetLocalProperty("font-effect"))e->RemoveProperty("font-effect");
         }
     }
     void Raise(const std::string& id) {

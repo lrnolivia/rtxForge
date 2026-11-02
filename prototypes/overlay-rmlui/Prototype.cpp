@@ -573,24 +573,30 @@ int wmain(int argc,wchar_t** argv)
                 auto paint=[&]{controller.Adapt(backdrop->measured,system.GetElapsedTime());controller.AdaptiveForeground(*backdrop,system.GetElapsedTime());context->Update();};
                 auto* label=document->QuerySelector(".field-heading label");auto* glyph=controller.Element("open-settings")->QuerySelector(".glyph");
                 for(const auto gameAccent:{MaterialColor::Color{143.f/255,169.f/255,130.f/255},MaterialColor::Color{195.f/255,218.f/255,217.f/255},MaterialColor::Color{236.f/255,61.f/255,40.f/255},MaterialColor::Color{59.f/255,140.f/255,207.f/255},MaterialColor::Color{62.f/255,143.f/255,188.f/255}})
-                    for(float level:{.15f,.35f,.55f,.75f,.95f}){
-                        const MaterialColor::Color surface{level,level,level};const auto ink=MaterialColor::ClearHeading(gameAccent,surface);
-                        Require(MaterialColor::Contrast(ink,surface)>=2.99f,"Clear game heading lost contrast over its surface");
+                    {
+                        const auto ink=MaterialColor::ClearHeading(gameAccent);
                         const float chroma=*std::max_element(ink.begin(),ink.end())-*std::min_element(ink.begin(),ink.end());
                         // A deliberately pale library accent retains its color;
                         // it must not be forced into an invented saturated hue.
                         const float originalChroma=*std::max_element(gameAccent.begin(),gameAccent.end())-*std::min_element(gameAccent.begin(),gameAccent.end());
                         Require(chroma>std::min(.12f,originalChroma*.5f),"Clear game heading washed out its accent");
                     }
-                const auto clearYellow=MaterialColor::ClearHeading({252.f/255,238.f/255,9.f/255},{.75f,.75f,.75f});
+                const auto clearYellow=MaterialColor::ClearHeading({252.f/255,238.f/255,9.f/255});
                 Require(!MaterialColor::MuddyShade(clearYellow),"Clear generated a muddy yellow heading");
-                for(const auto surface:{MaterialColor::Color{.55f,.55f,.55f},MaterialColor::Color{.75f,.75f,.75f},MaterialColor::Color{.95f,.95f,.95f},MaterialColor::Color{194.f/255,175.f/255,130.f/255}}){
-                    const auto ink=MaterialColor::ClearHeading({246.f/255,234.f/255,17.f/255},surface);
-                    Require(!MaterialColor::MuddyShade(ink),"Actual Cyberpunk accent became muddy");
-                    const float opacity=MaterialColor::HeadingShadowOpacity(ink,surface);auto contact=surface;
-                    const MaterialColor::Color shade{.075f,.07f,.06f};
-                    for(size_t i=0;i<3;++i)contact[i]=surface[i]*(1-opacity)+shade[i]*opacity;
-                    Require(MaterialColor::Contrast(ink,contact)>=3.f,"Vivid yellow heading contact shade lost contrast");
+                Require(!MaterialColor::MuddyShade(MaterialColor::ClearHeading({246.f/255,234.f/255,17.f/255})),"Actual Cyberpunk accent became muddy");
+                for(const auto gameAccent:{MaterialColor::Color{236.f/255,61.f/255,40.f/255},MaterialColor::Color{246.f/255,234.f/255,17.f/255}}){
+                    controller.accent=gameAccent;
+                    for(int theme:{1,2,3}){
+                        controller.UseTheme(theme);paint();const auto expected=controller.AccentTone(0,true);
+                        for(size_t slot=0;slot<4;++slot)for(float level:{.15f,.55f,.95f})
+                            Require(controller.AccentTone(slot,true,{level,level,level,true})==expected,"Headings changed color across local backgrounds or windows");
+                        Rml::ElementList headings;document->QuerySelectorAll(headings,".glass h1,.glass h2,.glass h3");
+                        const auto title=controller.Element("main-panel")->QuerySelector("h1")->GetProperty("color")->Get<Rml::Colourb>();
+                        for(auto* heading:headings)if(heading->IsVisible(true)){
+                            Require(heading->GetProperty("color")->Get<Rml::Colourb>()==title,"Visible headings use inconsistent game accents");
+                            Require(!heading->GetLocalProperty("font-effect"),"Heading has an extra text shadow or outline");
+                        }
+                    }
                 }
                 controller.UseTheme(3);paint();Require(label->GetProperty("color")->Get<Rml::Colourb>().red>=225,"Clear label is not light");
                 controller.accent={.9f,.7f,.4f};paint();controller.headingAccentBlend="hard-light";controller.controlAccentBlend="soft-light";controller.Materials();paint();

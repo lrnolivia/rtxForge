@@ -29,13 +29,13 @@ and saturation sliders remain in God Mode. More holds
 Blur and Motion. Experimental font and material tuning lives in the separate,
 collapsed God Mode section, available only in this preview.
 
-Clear headings retain the game's hue with stronger chroma. Their perceptual
-lightness adapts to the sampled frosted surface for readable large text instead
-of Screen blending them into pale pastels. A vivid yellow that cannot reach
-readable contrast without becoming muddy gets a local, soft letter shadow;
-the shade never becomes a rectangular row or changes the ordinary Clear ink.
-Bright yellow is kept out of olive
-or brown variants. Custom preview blend experiments remain available in God Mode.
+Headings use one consistent game-accent treatment per theme, shared by the game
+title, section headings and detached windows. Clear uses a stable Screen reference
+with stronger chroma, rather than recoloring each heading from its local scene.
+Individual headings have no added shadow or outline; the existing subtle
+material-wide text depth remains. Ordinary Clear ink stays light, and bright
+yellow is kept out of olive or brown variants. Custom preview blend experiments
+remain available in God Mode.
 
 The self-test also checks window containment, Advanced content slots, Bar
 footer separation, Settings navigation and toast placement across 54 layout,

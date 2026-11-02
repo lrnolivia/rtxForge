@@ -10,6 +10,7 @@ import { setupShellLayout } from './shell-layout';
 import { heroCrop, analyzeHeroFocus } from './hero-focus';
 import { applyStoreBackground, prepareStoreBackground, screenshotGallery, selectedScreenshots, chooseScreenshots, updateBackgroundContrast, type StoreScreenshot } from './store-background';
 import { webviewZoom } from './display-scale';
+import { bindScreenshotThumbnails } from './screenshot-crop';
 import { controllerGlyph, type ControllerFamily } from './controller-glyphs';
 import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero, sectionHeadingColor } from './art-accent';
 import { enhanceSelects, closeSelectMenu, selectMenuOpen } from './select-menu';
@@ -346,7 +347,7 @@ function screenshotChoices(game:Game){
     void screenshotGallery(game.appid,accent,game.id).then(gallery=>{backgroundGalleries.set(key,gallery);loadingGalleries.delete(key);if(view==='details'&&selectedId===game.id&&detailsSection==='appearance')render();});
   }
   const chosen=selectedScreenshots(game.id,shots||[]);
-  return `<section class="glass-section"><h2>Page Background</h2><p>Choose one screenshot for this game.</p><div class="screenshot-choices" role="group" aria-label="Background screenshots">${(shots||[]).map((shot,index)=>`<button class="screenshot-choice" data-background-shot="${e(shot.id)}" aria-label="Screenshot ${index+1}" aria-pressed="${chosen.includes(shot.id)}">${shot.thumbnail?`<img loading="lazy" src="${e(shot.thumbnail)}" alt=""/>`:''}<span>Screenshot ${index+1}</span>${chosen.includes(shot.id)?icon('check'):''}</button>`).join('')}</div>${!shots?'<p class="subtle">Loading Steam screenshots...</p>':!shots.length?'<p>No Steam screenshots are available for this game.</p>':''}</section>`;
+  return `<section class="glass-section"><h2>Page Background</h2><p>Choose one screenshot for this game.</p><div class="screenshot-choices" role="group" aria-label="Background screenshots">${(shots||[]).map((shot,index)=>`<button class="screenshot-choice" data-background-shot="${e(shot.id)}" aria-label="Screenshot ${index+1}" aria-pressed="${chosen.includes(shot.id)}">${shot.thumbnail?`<img loading="lazy" crossorigin="anonymous" src="${e(shot.thumbnail)}" alt=""/>`:''}<span>Screenshot ${index+1}</span>${chosen.includes(shot.id)?icon('check'):''}</button>`).join('')}</div>${!shots?'<p class="subtle">Loading Steam screenshots...</p>':!shots.length?'<p>No Steam screenshots are available for this game.</p>':''}</section>`;
 }
 function heroPoint(game:Game):[number,number]{
   const automatic=automaticHeroFocus.get(game.id);
@@ -756,6 +757,7 @@ function render() {
   disposeLibraryLayout = setupLibraryLayout(app);
   enhanceSelects(app);
   bindArtworkFailures(app);
+  bindScreenshotThumbnails(app);
   setupScrollFades();
   const main = app.querySelector<HTMLElement>('#content'); if(main)main.scrollTop=contentScroll;
   const results = app.querySelector<HTMLElement>('#game-results'); if(results)results.scrollTop=resultsScroll;

@@ -18,6 +18,20 @@ TTL = 30 * 86400
 # Reviewed against the Store's actual images. Immutable filename hashes keep
 # a reordered or replaced Store gallery from silently approving a HUD frame.
 CLEAN_SCREENSHOTS = {
+    '3768760': frozenset((
+        '43c8cf3875cb6643ac7d8244e9fd39381609814a',
+        'c1e68b9b3d1c55b9d62f4041c6fbfefe329a236c',
+        'd076a739da6136dc4da2c48750eb6f780d4f826d',
+        '7683959b09f7863c5eb23bfdbcf039269765b5d6',
+        '2e3f04c42cca344dd3ca0be30c5078719bce23ed',
+        '22b94f7aa04496557f7b8b797abe8e81c8ac8d94',
+        '5cef2b25b774b09bc30780457370f734021d207a',
+        'ad4dfe02d7c437ba916114d8b1626dec348a6ca1',
+        'd134165918bca5b3d420c68ccde8ace5c826c725',
+        'd4b2566b28d98b12ac4f018b951c45d529894c05',
+        '1550126dc773dde15731f670725e6880e0abf5ea',
+        '77725bbd5a29b4bd0e7b563983a17591dd942233',
+    )),
     '3159330': frozenset((
         '81bbd04dae05b0a52dc62818dc5219abeb849f8d',
         'e53dc9ec73e3de9b8e680472898de775f0dc1cae',

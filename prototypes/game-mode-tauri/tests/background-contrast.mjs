@@ -10,6 +10,7 @@ try{
  await expect(page.locator('.brand')).toHaveCSS('color','rgb(255, 255, 255)');await expect(page.locator('.scene-wash')).toHaveCSS('opacity','1');
  await expect(page.locator('#scene')).toHaveCSS('filter','blur(1.5px) brightness(0.85) saturate(0.8)');
  const edge=await page.locator('#content').evaluate(n=>getComputedStyle(n).borderTopColor);expect(edge).toContain('/ 0.12');
+ await expect(page.locator('#content')).toHaveCSS('background-clip','padding-box');
  await page.getByRole('button',{name:'Appearance',exact:true}).click();await page.locator('[data-background-shot="1"]').click();await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id','1');await expect(page.locator('.brand')).toHaveCSS('color','rgb(0, 0, 0)');
  console.log(JSON.stringify({passed:true,checks:['Light mode dark photo uses a white wordmark','bright photo uses a dark wordmark','Light screenshot wash and brighter exposure','Light perimeter is subtle game-accent ink']}));
 }finally{await browser.close();}

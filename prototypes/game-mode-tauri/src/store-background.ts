@@ -1,7 +1,8 @@
 import {signatureColor,accentHarmony,backdropInk} from './art-accent';
+import {imageCrop,cropGeometry,type ScreenshotCrop} from './screenshot-crop';
 export interface StoreScreenshot {id:string;full:string;thumbnail:string}
 interface StoreBackground {image:string|null}
-interface CachedBackground {url:string;width:number;height:number;sample?:ImageData}
+interface CachedBackground {url:string;width:number;height:number;crop:ScreenshotCrop;sample?:ImageData}
 interface BackgroundSelection {appid:string;game:string;accent?:string|null;scene:HTMLElement;ids:string[];current?:string}
 const cache=new Map<string,Promise<CachedBackground|null>>(),catalogs=new Map<string,Promise<StoreScreenshot[]>>();
 const urls=new Set<string>(),choices=new Map<string,string[]>();
@@ -19,7 +20,7 @@ function thumbnailColor(source:string):Promise<string|null>{
       await Promise.race([image.decode(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Thumbnail unavailable')),3500);})]);
       const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;
       const context=canvas.getContext('2d',{willReadFrequently:true});if(!context)return null;
-      context.drawImage(image,0,0,64,64);return signatureColor(context.getImageData(0,0,64,64).data);
+      const crop=imageCrop(image);context.drawImage(image,image.naturalWidth*crop.x,image.naturalHeight*crop.y,image.naturalWidth*crop.width,image.naturalHeight*crop.height,0,0,64,64);return signatureColor(context.getImageData(0,0,64,64).data);
     }catch{return null;}finally{clearTimeout(timer);image.src='';}
   })();palettes.set(source,pending);if(palettes.size>32)palettes.delete(palettes.keys().next().value!);return pending;
 }
@@ -78,9 +79,9 @@ async function load(appid:string,id?:string):Promise<CachedBackground|null>{
       const image=new Image();image.src=url;
       try{await image.decode();}catch{URL.revokeObjectURL(url);urls.delete(url);return null;}
       if(disposed){URL.revokeObjectURL(url);urls.delete(url);return null;}
-      const canvas=document.createElement('canvas');canvas.width=96;canvas.height=Math.max(3,Math.round(96*image.naturalHeight/image.naturalWidth));
-      const context=canvas.getContext('2d',{willReadFrequently:true});context?.drawImage(image,0,0,canvas.width,canvas.height);
-      return {url,width:image.naturalWidth,height:image.naturalHeight,sample:context?.getImageData(0,0,canvas.width,canvas.height)};
+      const crop=imageCrop(image),canvas=document.createElement('canvas');canvas.width=96;canvas.height=Math.max(3,Math.round(96*image.naturalHeight*crop.height/(image.naturalWidth*crop.width)));
+      const context=canvas.getContext('2d',{willReadFrequently:true});context?.drawImage(image,image.naturalWidth*crop.x,image.naturalHeight*crop.y,image.naturalWidth*crop.width,image.naturalHeight*crop.height,0,0,canvas.width,canvas.height);
+      return {url,width:image.naturalWidth,height:image.naturalHeight,crop,sample:context?.getImageData(0,0,canvas.width,canvas.height)};
     }catch{return null;}
   })();cache.set(key,pending);
   if(cache.size>6){const oldest=[...cache.keys()].find(candidate=>candidate!==active?.current)!;const previous=cache.get(oldest);cache.delete(oldest);void previous?.then(image=>{if(image){URL.revokeObjectURL(image.url);urls.delete(image.url);}});}
@@ -92,11 +93,17 @@ export async function updateBackgroundContrast(){
   const key=active?.current,root=document.documentElement;
   if(!key){for(const name of ['brand','more','footer'])root.style.removeProperty('--'+name+'-ink');return;}
   const image=await cache.get(key);if(active?.current!==key||!image?.sample)return;
+  fitScreenshot(active.scene,image);
   const {data,width,height}=image.sample,tint=root.dataset.tint==='true'?active.accent||null:null,light=root.dataset.theme==='light';
   for(const [name,selector] of [['brand','.brand'],['more','.shell-more>.menu-button'],['footer','.app-footer']] as const){
     const target=document.querySelector(selector);if(!target)continue;
     root.style.setProperty('--'+name+'-ink',backdropInk(data,width,height,innerWidth,innerHeight,target.getBoundingClientRect(),tint,light));
   }
+}
+function fitScreenshot(layer:HTMLElement,image:CachedBackground){
+  if(image.crop.width===1&&image.crop.height===1){layer.style.backgroundSize='cover';layer.style.backgroundPosition='center';return;}
+  const bounds=layer.getBoundingClientRect(),geometry=cropGeometry(image.width,image.height,image.crop,bounds.width,bounds.height);
+  layer.style.backgroundSize=geometry.size;layer.style.backgroundPosition=geometry.position;
 }
 let contrastFrame=0;
 window.addEventListener('resize',()=>{if(!contrastFrame)contrastFrame=requestAnimationFrame(()=>{contrastFrame=0;void updateBackgroundContrast();});},{passive:true});
@@ -109,13 +116,14 @@ async function display(state:BackgroundSelection){
     const commit=()=>{
       if(active!==state)return;
       scene.style.backgroundImage=source;scene.dataset.hero='true';scene.dataset.storeQuality=quality;
+      fitScreenshot(scene,image);
       scene.dataset.backgroundWidth=String(image.width);scene.dataset.backgroundHeight=String(image.height);
       scene.dataset.screenshotId=id||'default';scene.querySelector('.scene-next')?.remove();state.current=state.appid+':'+(id||'default');
       void updateBackgroundContrast();
     };
     clearTimeout(fade);scene.querySelector('.scene-next')?.remove();
     if(scene.style.backgroundImage!==source&&canFade()){
-      const next=document.createElement('div');next.className='scene-next';next.dataset.quality=quality;next.style.backgroundImage=source;scene.append(next);
+      const next=document.createElement('div');next.className='scene-next';next.dataset.quality=quality;next.style.backgroundImage=source;scene.append(next);fitScreenshot(next,image);
       requestAnimationFrame(()=>requestAnimationFrame(()=>{if(next.isConnected)next.style.opacity='1';}));fade=setTimeout(commit,750);
     }else commit();
   }
@@ -126,7 +134,7 @@ export function applyStoreBackground(appid:string|null|undefined,scene:HTMLEleme
   if(active?.appid===key&&active.game===game&&active.scene===scene&&active.accent===accent)return;
   clearFade();active=undefined;
   void updateBackgroundContrast();
-  scene.style.backgroundImage='';scene.dataset.hero='false';delete scene.dataset.storeQuality;
+  scene.style.backgroundImage='';scene.style.backgroundSize='cover';scene.style.backgroundPosition='center';scene.dataset.hero='false';delete scene.dataset.storeQuality;
   scene.dataset.backgroundGame=key;scene.dataset.backgroundState=key?'loading':'none';
   if(!key)return;
   const state:BackgroundSelection={appid:key,game,accent,scene,ids:[]};active=state;

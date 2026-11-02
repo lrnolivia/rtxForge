@@ -103,6 +103,19 @@ class StoreBackgroundTests(unittest.TestCase):
             'source': hud, 'sha256': hashlib.sha256(data).hexdigest()}), encoding='utf-8')
         self.assertEqual(store.background(appid, self.cache, screenshot='0', now=101), {'image': None})
 
+    def test_first_light_excludes_promotional_panels_even_when_previously_cached(self):
+        appid = '3768760'
+        hashes = ['ef374e5e4ede8c71f32d455652bc00f2fa7c035e',
+                  '18787f52adabf0e5248548ed83562e6aac88f94d',
+                  '43c8cf3875cb6643ac7d8244e9fd39381609814a']
+        shots = [{'id': str(i), 'full': f'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/ss_{value}.1920x1080.jpg'}
+                 for i, value in enumerate(hashes)]
+        (self.cache / (appid + '.gallery.json')).write_text(
+            json.dumps({'checked': 100, 'screenshots': shots}), encoding='utf-8')
+        self.assertEqual(store.gallery(appid, self.cache, now=101), shots[2:])
+        for shot in shots[:2]:
+            self.assertFalse(store.clean_screenshot(shot['full'], appid))
+
 
 if __name__ == '__main__':
     unittest.main()

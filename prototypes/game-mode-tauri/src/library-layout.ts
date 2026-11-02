@@ -7,8 +7,11 @@ export function libraryColumns(width: number, height: number, footer: number, ra
   const rowHeight = (height - (rows - 1) * gap) / rows;
   const maximum = ratio > 1 ? 280 : 560;
   const artworkWidth = (rowHeight - footer) / ratio + 10;
-  const target = Math.max(minimum*.7, Math.min(maximum*1.4, artworkWidth*size/100));
-  const columns=Math.max(1,Math.ceil((width+gap)/(target+gap)));
+  const target = Math.max(minimum*.7, Math.min(maximum*1.4, artworkWidth*size*1.05/100));
+  let columns=Math.max(1,Math.ceil((width+gap)/(target+gap)));
+  // The default keeps its preferred size while yielding one column when
+  // rounding would otherwise cut off the final row. Larger sizes may scroll.
+  if(size<=100&&rows>1)columns=Math.max(columns,Math.ceil((width+gap)/(artworkWidth+gap)));
   const actualWidth=(width-(columns-1)*gap)/columns;
   const actualHeight=(actualWidth-10)*ratio+footer;
   return {columns,rows:Math.max(1,Math.min(4,Math.floor((height+gap)/(actualHeight+gap))))};
@@ -24,11 +27,12 @@ export function setupLibraryLayout(root: HTMLElement): () => void {
   const arrange = () => {
     frame = 0;
     if (disposed || !grid.isConnected) return;
+    const atEnd=results&&results.scrollTop>0&&results.scrollHeight-results.clientHeight-results.scrollTop<=2;
     const style = getComputedStyle(grid), padding = getComputedStyle(content);
     // offset geometry is independent of screen-arrival animation transforms.
     let top = 0, node: HTMLElement | null = grid;
     while (node && node !== content) { top += node.offsetTop; node = node.offsetParent as HTMLElement | null; }
-    const height = content.clientHeight - top - parseFloat(padding.paddingBottom) - 8;
+    const height = results ? results.clientHeight-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom) : content.clientHeight-top-parseFloat(padding.paddingBottom)-8;
     const copy = grid.querySelector<HTMLElement>('.game-copy,.skeleton-copy');
     const footer = (copy?.offsetHeight || 94) + 5;
     const gap = parseFloat(style.columnGap) || 24;
@@ -36,6 +40,7 @@ export function setupLibraryLayout(root: HTMLElement): () => void {
     const result = libraryColumns(grid.clientWidth - 4, height, footer, wide ? 43 / 92 : 1.5, gap,Number(document.documentElement.dataset.libraryScale)||100);
     grid.style.setProperty('--library-columns', String(result.columns));
     grid.dataset.visibleRows = String(result.rows);
+    if(atEnd)results.scrollTop=results.scrollHeight;
   };
   const schedule = () => { if (!disposed && !frame) frame = requestAnimationFrame(arrange); };
   const observer = new ResizeObserver(schedule);

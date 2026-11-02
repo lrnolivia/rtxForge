@@ -95,7 +95,7 @@ function applyAppearance() {
       if(appliedZoom!==zoom){appliedZoom=zoom;void import('@tauri-apps/api/webview').then(({getCurrentWebview})=>getCurrentWebview().setZoom(zoom)).catch(()=>{appliedZoom=undefined;announce('The interface scale could not be applied.');});}
     }
   }
-  try { localStorage.setItem('rtxforge-game-mode-prototype', JSON.stringify({...appearance,detailsNavigationVersion:1,appearanceDefaultsVersion:2})); } catch { /* Session preferences still work when storage is unavailable. */ }
+  try { localStorage.setItem('rtxforge-game-mode-prototype', JSON.stringify({...appearance,detailsNavigationVersion:1,appearanceDefaultsVersion:2,libraryScaleVersion:1})); } catch { /* Session preferences still work when storage is unavailable. */ }
 }
 function selectedGame(): Game | undefined { return snapshot?.games.find(game => game.id === selectedId) || snapshot?.games[0]; }
 function setView(next: View, focus = true) {
@@ -598,7 +598,7 @@ async function chooseBackground(file:File) {
     const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Image preview is unavailable.');ctx.drawImage(image,0,0,canvas.width,canvas.height);
     let result='';for(const quality of [.88,.75,.6,.45]){result=canvas.toDataURL('image/webp',quality);if(result.length<1500000)break;}
     if(result.length>=1500000)throw new Error('This image is too detailed to save locally. Choose a smaller image.');
-    const next={...appearance,background:result,detailsNavigationVersion:1,appearanceDefaultsVersion:2};
+    const next={...appearance,background:result,detailsNavigationVersion:1,appearanceDefaultsVersion:2,libraryScaleVersion:1};
     localStorage.setItem('rtxforge-game-mode-prototype',JSON.stringify(next));appearance.background=result;applyAppearance();render();announce('Game Mode background saved.');
   }catch(problem){announce(problem instanceof Error?problem.message:'This image could not be loaded.');}
   finally{URL.revokeObjectURL(source);}

@@ -37,6 +37,7 @@ try {
   await page.setViewportSize({width:1100,height:900});
   expect(await page.locator('.library-tools').evaluate(n=>n.offsetHeight)).toBeLessThanOrEqual(60);
   await page.setViewportSize({width:2560,height:1440});
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   await page.locator('#game-results').evaluate(n=>n.scrollTop=n.scrollHeight);
   const last=await page.locator('.game-item').last().boundingBox(),pane=await page.locator('#game-results').boundingBox();
   expect(last.y+last.height).toBeLessThanOrEqual(pane.y+pane.height);

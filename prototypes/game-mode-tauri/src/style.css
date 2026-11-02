@@ -597,3 +597,14 @@ button.ui-control:not(:disabled):not(.game-card):not(.primary):is(:hover,:focus-
   .shell[data-header-collapsed=true] .app-header nav.main-nav{grid-column:1;grid-row:1;min-width:0}
   .shell[data-header-collapsed=true] .shell-more{grid-column:2;grid-row:1}
 }
+
+/* Compact Library tools keep both rows visible at the default card size. */
+@media(min-width:761px){
+  .library-operation-bar{padding-block:6px}
+  .library-operation-actions button{min-height:38px;padding-block:7px}
+  .library-tools .view-switch{padding:3px}
+  .library-tools .view-switch button{min-height:38px;padding-block:7px}
+  :root[data-surface=library] .search{height:40px}
+  .library-tools select{min-height:40px;padding-block:8px}
+  :root[data-surface=library] .library-operation-bar,:root[data-surface=library] .library-tools{margin-bottom:8px}
+}

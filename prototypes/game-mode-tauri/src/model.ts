@@ -25,7 +25,7 @@ export function readGameAccents(): Map<string,string> {
 export function readAppearance(): Appearance {
   try {
     const value = JSON.parse(localStorage.getItem('rtxforge-game-mode-prototype') || '{}');
-    return { libraryScale:typeof value.libraryScale==='number'&&value.libraryScale>=70&&value.libraryScale<=140?value.libraryScale:100, theme: ['clear', 'light', 'dark'].includes(value.theme) ? value.theme : 'clear',
+    return { libraryScale:typeof value.libraryScale==='number'&&value.libraryScale>=70&&value.libraryScale<=140?(value.libraryScaleVersion===1?value.libraryScale:Math.max(70,Math.min(140,Math.round(value.libraryScale/1.05/5)*5))):100, theme: ['clear', 'light', 'dark'].includes(value.theme) ? value.theme : 'clear',
       ...(typeof value.background==='string'&&value.background.length<1600000&&/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(value.background)?{background:value.background}:{}),
       tint: value.appearanceDefaultsVersion===2 ? value.tint === true : true, accent: /^#[0-9a-f]{6}$/i.test(value.accent) && !(value.appearanceDefaultsVersion!==2&&value.accent.toLowerCase()==='#f2cf5a') ? value.accent : appearanceDefaults.accent,
       motion: value.motion !== false, text: value.text === 'large' ? 'large' : 'standard', navigation: value.navigation === 'bottom' ? 'bottom' : 'top', detailsNavigation: value.detailsNavigationVersion===1&&value.detailsNavigation==='tabs'?'tabs':'sidebar', scale: [100, 125, 130, 150, 175, 200].includes(value.scale) ? value.scale : 'auto' };

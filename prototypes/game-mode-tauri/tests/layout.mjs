@@ -5,7 +5,11 @@ const page=await browser.newPage({viewport:{width:1920,height:1080},reducedMotio
 const errors=[];page.on('pageerror',error=>errors.push(error.message));
 const nav=name=>page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name,exact:true});
 try {
+  await page.addInitScript(()=>{if(!localStorage.getItem('rtxforge-game-mode-prototype'))localStorage.setItem('rtxforge-game-mode-prototype',JSON.stringify({libraryScale:105}));});
   await page.goto('http://127.0.0.1:1420');await page.waitForSelector('.game-card');await page.evaluate(()=>document.fonts.ready);
+  await expect(page.getByRole('slider',{name:'Library item size'})).toHaveValue('100');
+  await page.reload();await page.waitForSelector('.game-card');
+  await expect(page.getByRole('slider',{name:'Library item size'})).toHaveValue('100');
   const bounds=()=>page.locator('.app-header,#content').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return [r.x,r.y,r.width,r.height]}));
   const baseline=await bounds();
   for(const name of ['Presets','Packages','Extras','Settings','Library']){await nav(name).click();expect(await bounds()).toEqual(baseline);}

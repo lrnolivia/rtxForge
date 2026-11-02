@@ -24,6 +24,8 @@ on:
       - scripts/**
       - providers/**
       - prototypes/overlay-rmlui/**
+      - prototypes/game-mode-tauri/**
+      - .github/workflows/game-mode-preview.yml
       - tests/**
       - provider.json
       - gui/fonts/**
@@ -39,6 +41,8 @@ on:
       - scripts/**
       - providers/**
       - prototypes/overlay-rmlui/**
+      - prototypes/game-mode-tauri/**
+      - .github/workflows/game-mode-preview.yml
       - tests/**
       - provider.json
       - gui/fonts/**
@@ -56,11 +60,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  game-mode:
+    uses: ./.github/workflows/game-mode-preview.yml
+    with:
+      platforms: '["windows-2025"]'
   panel-candidate:
     uses: ./.github/workflows/overlay-native.yml
   build:
     name: WinUI 3 ${{ matrix.platform }}
-    needs: panel-candidate
+    needs: [panel-candidate, game-mode]
     runs-on: windows-2025
     # Signed release runs wait for the SignPath approval (up to an hour per request).
     timeout-minutes: 150
@@ -101,6 +109,16 @@ jobs:
           if ($env:DRAFT_RELEASE -eq 'true') { throw 'Choose either draft_release or publish_beta' }
       - name: Checkout rtxForge
         uses: actions/checkout@v4
+
+      - name: Verify native Game Mode handoff
+        if: matrix.platform == 'x64'
+        run: dotnet run --project windows/tests/GameModeLauncher/GameModeLauncher.csproj -c Release
+
+      - name: Download integrated Game Mode
+        uses: actions/download-artifact@v4
+        with:
+          name: rtxForge-Game-Mode-win-x64-${{ github.sha }}
+          path: out/game-mode
 
       - name: Bundle the matching in-game overlay bridge
         if: matrix.platform == 'x64'
@@ -226,7 +244,7 @@ jobs:
       # Publish also bundles the engine and a private Python (windows/build/Bundle-Engine.ps1).
       - name: Publish self-contained app
         run: |
-          $log = dotnet publish $env:PROJECT -c Release -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }} -p:SelfContained=true -o out/rtxForge-windows-${{ matrix.arch }} 2>&1
+          $log = dotnet publish $env:PROJECT -c Release -r ${{ matrix.rid }} -p:Platform=${{ matrix.platform }} -p:SelfContained=true -p:GameModePackagePath="$env:GITHUB_WORKSPACE/out/game-mode" -p:GameModeSourceSha="$env:GITHUB_SHA" -o out/rtxForge-windows-${{ matrix.arch }} 2>&1
           $code = $LASTEXITCODE
           $log
           if ($code) {

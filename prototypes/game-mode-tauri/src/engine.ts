@@ -1,4 +1,4 @@
-export interface EngineStatus { enabled: boolean; reason: string; fullscreen?:boolean }
+export interface EngineStatus { enabled: boolean; reason: string; fullscreen?:boolean;appearance?:boolean }
 export type EngineRow = Record<string, unknown> & { name: string; game: string; installed?: boolean; blocked?: string; exe?: string };
 export interface Review {
   token: string; title: string; action?: string; summary?: string; trust?: string; note?: string;

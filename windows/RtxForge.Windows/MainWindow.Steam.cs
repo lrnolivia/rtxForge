@@ -39,8 +39,7 @@ public sealed partial class MainWindow
         SteamShortcutStatus status;
         try { status = await Service.SteamStatusAsync(); }
         catch (InvalidOperationException error) { await Message("Add rtxForge to Steam", error.Message); return; }
-        if (status.Added) await RemoveSteamShortcutAsync(status);
-        else await AddSteamShortcutAsync();
+        await AddSteamShortcutAsync();
     }
 
     public async Task AddSteamShortcutAsync()
@@ -50,9 +49,9 @@ public sealed partial class MainWindow
         catch (InvalidOperationException error) { await Message("Add rtxForge to Steam", error.Message); return; }
 
         var body = new StackPanel { Spacing = 12, MinWidth = 520 };
-        body.Children.Add(new TextBlock { Text = review.Created ? "Add rtxForge to Steam" : "Refresh rtxForge artwork", FontSize = 20, FontWeight = FontWeights.SemiBold });
+        body.Children.Add(new TextBlock { Text = review.Created ? "Add rtxForge to Steam" : "Update Steam Shortcut", FontSize = 20, FontWeight = FontWeights.SemiBold });
         body.Children.Add(Prefs.Label($"Steam account {review.Profile} · No SteamGridDB key is needed."));
-        body.Children.Add(Prefs.Label("Only this app’s shortcut artwork will change. Replaced images are backed up. Restart Steam afterward to refresh its library.", "ForgeCaptionDimTextStyle"));
+        body.Children.Add(Prefs.Label("This app’s shortcut will open the current Game Mode. Its bundled artwork will also be updated. Replaced images are backed up. Restart Steam afterward to refresh its library.", "ForgeCaptionDimTextStyle"));
         var list = new StackPanel { Spacing = 4 };
         foreach (var slot in review.Slots)
             list.Children.Add(Prefs.Row(SteamRoleTitles.GetValueOrDefault(slot.Role, slot.Role), SteamSlotMessages.GetValueOrDefault(slot.Status, slot.Status),

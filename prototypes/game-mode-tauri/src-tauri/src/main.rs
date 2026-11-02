@@ -2,10 +2,11 @@
 
 use std::{path::PathBuf, process::Command};
 use tauri_plugin_dialog::DialogExt;
-use tauri::Manager;
+use tauri::{Manager, Emitter};
 use std::sync::atomic::Ordering;
 mod engine;
 mod runtime;
+mod desktop_parent;
 
 #[tauri::command]
 fn exit_app(app: tauri::AppHandle) { close_safely(&app); }
@@ -32,6 +33,10 @@ fn minimize_app(window: tauri::Window) -> Result<(),String> { window.minimize().
 
 #[tauri::command]
 async fn desktop_mode(app: tauri::AppHandle) -> Result<(), String> {
+    if app.state::<desktop_parent::DesktopParent>().0.lock().ok().and_then(|value| *value).is_some_and(desktop_parent::alive) {
+        close_safely(&app);
+        return Ok(());
+    }
     let mut candidates = Vec::new();
     #[cfg(windows)] {
         if let Some(base) = std::env::var_os("LOCALAPPDATA") {
@@ -48,14 +53,21 @@ async fn desktop_mode(app: tauri::AppHandle) -> Result<(), String> {
             candidates.extend(std::env::split_paths(&paths).map(|base| base.join("rtxforge")));
         }
     }
-    let executable = candidates.into_iter().find(|path| path.is_file())
-        .ok_or("The desktop application is not installed in its standard location.")?;
+    let launch = std::env::var("RTXFORGE_DESKTOP_COMMAND").ok()
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
+        .filter(|args| !args.is_empty() && args.len() <= 12 && PathBuf::from(&args[0]).is_absolute() && PathBuf::from(&args[0]).is_file());
+    let (executable, arguments) = if let Some(mut args) = launch {
+        (PathBuf::from(args.remove(0)), args)
+    } else {
+        (candidates.into_iter().find(|path| path.is_file())
+            .ok_or("The desktop application is not installed in its standard location.")?, vec!["--desktop-mode".into()])
+    };
     if app.state::<engine::EngineState>().closing.swap(true, Ordering::SeqCst) {
         return Err("The application is already closing.".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
         engine::drain(&app.state::<engine::EngineState>());
-        let result = Command::new(executable).env_remove("SteamAppId").env_remove("SteamGameId").spawn();
+        let result = Command::new(executable).args(arguments).env_remove("SteamAppId").env_remove("SteamGameId").spawn();
         if result.is_ok() { app.exit(0); Ok(()) } else {
             let state = app.state::<engine::EngineState>();
             state.drained.store(false, Ordering::SeqCst);
@@ -86,9 +98,9 @@ async fn choose_path(app: tauri::AppHandle, kind: String) -> Result<Option<Strin
 
 fn read_snapshot(app: tauri::AppHandle, artwork: Option<(String,String)>, background: Option<String>, screenshot: Option<String>, gallery: bool) -> Result<serde_json::Value, String> {
     // Fixed reader only. No caller-supplied executable, method or filesystem path.
-    let checkout = runtime::root()?;
+    let checkout = runtime::root(&app)?;
     let reader = runtime::bridge(&app, "read_snapshot.py")?;
-    let python = runtime::python()?;
+    let python = runtime::python(&app)?;
     let mut command = Command::new(python);
     command.arg("-B").arg(reader).arg("--root").arg(checkout);
     if let Some((id,role)) = artwork { command.arg("--artwork").arg(id).arg("--role").arg(role); }
@@ -128,7 +140,32 @@ async fn store_screenshots(app: tauri::AppHandle, appid: String) -> Result<serde
 }
 
 fn main() {
-    tauri::Builder::default().plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![snapshot, artwork, store_background, store_screenshots, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
+    let args: Vec<String> = std::env::args().collect();
+    tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if args.iter().any(|arg|arg=="--appearance") { let _ = app.emit("navigate-appearance", ()); }
+            let state = app.state::<desktop_parent::DesktopParent>();
+            if let Ok(mut parent) = state.0.lock() {
+                if parent.is_none_or(|pid| !desktop_parent::alive(pid)) { *parent = desktop_parent::from_args(&args); }
+            }
+            if let Some(window) = app.get_webview_window("main") { let _ = window.show(); let _ = window.unminimize(); let _ = window.set_focus(); }
+        }))
+        .manage(desktop_parent::DesktopParent(std::sync::Mutex::new(desktop_parent::from_args(&args))))
+        .setup(move |app| {
+            if args.iter().any(|arg| arg == "--verify-runtime") {
+                let app = app.handle().clone();
+                std::thread::spawn(move || {
+                    let result = read_snapshot(app.clone(), None, None, None, false);
+                    engine::drain(&app.state::<engine::EngineState>());
+                    match result {
+                        Ok(_) => { println!("{{\"runtimeVerified\":true}}"); app.exit(0); },
+                        Err(error) => { eprintln!("Private runtime verification failed: {error}"); app.exit(1); }
+                    }
+                });
+            }
+            Ok(())
+        })
+        .plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![snapshot, artwork, store_background, store_screenshots, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
         .build(tauri::generate_context!()).expect("Could not build Game Mode")
         .run(|app, event| match event {
             tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::CloseRequested { api, .. }, .. } => {

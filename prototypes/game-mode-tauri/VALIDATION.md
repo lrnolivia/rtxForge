@@ -2,7 +2,9 @@
 
 Native Game Mode enables reviewed engine operations by default. The browser demo
 remains read-only; `RTXFORGE_PREVIEW_READ_ONLY=1` also disables native operations.
-It is installed separately from Desktop, with previous versions retained.
+Desktop integration packages this native UI with the app. Standalone versioned installs remain supported for development and rollback.
+
+The integration candidate adds automated 4K/200% selection stability, Overview order, Surface Tint persistence, explicit Steam launch-option migration, native parent handoff and bundled-runtime checks. The historical evidence below predates that integration; final package and handoff validation must be recorded for its exact source.
 
 ## Verified
 

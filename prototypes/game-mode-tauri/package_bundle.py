@@ -130,7 +130,7 @@ def bundle(output, screening):
              if path.is_file() and path.name != 'build.json' and not path.is_symlink()}
     receipt = {'schema': 2, 'version': '1.0.0', 'source': revision(), 'dirty': dirty,
                'native': native, 'platform': 'win-x64' if os.name == 'nt' else 'linux-x64',
-               'readOnlyDefault': False, 'files': files,
+               'readOnlyDefault': False, 'desktopIntegration': 1, 'files': files,
                'links': {p.relative_to(output).as_posix(): os.readlink(p) for p in output.rglob('*') if p.is_symlink()}}
     (output / 'build.json').write_text(json.dumps(receipt, indent=2), encoding='utf-8')
     verify(output)

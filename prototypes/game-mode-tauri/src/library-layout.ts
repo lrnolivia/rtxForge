@@ -1,10 +1,10 @@
 /** Fit complete rows without changing artwork ratios, type size or native zoom. */
-export function libraryColumns(width: number, height: number, footer: number, ratio: number, gap: number, size=100) {
+export function libraryColumns(width: number, height: number, footer: number, ratio: number, gap: number, size=100, rowGap=gap) {
   const minimum = ratio > 1 ? 120 : 240;
   const minimumRow=(minimum-10)*ratio+footer;
   const preferredRow=ratio>1?360:300;
-  const rows=height>=3*preferredRow+2*gap?3:height>=2*minimumRow+gap?2:1;
-  const rowHeight = (height - (rows - 1) * gap) / rows;
+  const rows=height>=3*preferredRow+2*rowGap?3:height>=2*minimumRow+rowGap?2:1;
+  const rowHeight = (height - (rows - 1) * rowGap) / rows;
   const maximum = ratio > 1 ? 280 : 560;
   const artworkWidth = (rowHeight - footer) / ratio + 10;
   const target = Math.max(minimum*.7, Math.min(maximum*1.4, artworkWidth*size*1.05/100));
@@ -14,7 +14,7 @@ export function libraryColumns(width: number, height: number, footer: number, ra
   if(size<=100&&rows>1)columns=Math.max(columns,Math.ceil((width+gap)/(artworkWidth+gap)));
   const actualWidth=(width-(columns-1)*gap)/columns;
   const actualHeight=(actualWidth-10)*ratio+footer;
-  return {columns,rows:Math.max(1,Math.min(4,Math.floor((height+gap)/(actualHeight+gap))))};
+  return {columns,rows:Math.max(1,Math.min(4,Math.floor((height+rowGap)/(actualHeight+rowGap))))};
 }
 
 export function setupLibraryLayout(root: HTMLElement): () => void {
@@ -37,19 +37,21 @@ export function setupLibraryLayout(root: HTMLElement): () => void {
     const copy = grid.querySelector<HTMLElement>('.game-copy,.skeleton-copy');
     const footer = (copy?.offsetHeight || 94) + 5;
     const gap = parseFloat(style.columnGap) || 24;
+    const rowGap=Math.max(gap,parseFloat(style.paddingTop),parseFloat(style.paddingBottom));
+    grid.style.rowGap=rowGap+'px';
     const wide = grid.classList.contains('game-capsules');
-    const result = libraryColumns(grid.clientWidth - 4, height, footer, wide ? 43 / 92 : 1.5, gap,Number(document.documentElement.dataset.libraryScale)||100);
+    const result = libraryColumns(grid.clientWidth - 4, height, footer, wide ? 43 / 92 : 1.5, gap,Number(document.documentElement.dataset.libraryScale)||100,rowGap);
     grid.style.setProperty('--library-columns', String(result.columns));
     grid.dataset.visibleRows = String(result.rows);
     // Share spare height between the row gaps and outer breathing room. Whole
     // rows fill the viewport instead of exposing a clipped strip of the next.
     if(results&&Number(document.documentElement.dataset.libraryScale||100)<=100&&result.rows>1){
       const row=grid.firstElementChild as HTMLElement|null;
-      const spare=height-result.rows*(row?.offsetHeight||0)-(result.rows-1)*gap;
+      const spare=height-result.rows*(row?.offsetHeight||0)-(result.rows-1)*rowGap;
       if(row&&spare>0){
         const edge=parseFloat(style.paddingTop);
         grid.style.paddingBlock=`${edge+spare/(2*result.rows)}px`;
-        grid.style.rowGap=`${gap+spare/result.rows}px`;
+        grid.style.rowGap=`${rowGap+spare/result.rows}px`;
       }
     }
     if(atEnd)results.scrollTop=results.scrollHeight;

@@ -12,9 +12,16 @@ fn validate_root(root: PathBuf) -> Result<PathBuf, String> {
     Ok(root)
 }
 
-pub fn root() -> Result<PathBuf, String> {
+fn payload_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let installed = installed_dir()?;
+    if installed.join("python").is_dir() { return Some(installed); }
+    let resources = app.path().resource_dir().ok()?.join("payload");
+    resources.join("python").is_dir().then_some(resources)
+}
+
+pub fn root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     if let Some(root) = std::env::var_os("RTXFORGE_ROOT") { return validate_root(root.into()); }
-    if let Some(dir) = installed_dir() {
+    if let Some(dir) = payload_dir(app) {
         let root = dir.join("engine");
         if root.is_dir() { return validate_root(root); }
     }
@@ -24,11 +31,11 @@ pub fn root() -> Result<PathBuf, String> {
     Err("The private engine is missing. Reinstall the complete application.".into())
 }
 
-pub fn python() -> Result<OsString, String> {
+pub fn python(app: &tauri::AppHandle) -> Result<OsString, String> {
     if let Some(python) = std::env::var_os("RTXFORGE_PYTHON") {
         return if PathBuf::from(&python).is_file() { Ok(python) } else { Err("The selected Python executable is missing.".into()) };
     }
-    if let Some(dir) = installed_dir() {
+    if let Some(dir) = payload_dir(app) {
         let python = dir.join(if cfg!(windows) { "python/python.exe" } else { "python/bin/python3" });
         if python.is_file() { return Ok(python.into_os_string()); }
     }
@@ -40,7 +47,7 @@ pub fn python() -> Result<OsString, String> {
 
 pub fn bridge(app: &tauri::AppHandle, name: &str) -> Result<PathBuf, String> {
     // Call sites pass fixed filenames; web content never chooses a script.
-    if let Some(dir) = installed_dir() {
+    if let Some(dir) = payload_dir(app) {
         let path = dir.join("bridge").join(name);
         if path.is_file() { return Ok(path); }
     }

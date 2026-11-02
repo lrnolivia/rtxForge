@@ -54,6 +54,21 @@ public partial class App : Application
             if (MainWindow.TryParseSupportLink(link, out var issue)) { MainWindow.PendingSupportLink = true; MainWindow.PendingSupportIssue = issue; }
             else MainWindow.IgnoredSupportLink = true;
         }
+        // Normal activations reuse the existing Desktop owner. Review fixtures remain isolated.
+        if (!arguments.Any(value => value.Contains("review", StringComparison.OrdinalIgnoreCase) || value is "--preview" or "--library-preview" or "--overlay-settings" || value.StartsWith("rtxforge:", StringComparison.OrdinalIgnoreCase)))
+        {
+            var instance = Microsoft.Windows.AppLifecycle.AppInstance.FindOrRegisterForKey("rtxforge-desktop");
+            if (!instance.IsCurrent)
+            {
+                await instance.RedirectActivationToAsync(Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs());
+                Exit(); return;
+            }
+            instance.Activated += (_, activation) =>
+            {
+                var text = (activation.Data as global::Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs)?.Arguments ?? "";
+                Main?.DispatcherQueue.TryEnqueue(() => Main?.ActivateDesktop(text.Split(' ').Contains("--game-mode")));
+            };
+        }
         // The real engine (bundled Python host) unless --preview is passed or
         // it cannot start; preview is `rtxforge_gtk.py --demo`: sample
         // library, no game writes.

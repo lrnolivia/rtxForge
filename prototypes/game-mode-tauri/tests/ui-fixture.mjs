@@ -1,0 +1,4 @@
+import {readFileSync} from 'node:fs';
+const controls=JSON.parse(readFileSync(new URL('../../../providers/skynizz-bridge/controls.json',import.meta.url),'utf8'));
+const art='data:image/svg+xml;base64,'+Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"><rect width="600" height="900" fill="#378aa9"/></svg>').toString('base64');
+export function libraryFixture(){return {schema:1,source:'isolated-ui-fixture',platform:'Windows',readOnly:false,capturedAt:new Date().toISOString(),games:Array.from({length:50},(_,i)=>({id:'game-'+i,name:'Game '+i,path:'C:/fixture/game-'+i,appid:null,source:'Fixture',status:'NR + MFG',art,hero:art,accent:'#e4ba3b',testStatus:'Working',savedRecord:{installed:true,runtime_provider:'skynizz'}})),packages:[],warnings:[],libraryCount:1,settingsFound:true,controlSchema:controls,defaults:{},preferences:{},operations:{available:true,reason:''}};}

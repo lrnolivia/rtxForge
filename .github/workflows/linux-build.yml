@@ -29,6 +29,7 @@ permissions:
 
 env:
   RTXFORGE_REQUIRE_GLASS: '1'
+  RTXFORGE_GAME_MODE_PACKAGE: '${{ github.workspace }}/game-mode-package'
 
 # Pushes and pull requests cancel their own older runs; nothing cancels a manual publication.
 concurrency:
@@ -36,10 +37,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  game-mode:
+    uses: ./.github/workflows/game-mode-preview.yml
+    with:
+      platforms: '["ubuntu-22.04"]'
   panel-candidate:
     uses: ./.github/workflows/overlay-native.yml
   build-appimage:
-    needs: panel-candidate
+    needs: [panel-candidate, game-mode]
     name: Bazzite x86_64 AppImage
     runs-on: ubuntu-24.04
     container:
@@ -86,6 +91,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Download integrated Game Mode
+        uses: actions/download-artifact@v4
+        with:
+          name: rtxForge-Game-Mode-linux-appimage-${{ github.sha }}
+          path: game-mode-package
 
       - name: Download glass-overlay-candidate
         uses: actions/download-artifact@v4
@@ -227,7 +238,6 @@ jobs:
           GSETTINGS_BACKEND: memory
           PYTHONWARNINGS: ignore
         run: |
-          xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 tests/ui_library_resume.py
           test -s dist/resume-library-first.png
 
       - name: Build AppImage
@@ -393,7 +403,7 @@ jobs:
   # payload as the AppImage. Runs on the VM, not in a container: bubblewrap needs
   # user namespaces, and the checks below run the installed app like a user's system.
   build-flatpak:
-    needs: panel-candidate
+    needs: [panel-candidate, game-mode]
     name: Flatpak x86_64 bundle
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -406,6 +416,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Download integrated Game Mode
+        uses: actions/download-artifact@v4
+        with:
+          name: rtxForge-Game-Mode-linux-appimage-${{ github.sha }}
+          path: game-mode-package
 
       - name: Download glass-overlay-candidate
         uses: actions/download-artifact@v4

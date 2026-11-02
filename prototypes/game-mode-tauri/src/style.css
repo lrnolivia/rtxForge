@@ -676,7 +676,7 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 @media(min-width:761px){.details-identity{right:58px}}
 @media(max-width:760px){.details-identity{right:48px}}
 /* Feather the glow at the scrollport rather than cutting it at a hard edge. */
-#game-results:has(.games:not(.game-list)){mask-image:linear-gradient(to bottom,transparent,#000 12px,#000 calc(100% - 12px),transparent)}
+#game-results:has(.games:not(.game-list)){mask-image:linear-gradient(to bottom,transparent,rgb(0 0 0 / .12) 5px,rgb(0 0 0 / .5) 14px,rgb(0 0 0 / .9) 25px,#000 36px,#000 calc(100% - 36px),rgb(0 0 0 / .9) calc(100% - 25px),rgb(0 0 0 / .5) calc(100% - 14px),rgb(0 0 0 / .12) calc(100% - 5px),transparent)}
 .games:not(.game-list){padding-top:28px;padding-bottom:28px}
 
 :root[data-theme=light] .hero-info-card{background:rgb(247 248 250 / .72);color:var(--hero-card-ink,#26323d)}
@@ -727,3 +727,25 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .overlay-preview-search{display:grid;gap:8px;margin-top:16px}
 .overlay-preview-search input{min-width:0;width:100%;box-sizing:border-box}
 @media(max-width:760px){.overlay-presentation{grid-template-columns:minmax(0,1fr)}.overlay-preview-card{padding:16px}.overlay-screen{max-height:240px}}
+
+/* App and overlay tint share one adjustable surface layer. */
+.surface-tint-control{display:grid;grid-template-columns:minmax(150px,1fr) minmax(120px,1fr) 4ch;gap:16px;align-items:center}
+.surface-tint-control input{width:100%;min-width:0;accent-color:var(--accent)}
+:root[data-surface=details][data-tint=true] #scene[data-background-state=ready]:after{background:var(--surface-accent,var(--game-accent));opacity:min(1,var(--surface-tint-level,1))}
+:root[data-tint=true] .hero-info-card{background:color-mix(in srgb,var(--surface-accent,var(--accent)) calc(24% * var(--surface-tint-level,1)),rgb(238 240 242 / .14))}
+:root[data-theme=light][data-tint=true] .hero-info-card{background:color-mix(in srgb,var(--surface-accent,var(--accent)) calc(32% * var(--surface-tint-level,1)),rgb(247 248 250 / .72))}
+:root[data-surface=details][data-tint=true] .content[data-game-accent=true] .detail-body .glass-section{background:color-mix(in srgb,var(--surface-accent,var(--accent)) calc(9% * var(--surface-tint-level,1)),var(--section))}
+:root[data-surface=details][data-tint=true] .content[data-game-accent=true] .detail-body .inner-card{background:color-mix(in srgb,var(--surface-accent,var(--accent)) calc(5% * var(--surface-tint-level,1)),var(--nested))}
+@media(max-width:600px){.surface-tint-control{grid-template-columns:1fr 4ch}.surface-tint-control>span{grid-column:1/-1}}
+
+.library-actions-host{position:relative}
+.library-actions-placeholder{visibility:hidden;pointer-events:none}
+.library-actions-host>.selection-bar{position:absolute;inset:0;margin:0 0 8px;padding:6px 12px;align-content:center;gap:8px;background:var(--section)}
+.library-actions-host>.selection-bar button{min-height:40px;font-size:.8rem;padding:8px 12px}
+
+.library-actions-host>.selection-bar{flex-wrap:nowrap;overflow-x:auto;min-width:0}
+.library-actions-host>.selection-bar>*{flex-shrink:0}
+:root:not([data-surface=details])[data-tint=true] .glass-section{background:color-mix(in srgb,var(--surface-accent) calc(9% * var(--surface-tint-level,1)),var(--section))}
+:root:not([data-surface=details])[data-tint=true] .main-nav{background:color-mix(in srgb,var(--surface-accent) calc(7% * var(--surface-tint-level,1)),var(--glass))}
+
+.games:not(.game-list){padding-block:28px}

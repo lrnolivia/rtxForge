@@ -10,7 +10,7 @@ pub struct EngineState { session: Mutex<Option<Arc<Session>>>, pub closing: Atom
 pub fn enabled() -> bool { std::env::var("RTXFORGE_PREVIEW_READ_ONLY").as_deref() != Ok("1") && std::env::var("RTXFORGE_ENGINE_BRIDGE").as_deref() != Ok("0") }
 #[tauri::command]
 pub fn engine_status(window: tauri::Window) -> serde_json::Value {
-    serde_json::json!({"enabled": enabled(), "fullscreen":window.is_fullscreen().unwrap_or(false), "reason": if enabled() { "Reviewed operations are available." } else { "Read-only preview. Game, Steam and shared settings actions are disabled." }})
+    serde_json::json!({"enabled": enabled(), "appearance":std::env::args().any(|arg|arg=="--appearance"), "fullscreen":window.is_fullscreen().unwrap_or(false), "reason": if enabled() { "Reviewed operations are available." } else { "Read-only preview. Game, Steam and shared settings actions are disabled." }})
 }
 
 fn session(app: &tauri::AppHandle, state: &EngineState) -> Result<Arc<Session>, String> {
@@ -19,10 +19,10 @@ fn session(app: &tauri::AppHandle, state: &EngineState) -> Result<Arc<Session>, 
     if let Some(found) = current.as_ref() { if found.alive.load(Ordering::Relaxed) { return Ok(found.clone()); } }
     if let Some(dead) = current.take() { let _ = dead.child.lock().map(|mut child| child.wait()); }
     let reader = crate::runtime::bridge(app, "engine_host.py")?;
-    let python = crate::runtime::python()?;
+    let python = crate::runtime::python(app)?;
     let mut command = Command::new(python);
-    command.env("RTXFORGE_ROOT", crate::runtime::root()?).env("RTXFORGE_ENGINE_BRIDGE", "1")
-        .env("RTXFORGE_APP_EXE", std::env::current_exe().map_err(|_| "Application executable is unavailable.")?)
+    command.env("RTXFORGE_ROOT", crate::runtime::root(app)?).env("RTXFORGE_ENGINE_BRIDGE", "1")
+        .env("RTXFORGE_APP_EXE", std::env::var_os("RTXFORGE_APP_EXE").or_else(|| std::env::var_os("APPIMAGE")).map(std::path::PathBuf::from).or_else(|| std::env::current_exe().ok()).ok_or("Application executable is unavailable.")?)
         .arg("-u").arg("-B").arg(reader).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
     let mut child = command.spawn().map_err(|_| "Could not start Python for the reviewed host.")?;

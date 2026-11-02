@@ -116,48 +116,13 @@ public sealed partial class SettingsPage : Page
         (row, var theme) = Prefs.ComboRow("Color theme", "Changes only rtxForge.", ThemeController.Captions,
             Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "");
         appearance.Add(row);
-        (row, var gameModeTheme) = Prefs.ComboRow("Color theme", "Choose the theme for Game Mode.", ThemeController.Captions,
-            Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.ResolvedGameModeTheme)), "");
-        gameModeAppearance.Add(row);
         theme.SelectionChanged += (_, _) =>
         {
             if (theme.SelectedIndex < 0) return;
-            Settings.Theme = ThemeController.Keys[theme.SelectedIndex];
-            if (Settings.GameModeThemeLinked) gameModeTheme.SelectedIndex = theme.SelectedIndex;
-            Save();
+            Settings.Theme = ThemeController.Keys[theme.SelectedIndex]; Save();
         };
-        gameModeTheme.SelectionChanged += (_, _) =>
-        {
-            if (gameModeTheme.SelectedIndex < 0) return;
-            var selectedTheme = ThemeController.Keys[gameModeTheme.SelectedIndex];
-            if (selectedTheme == Settings.ResolvedGameModeTheme) return;
-            Settings.SetGameModeTheme(selectedTheme);
-            if (Settings.GameModeThemeLinked) theme.SelectedIndex = gameModeTheme.SelectedIndex;
-            Save();
-        };
-        (row, var linkedTheme) = Prefs.SwitchRow("Use the same color theme in Desktop and Game Mode", "Turn off to choose each interface’s theme separately.", Settings.GameModeThemeLinked, "");
-        linkedTheme.Toggled += (_, _) =>
-        {
-            Settings.LinkGameModeTheme(linkedTheme.IsOn);
-            gameModeTheme.SelectedIndex = Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.ResolvedGameModeTheme));
-            Save();
-        };
-        gameModeAppearance.Add(row);
-        var cardOpacity = new Slider { Minimum = 0, Maximum = 100, StepFrequency = 1, SmallChange = 1, LargeChange = 5,
-            Value = Settings.GameModeCardOpacity, IsThumbToolTipEnabled = false, MinWidth = 200 };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(cardOpacity, "Game Mode card translucency");
-        var opacityEnds = new Grid();
-        opacityEnds.Children.Add(Prefs.Label("Clearer"));
-        var moreSolid = Prefs.Label("More solid"); moreSolid.HorizontalAlignment = HorizontalAlignment.Right;
-        opacityEnds.Children.Add(moreSolid);
-        var opacityControls = new StackPanel { Spacing = 4 };
-        opacityControls.Children.Add(cardOpacity); opacityControls.Children.Add(opacityEnds);
-        gameModeAppearance.Add(Prefs.Row("Game Mode card translucency", "Frosted cards with blur.", opacityControls, "\uE790"));
-        cardOpacity.ValueChanged += (_, e) =>
-        {
-            Settings.GameModeCardOpacity = (int)Math.Round(e.NewValue);
-            Save();
-        };
+        gameModeAppearance.Add(Prefs.Row("Game Mode appearance", "Light, Clear or Dark, Adaptive color, Surface Tint and display scaling.",
+            Prefs.ActionButton("Open Appearance", (_, _) => shell.OpenGameModeAppearance()), "\uE790"));
         (row, var layout) = Prefs.ComboRow("Library layout", "Choose how your game collection is displayed.",
             ["Poster", "Wide Capsule", "List"], Math.Max(0, Array.IndexOf(Views, Settings.LibraryView)), "");
         layout.SelectionChanged += (_, _) => { Settings.LibraryView = Views[layout.SelectedIndex]; Save(); };
@@ -207,7 +172,7 @@ public sealed partial class SettingsPage : Page
         async void RefreshSteamRow()
         {
             var added = await shell.SteamShortcutAddedAsync();
-            steamButton.Content = Prefs.Content(added ? "Manage" : "Add to Steam", null);
+            steamButton.Content = Prefs.Content(added ? "Update Steam Shortcut" : "Add to Steam", null);
             if (added) steamButton.ClearValue(FrameworkElement.StyleProperty); else steamButton.Style = accentStyle;
             if (FindTitle(steamRow) is { } title) title.Text = added ? "rtxForge is in Steam" : "Add rtxForge to Steam";
         }
@@ -226,18 +191,6 @@ public sealed partial class SettingsPage : Page
             if (Settings.BigPictureUi) shell.ShowToast("Big Picture UI opens when you use a controller.");
         };
         interfaceGroup.Add(row);
-        foreach (var (title, keys, captions, get, set, glyph) in new (string, string[], string[], Func<string>, Action<string>, string)[]
-        {
-            ("Game Mode scale", ["auto", "100", "125", "130", "150", "175", "200"], ["Automatic (130% at 4K)", "100%", "125%", "130%", "150%", "175%", "200%"],
-                () => Settings.UiScaleKey, v => Settings.UiScaleKey = v, ""),
-            ("Navigation Position", ["top", "bottom"], ["Top", "Bottom"],
-                () => Settings.NavigationPosition, v => Settings.NavigationPosition = v, ""),
-        })
-        {
-            (row, var choice) = Prefs.ComboRow(title, null, captions, Math.Max(0, Array.IndexOf(keys, get())), glyph);
-            choice.SelectionChanged += (_, _) => { set(keys[choice.SelectedIndex]); Save(); };
-            gameModeLayout.Add(row);
-        }
         (row, var glyphs) = Prefs.SwitchRow("Button glyphs", "Show icons beside action labels.", Settings.ButtonGlyphs, "");
         glyphs.Toggled += (_, _) => { Settings.ButtonGlyphs = glyphs.IsOn; Save(); };
         gameModeLayout.Add(row);

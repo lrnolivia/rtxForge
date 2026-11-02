@@ -1,7 +1,7 @@
 """Add this installed rtxForge instance to Steam and apply its bundled artwork."""
 from pathlib import Path
 from types import SimpleNamespace
-import hashlib, json, os, struct, uuid, zlib
+import hashlib, json, os, re, struct, uuid, zlib
 import desktop_install, engine_bridge, steam_artwork, transactions as t
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
@@ -40,7 +40,13 @@ def append_shortcut(raw,entry,*,engine,name='rtxForge',icon=''):
     if matches:
         appid=engine._shortcut_int(matches[0],'appid')
         if not isinstance(appid,int) or not (appid&0xffffffff):raise ValueError('The existing rtxForge shortcut has no valid app ID.')
-        return raw,appid&0xffffffff,False
+        launch=engine._shortcut_field(matches[0],'LaunchOptions')
+        if launch is None or launch.typ!=1:
+            raise ValueError('This app shortcut has no valid LaunchOptions field. Remove it and add it again.')
+        options=re.sub(r'(?<!\S)--desktop-mode(?!\S)','--game-mode',str(launch.value))
+        if not re.search(r'(?<!\S)--game-mode(?!\S)',options):options=(options+' --game-mode').strip()
+        after=raw[:launch.value_start]+options.encode('utf-8',errors='surrogateescape')+raw[launch.value_end:]
+        return after,appid&0xffffffff,False
     quoted='"'+str(entry)+'"'
     appid=(zlib.crc32((quoted+name).encode())|0x80000000)&0xffffffff
     if any((engine._shortcut_int(obj,'appid') or 0)&0xffffffff==appid for obj in shortcuts):
@@ -48,7 +54,7 @@ def append_shortcut(raw,entry,*,engine,name='rtxForge',icon=''):
     keys={obj.key for obj in shortcuts};index=0
     while str(index) in keys:index+=1
     item=b'\0'+str(index).encode()+b'\0'+_integer('appid',appid)
-    for key,value in [('AppName',name),('exe',quoted),('StartDir','"'+str(entry.parent)+'"'),('icon',icon),('ShortcutPath',''),('LaunchOptions',''),('DevkitGameID',''),('FlatpakAppID','')]:item+=_string(key,value)
+    for key,value in [('AppName',name),('exe',quoted),('StartDir','"'+str(entry.parent)+'"'),('icon',icon),('ShortcutPath',''),('LaunchOptions','--game-mode'),('DevkitGameID',''),('FlatpakAppID','')]:item+=_string(key,value)
     for key,value in [('IsHidden',0),('AllowDesktopConfig',1),('AllowOverlay',1),('OpenVR',0),('Devkit',0),('LastPlayTime',0)]:item+=_integer(key,value)
     item+=b'\0tags\0'+_string('0','Utilities')+b'\x08\x08'
     result=raw[:-2]+item+raw[-2:]
@@ -144,7 +150,7 @@ def _prepare(config,settings,*,engine=None,entry=None,art_root=None,load_image=b
     icon=ROOT/'gui/icons/hicolor/scalable/apps/io.github.lrnolivia.RTXForge.svg'
     if not icon.is_file():raise ValueError('The bundled rtxForge icon is missing. Reinstall the app before adding it to Steam.')
     after,appid,created=append_shortcut(before,entry,engine=e,icon=str(icon))
-    if created and e.steam_running():
+    if after!=before and e.steam_running():
         raise ValueError('Close Steam completely, then use Add rtxForge to Steam from Desktop Mode. Existing game artwork can still sync while Steam is open.')
     base=Path(art_root or ROOT/'packaging/steam-artwork/exports')
     names={'poster':'rtxforge-steam-portrait.png','capsule':'rtxforge-steam-wide.png','hero':'rtxforge-steam-hero.png','logo':'rtxforge-logo-white.png'}
@@ -187,7 +193,7 @@ def install(config,settings,*,reviewed=None,**kwargs):
     if before is not None:t.atomic_file(backup/'shortcuts.vdf',before,0o600)
     record={'path':str(shortcut),'existed':before is not None,'before_sha256':hashlib.sha256(before).hexdigest() if before is not None else None,'after_sha256':hashlib.sha256(after).hexdigest(),'appid':appid,'created':created}
     t.atomic_file(backup/'record.json',(json.dumps(record,indent=2)+'\n').encode(),0o600)
-    if created:
+    if after!=before:
         if (shortcut.read_bytes() if shortcut.exists() else None)!=before:raise ValueError('Steam shortcuts changed during preparation; try again after closing Steam.')
         if e.steam_running():raise ValueError('Steam started during preparation; no shortcut was written.')
         t.atomic_file(shortcut,after,0o600)
@@ -209,4 +215,4 @@ def install(config,settings,*,reviewed=None,**kwargs):
                 if path.read_bytes()!=plan['position']:raise ValueError('readback failed')
                 results.append({'changed':True,'role':'logo position','grid':str(path.parent)})
         except Exception as error:errors.append('logo position: '+str(error))
-    return {'created':created,'appid':appid,'artwork':results,'errors':errors,'preserved':preserved,'backup':str(backup),'restart_required':created or bool(results)}
+    return {'created':created,'appid':appid,'artwork':results,'errors':errors,'preserved':preserved,'backup':str(backup),'restart_required':after!=before or bool(results)}

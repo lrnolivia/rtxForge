@@ -24,6 +24,29 @@ class SelfInstallTests(unittest.TestCase):
   same,sameid,created=s.append_shortcut(result,self.entry,engine=self.engine)
   self.assertFalse(created);self.assertEqual(same,result);self.assertEqual(appid,sameid)
   self.assertEqual(len(self.engine.parse_shortcuts_spans(result)),2)
+ def test_legacy_shortcut_updates_mode_without_changing_appid_or_other_entries(self):
+  other,_,_=s.append_shortcut(None,self.root/'other',engine=self.engine,name='Other')
+  raw,appid,_=s.append_shortcut(other,self.entry,engine=self.engine)
+  legacy=raw.replace(b'LaunchOptions\0--game-mode\0',b'LaunchOptions\0\0')
+  after,sameid,created=s.append_shortcut(legacy,self.entry,engine=self.engine)
+  self.assertFalse(created);self.assertEqual(sameid,appid)
+  self.assertEqual(after[:len(other)-2],other[:-2])
+  match=self.engine.parse_shortcuts_spans(after)[-1]
+  self.assertEqual(self.engine._shortcut_string(match,'LaunchOptions'),'--game-mode')
+  self.assertEqual(s.append_shortcut(after,self.entry,engine=self.engine)[0],after)
+ def test_legacy_shortcut_requires_closed_steam_and_retains_backup(self):
+  raw,_,_=s.append_shortcut(None,self.entry,engine=self.engine)
+  legacy=raw.replace(b'LaunchOptions\0--game-mode\0',b'LaunchOptions\0\0')
+  path=self.folder/'shortcuts.vdf';path.write_bytes(legacy)
+  self.engine.steam_running=lambda:True
+  with self.assertRaisesRegex(ValueError,'Close Steam'):
+   s.review(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  self.assertEqual(path.read_bytes(),legacy)
+  self.engine.steam_running=lambda:False
+  review=s.review(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  result=s.install(self.config,self.settings,reviewed=review,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
+  self.assertFalse(result['created']);self.assertNotEqual(path.read_bytes(),legacy)
+  self.assertEqual((Path(result['backup'])/'shortcuts.vdf').read_bytes(),legacy)
  def test_closed_steam_adds_all_four_art_roles_without_key(self):
   result=s.install(self.config,self.settings,engine=self.engine,entry=self.entry,load_image=lambda p:PNG)
   # Four artwork slots plus the centered logo position.

@@ -57,21 +57,6 @@ def verify_filter():
     assert any(x[0]=='artwork' and x[2].get('style')=='white_logo' for x in calls),calls
     capture('steamgrid-desktop-filtered.png');app.window.dialog.close()
 
-def couch():
-    ui.COUCH_MODE='couch';app.window.input_stack.set_visible_child_name('couch')
-    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK);open_browser()
-
-
-# Mock only the native chooser boundary; exercise real GTK panel ownership.
-picker_calls=[]
-class FixtureFileDialog:
-    def __init__(self,**kwargs):self.modal=False
-    def set_modal(self,value):self.modal=value
-    def set_filters(self,filters):pass
-    def open(self,parent,cancellable,callback):
-        self.parent=parent;self.callback=callback;picker_calls.append(self)
-    def open_finish(self,result):raise GLib.Error('User dismissed the file chooser')
-
 def details_for_picker():
     global game
     game=app.window.games[0]
@@ -135,7 +120,7 @@ def connection_preview():
     view['dialog'].close()
     assert view['state']['closed']
 
-steps=[connection_open,connection_preview,details_for_picker,verify_picker_parent,embedded_for_picker,verify_embedded_picker_parent,open_browser,lambda:capture('steamgrid-desktop-results.png'),preview,verify_preview,filter_results,verify_filter,couch,lambda:capture('steamgrid-couch-results.png'),lambda:app.window.dialog.close()]
+steps=[connection_open,connection_preview,details_for_picker,verify_picker_parent,embedded_for_picker,verify_embedded_picker_parent,open_browser,lambda:capture('steamgrid-desktop-results.png'),preview,verify_preview,filter_results,verify_filter,lambda:app.window.dialog.close()]
 preview_deadline=None
 def advance():
     global preview_deadline

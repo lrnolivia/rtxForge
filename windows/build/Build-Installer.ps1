@@ -20,7 +20,8 @@ param(
     [string] $Output,
     [string] $Iscc,
     # Skip `dotnet publish` and package an existing publish folder.
-    [string] $PublishDir
+    [string] $PublishDir,
+    [string] $GameModePackagePath
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -37,9 +38,15 @@ $InnoSha256 = 'aad15c662593c6f5656457a5c001f4591babd72820cacf63f9706d4af5d93b75'
 if (-not $PublishDir) {
     $PublishDir = Join-Path $Output "rtxForge-windows-$Arch"
     dotnet publish (Join-Path $Root 'windows\RtxForge.Windows\RtxForge.Windows.csproj') `
-        -c Release -r $RuntimeIdentifier -p:Platform=$Platform -p:SelfContained=true -o $PublishDir
+        -c Release -r $RuntimeIdentifier -p:Platform=$Platform -p:SelfContained=true -p:GameModePackagePath="$GameModePackagePath" -o $PublishDir
     if ($LASTEXITCODE) { throw "dotnet publish failed ($LASTEXITCODE)" }
 }
+$gameMode = Join-Path $PublishDir 'game-mode'
+if (-not (Test-Path -LiteralPath (Join-Path $gameMode 'build.json'))) { throw 'The installer requires the complete bundled Game Mode application.' }
+$gameModeBuild = Get-Content -LiteralPath (Join-Path $gameMode 'build.json') -Raw | ConvertFrom-Json
+if ($gameModeBuild.desktopIntegration -ne 1 -or $gameModeBuild.dirty) { throw 'The bundled Game Mode does not support Desktop handoff.' }
+& (Join-Path $gameMode 'python/python.exe') (Join-Path $gameMode 'package_bundle.py') --verify $gameMode
+if ($LASTEXITCODE) { throw 'Game Mode package verification failed.' }
 foreach ($required in 'rtxForge.exe', 'python\python.exe', 'engine\windows\engine-host\rtxforge_win_host.py') {
     if (-not (Test-Path (Join-Path $PublishDir $required))) { throw "Publish folder is missing $required" }
 }

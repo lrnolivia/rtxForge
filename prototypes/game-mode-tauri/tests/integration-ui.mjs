@@ -1,0 +1,41 @@
+import {libraryFixture} from './ui-fixture.mjs';
+import {chromium,expect} from '@playwright/test';
+const browser=await chromium.launch(process.env.RTXFORGE_BROWSER?{channel:process.env.RTXFORGE_BROWSER,headless:true}:{headless:true});
+const page=await browser.newPage({viewport:{width:1920,height:1080},deviceScaleFactor:2,reducedMotion:'reduce'});
+const errors=[];page.on('pageerror',error=>errors.push(error.message));
+const snapshot=libraryFixture();
+await page.route('**/api/snapshot',route=>route.fulfill({json:snapshot}));
+await page.route('**/api/engine/status',route=>route.fulfill({json:{enabled:true,reason:''}}));
+await page.route('**/api/engine',route=>{const request=route.request().postDataJSON();const result=request.method==='steam_status'?{added:true,token:'fixture'}:request.method==='settings_get'?{}:request.method==='scan'?[]:{};return route.fulfill({json:{result}});});
+try{
+  await page.goto(process.env.RTXFORGE_UI_URL||'http://127.0.0.1:1434');
+  try{await page.waitForSelector('.game-card',{timeout:10000});}catch(error){console.log({errors,body:(await page.locator('body').innerText()).slice(0,1600)});throw error;}await page.evaluate(()=>document.fonts.ready);
+  const geometry=()=>page.locator('.games').evaluate(grid=>({columns:getComputedStyle(grid).gridTemplateColumns,rows:grid.dataset.visibleRows,width:grid.querySelector('.game-card').getBoundingClientRect().width,height:document.querySelector('#game-results').clientHeight}));
+  for(const layout of ['Poster grid','Wide capsules']){
+    await page.getByRole('button',{name:layout,exact:true}).click();
+    for(const value of [100,105]){
+      await page.getByRole('slider',{name:'Library item size'}).fill(String(value));
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      const before=await geometry();
+      await page.locator('[data-select-game]').first().click();
+      await expect(page.getByRole('button',{name:'Clear selection',exact:true})).toBeVisible();
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      expect(await geometry(),`${layout} ${value}% stays stable in selection mode`).toEqual(before);
+      await page.getByRole('button',{name:'Clear selection',exact:true}).click();
+    }
+  }
+  await page.locator('.game-card').first().click();
+  const sections=await page.locator('.detail-body .glass-section>h2').allTextContents();
+  expect(sections.at(-1)).toBe('Testing');expect(sections.indexOf('Game folder')).toBeLessThan(sections.indexOf('Testing'));
+  await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Settings',exact:true}).click();
+  await page.getByRole('button',{name:'Appearance',exact:true}).click();
+  expect(await page.locator('[data-theme-choice]').evaluateAll(nodes=>nodes.map(n=>n.dataset.themeChoice))).toEqual(['light','clear','dark']);
+  await expect(page.locator('[data-theme-choice=clear]')).toHaveAttribute('aria-pressed','true');
+  await page.getByRole('slider',{name:'Surface Tint',exact:true}).fill('35');
+  await expect(page.locator('.surface-tint-control output')).toHaveText('35%');
+  await page.getByRole('combobox',{name:'Accent source',exact:true}).selectOption('adaptive');
+  await expect(page.locator('html')).toHaveAttribute('data-accent-mode','adaptive');
+  await page.reload();await page.waitForSelector('.game-card');
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('rtxforge-game-mode-prototype')).tintStrength)).toBe(35);
+  expect(errors).toEqual([]);console.log('4K/200% selection, Overview order, theme order and tint persistence passed.');
+}finally{await browser.close();}

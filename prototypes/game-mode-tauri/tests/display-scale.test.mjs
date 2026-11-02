@@ -18,3 +18,12 @@ test('Automatic follows the OS and manual scale survives a monitor change',()=>{
   assert.equal(webviewZoom(200,1),2);
   assert.equal(webviewZoom(150,0),1.5);
 });
+
+test('Automatic defaults to 200% at 4K without overriding a saved manual scale',()=>{
+  for(const dpi of [1,1.25,1.5,2]){
+    assert.equal(webviewZoom('auto',dpi,{width:3840,height:2160})*dpi,2);
+    assert.equal(webviewZoom('auto',dpi,{width:2160,height:3840})*dpi,2);
+    assert.equal(webviewZoom(150,dpi,{width:3840,height:2160})*dpi,1.5);
+    assert.equal(webviewZoom('auto',dpi,{width:2560,height:1440}),1);
+  }
+});

@@ -43,7 +43,7 @@ public sealed class GameOverlayPreferencesView : StackPanel
             }
             catch (Exception error) { status.Text = error.Message; }
         }, shell.Service as EngineForgeService, game);
-        appearance.SetRendererEnabled(ForgeSettings.Load().OverlayRenderer != "optiscaler");
+        appearance.SetRendererEnabled(GlassAppearance.OverlayOptions(ForgeSettings.Load(),game)["overlay_renderer"]?.ToString() != "optiscaler");
         appearanceCard.Child=appearance;
     }
 
@@ -53,6 +53,7 @@ public sealed class GameOverlayPreferencesView : StackPanel
         try
         {
             var fresh = ForgeSettings.EditGameOverlay(game, edit);
+            OverlayHelper.CacheRenderer(game,fresh);
             shell.Settings.CopyOverlayFrom(fresh);
             shell.ConfigureCompanionShortcut();
             status.Text = "Saved for this game. Review Update Overlays to apply its menu choices; startup changes take effect next launch.";
@@ -66,7 +67,7 @@ public sealed class GameOverlayPreferencesView : StackPanel
         loading = true;
         fields.Children.Clear();
         var settings = ForgeSettings.Load();
-        var values = settings.GameOverlayOptions(game);
+        var values = GlassAppearance.OverlayOptions(settings,game);
         var inherited = !settings.GameOverlaySettings.ContainsKey(game.Id);
         var (defaultsRow, defaults) = Prefs.SwitchRow("Use app overlay settings", "Turn off to choose settings for this game.", inherited, "\uE713");
         inheritedToggle=defaults;fields.Children.Add(defaultsRow);
@@ -80,6 +81,9 @@ public sealed class GameOverlayPreferencesView : StackPanel
             IsEnabled = !inherited,
             HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         fields.Children.Add(menuOptions);
+        var (rendererRow,renderer)=Prefs.ComboRow("Overlay","Choose rtxForge to re-enable this game's panel.",["rtxForge","Native"],values["overlay_renderer"]?.ToString()=="optiscaler"?1:0,"\uE7F4");
+        renderer.SelectionChanged+=(_,_)=>{if(loading||renderer.SelectedIndex<0)return;if(Save(v=>v["overlay_renderer"]=renderer.SelectedIndex==1?"optiscaler":"game"))RebuildAppearance();};
+        fields.Children.Insert(1,rendererRow);
         void Toggle(string title, string key)
         {
             var glyph = key == "overlay_live_stats" ? "\uE9D9" : key.EndsWith("intro") || key == "overlay_welcome" ? "\uE8F2" : "\uE700";

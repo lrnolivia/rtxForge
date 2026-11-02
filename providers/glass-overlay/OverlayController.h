@@ -73,18 +73,26 @@ struct Controller : Rml::EventListener
     std::string activeNavigation="nav-overview",beforeSettingsNavigation="nav-overview";
     std::vector<std::string> navigationHistory;
     bool navigatingBack=false,originalLabels=false;
-    int setupStep=-1;bool setupComplete=false;fs::path setupPreferences;
+    int setupStep=-1;bool setupComplete=false,setupLayoutChosen=false,nativeOverlayPending=false;double nativeOverlayDeadline=0;fs::path setupPreferences;
+    struct NativeShortcut{std::string name,key;bool enabled=false;};std::vector<NativeShortcut> nativeShortcuts;
+    void SetupShortcuts() {
+        std::string active,available;
+        for(const auto& item:nativeShortcuts){const auto row="<div class=\"setup-shortcut\"><span>"+Rml::StringUtilities::EncodeRml(item.name)+"</span><span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(item.key)+"</span></div>";available+=row;if(item.enabled)active+=row;}
+        if(!active.empty())active="<p class=\"hint\">Native controls are also enabled.</p><div class=\"setup-shortcut\"><span>rtxForge</span><span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span></div>"+active;
+        Element("setup-existing-menus")->SetInnerRML(active);Element("setup-native-shortcuts")->SetInnerRML(available.empty()?"<p class=\"hint\">Native shortcuts will appear when the game connects.</p>":available);
+    }
     void BeginSetup() {
         EndNrPreview();QuickLayouts(false);Visible("inspector",false);Visible("welcome",false);moreOpen=godModeOpen=false;Materials();
+        Element("setup-native-global")->RemoveAttribute("checked");Element("setup-native-message")->SetInnerRML("Re-enable in Game Details, under Overlay.");
         auto markup=Element("layout-switch")->GetInnerRML();size_t at=0;while((at=markup.find("id=\"layout-",at))!=std::string::npos){markup.insert(at+4,"setup-");at+=10;}
-        Element("setup-layouts")->SetInnerRML(markup);setupStep=0;UpdateSetup();Raise("type-panel");Enter("type-panel");
+        Element("setup-layouts")->SetInnerRML(markup);setupLayoutChosen=false;setupStep=0;UpdateSetup();Raise("type-panel");Enter("type-panel");
     }
     void UpdateSetup() {
-        auto* panel=Element("type-panel");panel->SetClass("setup-flow",true);panel->SetClass("setup-theme",setupStep==0);panel->SetClass("setup-layout",setupStep==1);document->SetClass("setup-open",true);Visible("type-panel",true);Visible("main-panel",setupStep>0);
-        Element("settings-title")->QuerySelector("span")->SetInnerRML(setupStep==0?"MAKE IT YOURS":"FIND YOUR FIT");
-        Element("setup-intro")->SetInnerRML(setupStep==0?"Choose your glass. You can change it any time.":"Pick a layout. See how it fits your game.");
-        Element("setup-progress")->SetInnerRML(setupStep==0?"1 of 2":"2 of 2");Element("setup-next-label")->SetInnerRML(setupStep==0?"Continue":"Let’s play");
-        Select("setup-layouts","setup-layout-"+layout);PlaceSetup();Element("setup-next")->Focus();
+        auto* panel=Element("type-panel");panel->SetClass("setup-flow",true);panel->SetClass("setup-theme",setupStep==1);panel->SetClass("setup-layout",setupStep==0);panel->SetClass("setup-native-confirm",setupStep==2);document->SetClass("setup-open",true);Visible("type-panel",true);Visible("main-panel",setupLayoutChosen);
+        Element("settings-title")->QuerySelector("span")->SetInnerRML(setupStep==0?"FIND YOUR FIT":setupStep==1?"APPEARANCE":"USE NATIVE OVERLAYS?");
+        Element("setup-intro")->SetInnerRML(setupStep==0?"Choose how your controls fit into the game.":setupStep==1?"A different look, if you like.":"Turn off rtxForge for this game and use ReShade / OptiScaler instead.");
+        Element("setup-next-label")->SetInnerRML(setupStep==0?"Let’s play":"Done");
+        Element("setup-skip-label")->SetInnerRML(setupStep==2?"Cancel":"Skip");SetupShortcuts();Select("setup-layouts","setup-layout-"+layout);PlaceSetup();Element(setupStep==2?"setup-native-confirm":"setup-next")->Focus();
         Visible("appearance-more",false);Visible("appearance-god-mode",false);
     }
     void PlaceSetup() {
@@ -93,10 +101,24 @@ struct Controller : Rml::EventListener
         panel->SetProperty("left",std::to_string(target.x)+"px");panel->SetProperty("top",std::to_string(target.y)+"px");if(auto it=entrances.find("type-panel");it!=entrances.end())it->second.target=target;
     }
     void FinishSetup() {
-        setupStep=-1;setupComplete=true;auto* panel=Element("type-panel");for(const auto* name:{"setup-flow","setup-theme","setup-layout"})panel->SetClass(name,false);document->SetClass("setup-open",false);Visible("type-panel",false);Visible("main-panel",true);Element("settings-title")->QuerySelector("span")->SetInnerRML("APPEARANCE");prefsDirty=true;
+        setupStep=-1;setupComplete=true;auto* panel=Element("type-panel");for(const auto* name:{"setup-flow","setup-theme","setup-layout","setup-native-confirm"})panel->SetClass(name,false);document->SetClass("setup-open",false);Visible("type-panel",false);Visible("main-panel",true);Element("settings-title")->QuerySelector("span")->SetInnerRML("APPEARANCE");prefsDirty=true;
         Materials();if(!setupPreferences.empty()){fs::create_directories(setupPreferences.parent_path());WritePrivateProfileStringW(L"Setup",L"Version",L"1",setupPreferences.c_str());}
     }
     void MaybeSetup(){if(setupComplete)return;if(setupStep<0)BeginSetup();else UpdateSetup();}
+    void UseNativeOverlays() {
+        if(nativeOverlayPending)return;
+        const auto* checkbox=dynamic_cast<Rml::ElementFormControl*>(Element("setup-native-global"));
+        const bool global=checkbox&&checkbox->HasAttribute("checked");
+        if(!requestJson){Element("setup-native-message")->SetInnerRML("Native-overlay choices are saved by Desktop or Game Mode. This is a preview.");return;}
+        const std::string request=std::string("{\"op\":\"use-native-overlays\",\"global_default\":")+(global?"true}":"false}");
+        if(requestJson(request)){nativeOverlayPending=true;nativeOverlayDeadline=Rml::GetSystemInterface()->GetElapsedTime()+6;Disabled("setup-native-confirm",true);Element("setup-native-message")->SetInnerRML("Saving…");}
+        else Element("setup-native-message")->SetInnerRML("Couldn’t save. Try again.");
+    }
+    void NativeOverlaysResult(bool error) {
+        nativeOverlayPending=false;Disabled("setup-native-confirm",false);
+        if(error){Element("setup-native-message")->SetInnerRML("Couldn’t save. Try again.");return;}
+        primaryMenu="optiscaler";toastUntil=0;FinishSetup();for(const auto* id:{"main-panel","type-panel","inspector","welcome"})Visible(id,false);
+    }
     double layoutPickerDismiss=0;
     Rml::Element* statusHome=nullptr;Rml::Element* compactLiveHome=nullptr;
     void UpdateBack() {auto* back=Element("window-back");if(settingsOpen||activeNavigation!="nav-overview"||!navigationHistory.empty())back->RemoveProperty("display");else back->SetProperty("display","none");}
@@ -126,6 +148,21 @@ struct Controller : Rml::EventListener
         picker->SetProperty("--picker-ink",light?"#403b35":"#f5f1ea");
         auto surface=appearance==4?SurfaceTint():MaterialColor::Color{light?.93f:.16f,light?.91f:.15f,light?.88f:.14f};
         picker->SetProperty("--picker-fill",Hex(surface[0],surface[1],surface[2],.96f));
+    }
+    std::string selectMenuOwner="main-panel",selectMenuMarkup;
+    bool SelectMenu() {
+        // Keep RmlUi's native select, focus, scrolling and keyboard behavior.
+        // Paint only its visual surface as a transient glass layer.
+        auto* mirror=Element("select-menu");Rml::Element* popup=nullptr;auto* select=document->GetContext()->GetFocusElement();while(select&&select->GetTagName()!="select")select=select->GetParentNode();
+        if(select&&select->IsVisible(true))for(int i=0;i<select->GetNumChildren(true);++i){auto* child=select->GetChild(i);if(child->GetTagName()=="selectbox"&&child->IsVisible(true)){popup=child;break;}}
+        if(!popup){const bool was=mirror->IsVisible();if(was)mirror->SetProperty("display","none");return was;}
+        selectMenuOwner="main-panel";for(auto* e=popup;e;e=e->GetParentNode())if(e->GetId()=="main-panel"||e->GetId()=="inspector"||e->GetId()=="type-panel"){selectMenuOwner=e->GetId();break;}
+        const auto at=popup->GetAbsoluteOffset(Rml::BoxArea::Border),size=popup->GetBox().GetSize(Rml::BoxArea::Border);
+        mirror->SetProperty("display","block");mirror->SetProperty("left",std::to_string(at.x)+"px");mirror->SetProperty("top",std::to_string(at.y)+"px");mirror->SetProperty("width",std::to_string(size.x)+"px");mirror->SetProperty("height",std::to_string(size.y)+"px");
+        for(const auto* name:{"font-family","font-size","font-weight","--accent-soft"})if(const auto* value=popup->GetProperty(name))mirror->SetProperty(name,value->ToString());
+        mirror->SetProperty("color",BaseAppearance()==1?"#282624":"#faf9f7");std::string markup;
+        for(int i=0;i<popup->GetNumChildren();++i){auto* option=popup->GetChild(i);if(!option->IsVisible())continue;const auto point=option->GetAbsoluteOffset(Rml::BoxArea::Border),bounds=option->GetBox().GetSize(Rml::BoxArea::Border);markup+="<div class=\"menu-option"+std::string(option->IsPseudoClassSet("checked")||option->IsPseudoClassSet("hover")?" active":"")+"\" style=\"left:"+std::to_string(point.x-at.x)+"px;top:"+std::to_string(point.y-at.y)+"px;width:"+std::to_string(bounds.x)+"px;height:"+std::to_string(bounds.y)+"px\">"+option->GetInnerRML()+"</div>";}
+        if(markup!=selectMenuMarkup){selectMenuMarkup=markup;mirror->SetInnerRML(markup);}return true;
     }
     void Labels() {
         Rml::ElementList labels;document->QuerySelectorAll(labels,"[data-control]");
@@ -171,10 +208,10 @@ struct Controller : Rml::EventListener
 
 
     int pass=2;
-    int appearance=3;
+    int appearance=4;
     std::array<float,3> accent{.19f,.46f,.80f};
     std::string accentMode="adaptive",customAccent;
-    MaterialColor::Color adaptiveAccent{.64f,.64f,.64f},adaptiveTarget{.64f,.64f,.64f};
+    MaterialColor::Color adaptiveAccent{.64f,.64f,.64f},adaptiveTarget{.64f,.64f,.64f};bool adaptiveSeeded=false;
     double lastAccentUpdate=-1,nextAccentSample=0;
     std::array<Backdrop::SceneColor,4> filtered;
     std::array<bool,4> panelDark{};
@@ -190,8 +227,8 @@ struct Controller : Rml::EventListener
     std::vector<std::string> stacking{"main-panel","inspector","welcome","type-panel"};
     std::string copyFont="roboto",headingFont="bakbak";
     int copySize=22,copyWeight=500,headingSize=36,headingWeight=400,overlayScale=100;
-    float lightOpacity=100,darkOpacity=80,clearOpacity=20,accentCharacter=35,accentOpacity=80,accentSaturation=100,blurRadius=48,grainAmount=4.f,blendStrength=50;
-    std::string surfaceBlend="soft-light";
+    float lightOpacity=100,darkOpacity=80,clearOpacity=20,accentCharacter=10,accentOpacity=26,accentSaturation=100,blurRadius=48,grainAmount=4.f,blendStrength=0;
+    std::string surfaceBlend="normal";
     std::string headingAccentBlend="screen",controlAccentBlend="screen";
     float headingAccentStrength=100,controlAccentStrength=65;
     bool inspectorAnchored=false,prefsDirty=false,customTheme=false,moreOpen=false,godModeOpen=false,textDepth=true,invertDark=false,toastPill=false,motionEnabled=true;
@@ -215,8 +252,8 @@ struct Controller : Rml::EventListener
         if((!nr&&(activeNavigation=="nav-neural"||activeNavigation=="nav-look"||activeNavigation=="nav-passes"))||(!fg&&activeNavigation=="nav-frame"))Page("nav-overview");
         Session(session);Reflow();
     }
-    void Welcome() {if(!showWelcome)return;Element("toast-message")->SetInnerRML("Press <span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span> for controls");Element("welcome")->SetProperty("width","500dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=0;}
-    void ToggleOverlay() {if(setupStep>=0){if(Element("type-panel")->IsVisible()){Visible("type-panel",false);Visible("main-panel",false);}else UpdateSetup();return;}EndNrPreview();if(BarSettings())Settings(false);const bool show=!Element("main-panel")->IsVisible();Visible("main-panel",show);if(show){Raise("main-panel");Enter("main-panel");}else{Visible("inspector",false);Visible("type-panel",false);Welcome();}}
+    void Welcome() {if(!showWelcome)return;Visible("toast-icon",false);Element("toast-message")->SetInnerRML("Press <span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span> for controls");Element("welcome")->SetProperty("width","500dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=0;}
+    void ToggleOverlay() {if(primaryMenu=="optiscaler")return;if(setupStep>=0){if(Element("type-panel")->IsVisible()){Visible("type-panel",false);Visible("main-panel",false);}else UpdateSetup();return;}EndNrPreview();if(BarSettings())Settings(false);const bool show=!Element("main-panel")->IsVisible();Visible("main-panel",show);if(show){Raise("main-panel");Enter("main-panel");}else{Visible("inspector",false);Visible("type-panel",false);Welcome();}}
     void Settings(bool show) {
         EndNrPreview();const bool leaving=settingsOpen&&!show;if(show&&!settingsOpen)beforeSettingsNavigation=activeNavigation;
         auto* screen=Element("settings-screen");if(!settingsHome)settingsHome=screen->GetParentNode();
@@ -247,7 +284,7 @@ struct Controller : Rml::EventListener
     }
     void Metadata() {const auto view=document->GetContext()->GetDimensions();const auto size=std::to_string(view.x)+" × "+std::to_string(view.y);for(const auto* id:{"compact-size","overview-size","popup-size"})Element(id)->SetInnerRML(size);}
     double toastUntil=0;
-    void Notify(const std::string& text) {if(!showNotifications)return;Element("toast-message")->SetInnerRML(Rml::StringUtilities::EncodeRml(text));Element("welcome")->SetProperty("width",std::to_string(std::clamp(234+int(text.size())*8,420,760))+"dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=Rml::GetSystemInterface()->GetElapsedTime()+3.;}
+    void Notify(const std::string& text,const std::string& icon="info") {if(!showNotifications)return;Element("toast-icon")->SetAttribute("src","icons/"+icon+"-light.png");Visible("toast-icon",true);Element("toast-message")->SetInnerRML(Rml::StringUtilities::EncodeRml(text));Element("welcome")->SetProperty("width",std::to_string(std::clamp(234+int(text.size())*8,420,760))+"dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=Rml::GetSystemInterface()->GetElapsedTime()+3.;}
     bool reducedMotion=false;
     float inspectorAnchorX=0;std::string inspectorSource;bool dragStarted=false;float dragThreshold=0;
     struct Entrance {double start;Rml::Vector2f target;float previous;};
@@ -279,6 +316,7 @@ struct Controller : Rml::EventListener
             fittedView=view;fittedDensity=dp;fittedLayout=layout;fittedSettings=settingsOpen;fittedCopy=copySize;fittedMainSize={};
             const bool centered=layout=="centered",bar=layout=="bar";
             const float maxWidth=std::max(280*dp,view.x-48*dp),minimumWidth=std::min((centered?900.f:480.f)*dp,maxWidth),limitWidth=bar?maxWidth:std::min((centered?10000.f:760.f)*dp,maxWidth);
+            if(!resizing){if(const auto savedWidth=ReadPositionValue(layout+".width");savedWidth>=280&&savedWidth<=10000)layoutSizes[layout].x=savedWidth;if(const auto savedHeight=ReadPositionValue(layout+".height");savedHeight>=200&&savedHeight<=10000)layoutSizes[layout].y=savedHeight;}
             const auto customSize=layoutSizes[layout];const float defaultWidth=centered?std::max(1160.f*dp,std::min(1760.f*dp,view.x*.60f*overlayScale/100.f)):660.f*dp;
             const float width=bar?maxWidth:std::clamp(customSize.x>0?customSize.x*dp:defaultWidth,minimumWidth,limitWidth);
             const float top=std::max(inset,std::min(76*dp,view.y*.08f)),available=view.y-inset-24*dp;
@@ -300,6 +338,10 @@ struct Controller : Rml::EventListener
             document->QuerySelector(".appearance-body")->SetProperty("max-height",std::to_string(std::max(80*dp,available-136*dp))+"px");
             context->Update();PositionWelcome();
         }
+        context->Update();
+        // Put the scroll rail in the panel's outer padding, preserving the
+        // same card edges as the header and footer even when scrolling starts.
+        for(const auto* id:{"overview","settings-screen"}){auto* e=Element(id);const auto* margin=e->GetLocalProperty("margin-right");if(layout=="centered"){if(margin)e->RemoveProperty("margin-right");}else{const float gutter=std::max(0.f,e->GetBox().GetSize(Rml::BoxArea::Padding).x-e->GetClientWidth());if(!margin||std::abs(margin->Get<float>()+gutter)>.1f)e->SetProperty("margin-right",std::to_string(-gutter)+"px");}}
         context->Update();const auto size=main->GetBox().GetSize(Rml::BoxArea::Border);
         if(changed||size!=fittedMainSize){fittedMainSize=size;const bool centered=layout=="centered",bar=layout=="bar";const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border);
             const float edge=std::min(36*dp,view.x*.04f);
@@ -307,25 +349,42 @@ struct Controller : Rml::EventListener
             const float y=mainMoved?std::clamp(at.y,inset,std::max(inset,view.y-size.y-12*dp)):centered?inset+(view.y-inset-24*dp-size.y)*.5f:bar?(barPosition=="top"?inset:view.y-size.y-24*dp):std::max(inset,std::min(76*dp,view.y*.08f));
             main->SetProperty("left",std::to_string(x)+"px");main->SetProperty("top",std::to_string(y)+"px");if(auto it=entrances.find("main-panel");it!=entrances.end())it->second.target={x,y};}
         if(layout=="centered"){const auto footerHeight=Element("tuning-footer")->IsVisible()?Element("tuning-footer")->GetBox().GetSize(Rml::BoxArea::Border).y+44*dp:32*dp;const float height=std::max(48*dp,size.y-contentTop*dp-footerHeight);for(const auto* id:{"overview","settings-screen","inspector"}){auto* e=Element(id);if(std::fabs(e->GetBox().GetSize(Rml::BoxArea::Border).y-height)>.1f)e->SetProperty("height",std::to_string(height)+"px");if(std::string(id)=="inspector")e->SetProperty("max-height",std::to_string(height)+"px");}document->QuerySelector(".sidebar")->SetProperty("height",std::to_string(height)+"px");}
+        if(changed)RestorePosition("main-panel");
         if(inspectorAnchored&&!inspectorSource.empty()&&Element("inspector")->IsVisible()&&!dragStarted)PlaceAnchoredInspector();
         if(BarSettings()){context->Update();auto* modal=Element("inspector");const auto bounds=modal->GetBox().GetSize(Rml::BoxArea::Border);modal->SetProperty("left",std::to_string((view.x-bounds.x)*.5f)+"px");modal->SetProperty("top",std::to_string(inset+(view.y-inset-24*dp-bounds.y)*.5f)+"px");modal->SetProperty("margin-left","0px");modal->SetProperty("margin-top","0px");}
         if(layout=="centered"){const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border);const float left=(copySize*11.f+64)*dp+56*dp;auto* editor=Element("inspector");const auto before=editor->GetAbsoluteOffset(Rml::BoxArea::Border);if(std::fabs(before.x-at.x-left)>.1f||std::fabs(before.y-at.y-contentTop*dp)>.1f){editor->SetProperty("margin-left","0px");editor->SetProperty("margin-top","0px");editor->SetProperty("left",std::to_string(at.x+left)+"px");editor->SetProperty("top",std::to_string(at.y+contentTop*dp)+"px");}}
         for(const auto* id:{"inspector","type-panel"}){auto* e=Element(id);if((std::string(id)=="inspector"&&inspectorAnchored)||!e->IsVisible()||(layout=="centered"&&std::string(id)=="inspector")||dragged==e||entrances.contains(id)||pendingEntrance.contains(id)||coasting.contains(id))continue;const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=e->GetBox().GetSize(Rml::BoxArea::Border);const float x=std::clamp(at.x,12*dp,std::max(12*dp,view.x-bounds.x-12*dp)),y=std::clamp(at.y,inset,std::max(inset,view.y-bounds.y-12*dp));if(std::fabs(x-at.x)>.1f||std::fabs(y-at.y)>.1f){e->SetProperty("margin-left","0px");e->SetProperty("margin-top","0px");e->SetProperty("left",std::to_string(x)+"px");e->SetProperty("top",std::to_string(y)+"px");}}
+        if(auto* body=Element("nr-body");body->IsVisible()){const std::string display=document->IsClassSet("wide-content")?"flex":"block";const auto* local=body->GetLocalProperty("display");if(!local||local->Get<Rml::String>()!=display)body->SetProperty("display",display);}
         for(const auto* id:{"hdr-main-fields","extra-neural","extra-frame","extra-look","pass-fields","settings-cards"})balancedCards.Arrange(Element(id),document->IsClassSet("wide-content"));
         PlaceSetup();PlaceQuickLayouts();PlaceColorEditor();
     }
     void Enter(const std::string& id) {pendingEntrance.insert(id);coasting.erase(id);}
     void Animate(double now) {
+        if(nativeOverlayPending&&now>=nativeOverlayDeadline)NativeOverlaysResult(true);
         CheckPreviewFocus();Reflow();if(layoutPickerDismiss>0&&now>=layoutPickerDismiss)QuickLayouts(false);
         const float dt=lastAnimation<0?1.f/60:std::clamp(float(now-lastAnimation),.001f,.05f);lastAnimation=now;
         if(!pendingEntrance.empty()){document->GetContext()->Update();for(const auto& id:pendingEntrance){auto* e=Element(id.c_str());const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);e->SetProperty("margin-left","0px");e->SetProperty("margin-top","0px");e->SetProperty("left",std::to_string(at.x)+"px");e->SetProperty("top",std::to_string(at.y)+"px");entrances[id]={now,at,0};}pendingEntrance.clear();}
         for(auto it=entrances.begin();it!=entrances.end();) {const float t=reducedMotion?1.f:std::clamp(float((now-it->second.start)/.38),0.f,1.f);const float lift=(it->first=="welcome"?-14.f:24.f)*document->GetContext()->GetDensityIndependentPixelRatio()*(1-Motion::Spring(t));auto* e=Element(it->first.c_str());const float opacity=std::min(1.f,t*2.2f);e->SetProperty("opacity",std::to_string(opacity));e->SetProperty("--window-opacity",std::to_string(opacity));e->SetProperty("top",std::to_string(it->second.target.y+lift)+"px");windowVelocity[it->first]={0,(lift-it->second.previous)/dt};it->second.previous=lift;if(t>=1){windowVelocity[it->first]={};it=entrances.erase(it);}else ++it;}
-        for(auto it=coasting.begin();it!=coasting.end();){auto* e=Element(it->first.c_str());auto& m=it->second;const auto view=document->GetContext()->GetDimensions();const auto size=e->GetBox().GetSize(Rml::BoxArea::Border);if(reducedMotion)m.velocity={};else{Motion::Coast(m.position.x,m.velocity.x,view.x-size.x-8,dt);Motion::Coast(m.position.y,m.velocity.y,view.y-size.y-8,dt);}e->SetProperty("left",std::to_string(m.position.x)+"px");e->SetProperty("top",std::to_string(m.position.y)+"px");windowVelocity[it->first]=m.velocity;if(!m.follower.empty()){auto* f=Element(m.follower.c_str());f->SetProperty("left",std::to_string(m.position.x+m.offset.x)+"px");f->SetProperty("top",std::to_string(m.position.y+m.offset.y)+"px");windowVelocity[m.follower]=m.velocity;}if(m.velocity.x==0 && m.velocity.y==0)it=coasting.erase(it);else ++it;}
+        for(auto it=coasting.begin();it!=coasting.end();){auto* e=Element(it->first.c_str());auto& m=it->second;const auto view=document->GetContext()->GetDimensions();const auto size=e->GetBox().GetSize(Rml::BoxArea::Border);if(reducedMotion)m.velocity={};else{Motion::Coast(m.position.x,m.velocity.x,view.x-size.x-8,dt);Motion::Coast(m.position.y,m.velocity.y,view.y-size.y-8,dt);}e->SetProperty("left",std::to_string(m.position.x)+"px");e->SetProperty("top",std::to_string(m.position.y)+"px");windowVelocity[it->first]=m.velocity;if(!m.follower.empty()){auto* f=Element(m.follower.c_str());f->SetProperty("left",std::to_string(m.position.x+m.offset.x)+"px");f->SetProperty("top",std::to_string(m.position.y+m.offset.y)+"px");windowVelocity[m.follower]=m.velocity;}if(m.velocity.x==0 && m.velocity.y==0){RememberPosition(it->first);if(!m.follower.empty())RememberPosition(m.follower);it=coasting.erase(it);}else ++it;}
     }
     Rml::Element* dragFollower=nullptr;
     Rml::Vector2f followerOrigin{};
     float followerAnchorOrigin=0;
-    fs::path preferences;
+    fs::path preferences,positionPreferences;std::string positionIdentity;
+    fs::path PositionPath() const {const auto base=positionPreferences.empty()?preferences:positionPreferences;if(base.empty())return {};std::string suffix;if(!positionIdentity.empty()){uint64_t hash=14695981039346656037ull;for(unsigned char c:positionIdentity){hash^=c;hash*=1099511628211ull;}suffix="-"+std::to_string(hash);}return base.parent_path()/(base.stem().wstring()+L"-positions"+fs::path(suffix).wstring()+L".ini");}
+    std::string PositionKey(const std::string& id) const {return layout+"."+sidePanelSide+"."+barPosition+"."+id+(id=="inspector"?"."+inspectorPanel:"");}
+    float ReadPositionValue(const std::string& key,float fallback=-1) const {const auto path=PositionPath();if(path.empty())return fallback;wchar_t text[80]{};GetPrivateProfileStringW(L"Positions",fs::path(key).c_str(),L"",text,80,path.c_str());try{const float value=std::stof(text);return std::isfinite(value)?value:fallback;}catch(...){return fallback;}}
+    void RememberPosition(const std::string& id) {if(id!="main-panel"&&id!="type-panel"&&id!="inspector")return;if(id=="inspector"&&layout=="centered")return;const auto path=PositionPath();if(path.empty())return;auto* e=Element(id.c_str());auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);const auto size=e->GetBox().GetSize(Rml::BoxArea::Border);if(const auto* left=e->GetLocalProperty("left");left&&left->unit==Rml::Unit::PX)at.x=left->Get<float>();if(const auto* top=e->GetLocalProperty("top");top&&top->unit==Rml::Unit::PX)at.y=top->Get<float>();const auto view=document->GetContext()->GetDimensions();if(view.x<=0||view.y<=0)return;fs::create_directories(path.parent_path());
+        const auto put=[&](const std::string& key,float value){WritePrivateProfileStringW(L"Positions",fs::path(key).c_str(),fs::path(std::to_string(value)).c_str(),path.c_str());};const auto key=PositionKey(id);put(key+".x",(at.x+size.x*.5f)/view.x);put(key+".y",(at.y+size.y*.5f)/view.y);
+        if(id=="main-panel"){const auto custom=layoutSizes[layout];if(custom.x>0)put(layout+".width",custom.x);if(custom.y>0)put(layout+".height",custom.y);}}
+    bool RestorePosition(const std::string& id) {if(id=="inspector"&&layout=="centered")return false;const auto key=PositionKey(id);const float x=ReadPositionValue(key+".x"),y=ReadPositionValue(key+".y");if(x<0||x>1||y<0||y>1)return false;auto* context=document->GetContext();context->Update();auto* e=Element(id.c_str());const auto size=e->GetBox().GetSize(Rml::BoxArea::Border);const auto view=context->GetDimensions();const float dp=context->GetDensityIndependentPixelRatio();
+        e->SetProperty("left",std::to_string(std::clamp(x*view.x-size.x*.5f,12*dp,std::max(12*dp,view.x-size.x-12*dp)))+"px");e->SetProperty("top",std::to_string(std::clamp(y*view.y-size.y*.5f,TopInset(),std::max(TopInset(),view.y-size.y-12*dp)))+"px");e->SetProperty("margin-left","0px");e->SetProperty("margin-top","0px");if(id=="main-panel")mainMoved=true;return true;}
+    Rml::Vector2f SnappedPosition(Rml::Vector2f at,Rml::Vector2f size) {const auto* context=document->GetContext();const auto view=context->GetDimensions();const float dp=context->GetDensityIndependentPixelRatio(),distance=28*dp;const auto axis=[&](float value,float low,float high){high=std::max(low,high);return std::min(std::abs(value-low),std::abs(value-high))<=distance?(std::abs(value-low)<=std::abs(value-high)?low:high):std::clamp(value,low,high);};return Rml::Vector2f{size.x>=view.x-64*dp?(view.x-size.x)*.5f:axis(at.x,12*dp,view.x-size.x-12*dp),axis(at.y,TopInset(),view.y-size.y-12*dp)};}
+    bool SnapReleased(const std::string& id) {auto* e=Element(id.c_str());auto before=e->GetAbsoluteOffset(Rml::BoxArea::Border);const auto size=e->GetBox().GetSize(Rml::BoxArea::Border);if(const auto* left=e->GetLocalProperty("left");left&&left->unit==Rml::Unit::PX)before.x=left->Get<float>();if(const auto* top=e->GetLocalProperty("top");top&&top->unit==Rml::Unit::PX)before.y=top->Get<float>();const auto at=SnappedPosition(before,size);const auto view=document->GetContext()->GetDimensions();const float dp=document->GetContext()->GetDensityIndependentPixelRatio();const bool horizontal=size.x<view.x-64*dp&&(std::abs(at.x-12*dp)<1||std::abs(at.x-(view.x-size.x-12*dp))<1),vertical=std::abs(at.y-TopInset())<1||std::abs(at.y-(view.y-size.y-12*dp))<1;e->SetProperty("left",std::to_string(at.x)+"px");e->SetProperty("top",std::to_string(at.y)+"px");
+        if(id=="main-panel"){mainMoved=true;if(layout=="floating"&&horizontal){sidePanelSide=at.x<view.x*.5f?"left":"right";Select("side-panel-side","side-"+sidePanelSide);prefsDirty=true;}if(layout=="bar"&&vertical){barPosition=at.y<view.y*.5f?"top":"bottom";Select("bar-position","bar-"+barPosition);document->SetClass("bar-top",barPosition=="top");prefsDirty=true;}}
+        return horizontal||vertical;}
+    void PositionScene(const std::string& identity){positionIdentity=identity;mainMoved=false;fittedLayout.clear();Reflow();for(const auto* id:{"type-panel","inspector"})if(Element(id)->IsVisible())RestorePosition(id);}
+
     fs::file_time_type preferencesStamp{};
     double nextPreferencesRead=0;
     void PollPreferences(double now) {
@@ -340,19 +399,19 @@ struct Controller : Rml::EventListener
     bool typographySync=false;
     std::unordered_set<Rml::Element*> clearForeground;
     double lastForeground=-1;
-    std::array<float,3> clearAccent{};
+    std::array<float,3> clearAccent{};Backdrop::SceneColor titleBackdrop{};
     bool AccentLight()const {return appearance==4&&accentCharacter>=20&&accentCharacter<72;}
     MaterialColor::Color ActiveAccent()const {
         if(accentMode=="theme"){const float tone=BaseAppearance()==1?.32f:BaseAppearance()==2?.64f:.82f;return {tone,tone,tone};}
         return accentMode=="custom"?MaterialColor::ParseAccent(customAccent,accent):adaptiveAccent;
     }
-    std::array<float,3> SurfaceTint()const {return MaterialColor::AccentSurface(ActiveAccent(),accentCharacter,accentSaturation);}
+    std::array<float,3> SurfaceTint()const {if(accentMode=="adaptive"&&BaseAppearance()==3)return MaterialColor::AdaptiveClearSurface(ActiveAccent());return MaterialColor::AccentSurface(ActiveAccent(),accentCharacter,accentMode=="adaptive"?std::min(accentSaturation,100.f):accentSaturation);}
     void UpdateAccent(const Backdrop& backdrop,double now) {
         const float dt=lastAccentUpdate<0?0.f:float(std::clamp(now-lastAccentUpdate,0.,.1));lastAccentUpdate=now;
         if(accentMode!="adaptive")return;
-        if(now>=nextAccentSample){nextAccentSample=now+.25;auto* main=Element("main-panel");const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border),size=main->GetBox().GetSize(Rml::BoxArea::Border);const auto sample=backdrop.Accent(at.x,at.y,size.x,size.y);
-            if(sample.valid){const auto candidate=MaterialColor::SceneAccent({sample.r,sample.g,sample.b});float difference=0;for(size_t i=0;i<3;++i)difference+=std::abs(candidate[i]-adaptiveTarget[i]);if(difference>.045f)adaptiveTarget=candidate;}}
-        const float amount=float(1-std::exp(-dt/.9f));for(size_t i=0;i<3;++i)adaptiveAccent[i]+=(adaptiveTarget[i]-adaptiveAccent[i])*amount;
+        if(now>=nextAccentSample){nextAccentSample=now+.15;auto* main=Element("main-panel");const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border),size=main->GetBox().GetSize(Rml::BoxArea::Border);auto sample=backdrop.Accent(at.x,at.y,size.x,size.y);if(!sample.valid)sample=backdrop.Background(at.x,at.y,size.x,size.y);
+            if(sample.valid){const auto candidate=MaterialColor::SceneAccent({sample.r,sample.g,sample.b});float difference=0;for(size_t i=0;i<3;++i)difference+=std::abs(candidate[i]-adaptiveTarget[i]);if(difference>.045f)adaptiveTarget=candidate;if(!adaptiveSeeded){adaptiveAccent=adaptiveTarget;adaptiveSeeded=true;}}}
+        const float amount=float(1-std::exp(-dt/.22f));for(size_t i=0;i<3;++i)adaptiveAccent[i]+=(adaptiveTarget[i]-adaptiveAccent[i])*amount;
 
     }
     MaterialColor::Color AccentBackdrop(size_t slot,Backdrop::SceneColor local={}) {
@@ -373,6 +432,7 @@ struct Controller : Rml::EventListener
         if(mode=="screen"&&MaterialColor::LinearLuma(source)>.55f)mixed=source;
         for(size_t i=0;i<3;++i)source[i]+=(mixed[i]-source[i])*strength;
         if(heading&&!customTheme){if(BaseAppearance()==3)source=MaterialColor::ClearHeading(active);else if(BaseAppearance()==2)source=MaterialColor::Blend({.24f,.24f,.24f},active,MaterialColor::Mode("screen"));else source=MaterialColor::Blend(base,MaterialColor::Saturation(active,150),MaterialColor::Mode("multiply"));}
+        if(heading&&(BaseAppearance()==3||BaseAppearance()==2)){MaterialColor::Color brightest{0,0,0};float luma=-1;for(size_t i=0;i<4;++i){if(!Element(i==0?"main-panel":i==1?"inspector":i==2?"welcome":"type-panel")->IsVisible())continue;const auto background=AccentBackdrop(i);const float value=MaterialColor::LinearLuma(background);if(value>luma){luma=value;brightest=background;}}if(titleBackdrop.valid){const auto titleSurface=AccentBackdrop(0,titleBackdrop);if(MaterialColor::LinearLuma(titleSurface)>luma)brightest=titleSurface;}source=MaterialColor::LightenForContrast(source,brightest);}
         if(appearance==1||AccentLight()){
             const float contrast=(MaterialColor::LinearLuma(base)+.05f)/(MaterialColor::LinearLuma(source)+.05f);
             if(MaterialColor::YellowFamily(active)){
@@ -384,6 +444,7 @@ struct Controller : Rml::EventListener
     }
     void AdaptiveForeground(const Backdrop& backdrop,double now) {
         UpdateAccent(backdrop,now);
+        auto* title=Element("main-panel")->QuerySelector("h1");const auto titleAt=title->GetAbsoluteOffset(Rml::BoxArea::Border),titleSize=title->GetBox().GetSize(Rml::BoxArea::Border);titleBackdrop=backdrop.Background(titleAt.x,titleAt.y,titleSize.x,titleSize.y);
         const float dt=lastForeground<0?.1f:float(now-lastForeground);lastForeground=now;document->SetClass("clear-foreground",BaseAppearance()==3);
         if(clearAccent!=accent)clearAccent=accent;
         Rml::ElementList elements;document->QuerySelectorAll(elements,"h1,h2,h3,h1 span,h2 span,h3 span,label,input,.hint,.brand,.welcome-wordmark,.welcome-message,.preview-note,button,select,selectvalue,.button-label,.field-heading span,.status-note,.glyph,.metadata-line,.mini-stat strong,.mini-stat-detail");
@@ -417,10 +478,11 @@ struct Controller : Rml::EventListener
     void ShowAppearance() {
         Visible("type-panel",true);Raise("type-panel");document->GetContext()->Update();
         const auto at=Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border),main=Element("main-panel")->GetBox().GetSize(Rml::BoxArea::Border),size=Element("type-panel")->GetBox().GetSize(Rml::BoxArea::Border);const auto view=document->GetContext()->GetDimensions();
-        const float inset=TopInset();Element("type-panel")->SetProperty("left",std::to_string(std::clamp(layout=="floating"&&sidePanelSide=="right"?at.x-size.x-24:at.x+main.x+24,12.f,std::max(12.f,view.x-size.x-12)))+"px");Element("type-panel")->SetProperty("top",std::to_string(std::clamp(layout=="bar"?(barPosition=="top"?at.y+main.y+20:at.y-size.y-20):at.y,inset,std::max(inset,view.y-size.y-12)))+"px");Enter("type-panel");
+        const float inset=TopInset();Element("type-panel")->SetProperty("left",std::to_string(std::clamp(layout=="floating"&&sidePanelSide=="right"?at.x-size.x-24:at.x+main.x+24,12.f,std::max(12.f,view.x-size.x-12)))+"px");Element("type-panel")->SetProperty("top",std::to_string(std::clamp(layout=="bar"?(barPosition=="top"?at.y+main.y+20:at.y-size.y-20):at.y,inset,std::max(inset,view.y-size.y-12)))+"px");RestorePosition("type-panel");Enter("type-panel");
     }
     void Materials() {
         if(typographySync)return;typographySync=true;
+        if(accentMode=="theme"&&appearance==4)appearance=BaseAppearance();
         if(appearance==4&&!customTheme){headingAccentBlend=AccentLight()?"multiply":"screen";controlAccentBlend=AccentLight()?"normal":"screen";}
         const float opacity=appearance==1?lightOpacity:appearance==3?clearOpacity:appearance==4?accentOpacity:darkOpacity;
         dynamic_cast<Rml::ElementFormControl*>(Element("tint-opacity"))->SetValue(std::to_string(opacity));
@@ -436,12 +498,12 @@ struct Controller : Rml::EventListener
         Visible("accent-character-row",preview&&godModeOpen&&appearance==4);dynamic_cast<Rml::ElementFormControl*>(Element("accent-character"))->SetValue(std::to_string(accentCharacter));Element("accent-character-value")->SetInnerRML(accentCharacter<25?"Clear":accentCharacter<72?"Light":"Dark");
         Visible("accent-saturation-row",preview&&godModeOpen&&appearance==4);dynamic_cast<Rml::ElementFormControl*>(Element("accent-saturation"))->SetValue(std::to_string(accentSaturation));Element("accent-saturation-value")->SetInnerRML(std::to_string(int(accentSaturation))+"%");
         for(const auto* mode:{"theme","custom","adaptive"})Element((std::string("accent-source-")+mode).c_str())->SetClass("selected",accentMode==mode);
-        Visible("accent-custom-row",accentMode=="custom");ColorEditor();
-        Element("accent-source-hint")->SetInnerRML(accentMode=="theme"?"Neutral accents, matched to your theme.":accentMode=="custom"?"Your rtxForge color, or a color you choose.":"Samples the scene behind this panel, with gentle transitions.");
+        Visible("accent-custom-row",accentMode=="custom");Visible("accent-tint",accentMode!="theme");ColorEditor();
+        Element("accent-source-hint")->SetInnerRML(accentMode=="theme"?"Neutral controls, without a surface tint.":accentMode=="custom"?"Your game’s Library color, or a color you choose.":"Samples the scene behind this panel, with gentle transitions.");
         Element("accent-tint")->SetClass("selected",appearance==4);Element("accent-tint")->QuerySelector(".switch")->SetClass("on",appearance==4);
         if(!preview)Element("font-select")->GetParentNode()->SetProperty("display","none");else Element("font-select")->GetParentNode()->RemoveProperty("display");
         Element("toast-pill")->SetClass("selected",toastPill);Element("toast-rounded")->SetClass("selected",!toastPill);
-        Element("theme-label")->SetInnerRML(customTheme?"Custom":BaseAppearance()==1?"Light":BaseAppearance()==2?"Dark":"Clear");Element("theme-description")->SetInnerRML(customTheme?(appearance==1?"Custom · based on Light":appearance==2?"Custom · based on Dark":appearance==4?"Custom · based on Accent":"Custom · based on Clear"):"Select a theme to restore its defaults.");
+        Element("theme-label")->SetInnerRML(customTheme?"Custom":BaseAppearance()==1?"Light":BaseAppearance()==2?"Dark":"Clear");Element("theme-description")->SetInnerRML(customTheme?(appearance==1?"Custom · based on Light":appearance==2?"Custom · based on Dark":appearance==4?"Custom · based on Accent":"Custom · based on Clear"):"Select a surface to restore its defaults.");
         document->SetClass("dark-inverted",appearance==2 && invertDark);Element("welcome")->SetProperty("--corner-radius",toastPill?"28":"14");Element("welcome")->SetProperty("border-radius",toastPill?"28dp":"14dp");
         typographySync=false;prefsDirty=true;Reflow();
     }
@@ -454,10 +516,10 @@ struct Controller : Rml::EventListener
         const auto number=[&](const wchar_t* key,int fallback,int low,int high){return std::clamp(int(GetPrivateProfileIntW(L"Appearance",key,fallback,preferences.c_str())),low,high);};
         copySize=number(L"TextSize",22,16,26);copyWeight=number(L"TextWeight",500,100,900);headingSize=36;headingWeight=400;overlayScale=number(L"ScaleBaseline",0,0,120)==120?number(L"Scale",100,70,150):100;
         const bool current=number(L"ThemeVersion",0,0,ForgeAppearance::Version)==ForgeAppearance::Version;
-        appearance=current?number(L"Theme",3,1,4):3;
+        appearance=current?number(L"Theme",4,1,4):4;
         const auto theme=ForgeAppearance::Get(appearance);
         lightOpacity=current?float(number(L"LightTint",100,0,100)):100;darkOpacity=current?float(number(L"DarkTint",80,0,100)):80;clearOpacity=current?float(number(L"ClearTint",20,0,100)):20;
-        accentCharacter=float(number(L"AccentCharacter",35,0,100));accentOpacity=float(number(L"AccentTint",int(MaterialColor::AccentOpacity(accentCharacter)*100),0,100));
+        accentCharacter=float(number(L"AccentCharacter",10,0,100));accentOpacity=float(number(L"AccentTint",int(MaterialColor::AccentOpacity(accentCharacter)*100),0,100));
         accentSaturation=float(number(L"AccentSaturation",100,0,200));
         blurRadius=current?float(number(L"Blur",int(theme.blur),16,48)):theme.blur;grainAmount=current?number(L"Grain",40,0,80)/10.f:4;
         customTheme=current&&number(L"Custom",0,0,1)!=0;textDepth=number(L"TextDepth",1,0,1)!=0;invertDark=number(L"InvertDark",0,0,1)!=0;toastPill=number(L"ToastPill",0,0,1)!=0;motionEnabled=number(L"Motion",1,0,1)!=0;
@@ -481,6 +543,7 @@ struct Controller : Rml::EventListener
         GetPrivateProfileStringW(L"Appearance",L"Layout",L"floating",text,80,preferences.c_str());const auto savedLayout=Utf8(text);if(savedLayout=="floating"||savedLayout=="centered"||savedLayout=="bar")layout=savedLayout;
         GetPrivateProfileStringW(L"Appearance",L"SidePanelSide",L"left",text,80,preferences.c_str());sidePanelSide=Utf8(text)=="right"?"right":"left";
         GetPrivateProfileStringW(L"Appearance",L"BarPosition",L"bottom",text,80,preferences.c_str());barPosition=Utf8(text)=="top"?"top":"bottom";
+        positionPreferences=preferences;
         std::error_code error;preferencesStamp=fs::last_write_time(preferences,error);
     }
     void SavePreferences() {
@@ -559,6 +622,8 @@ struct Controller : Rml::EventListener
             set("--material-blend",surfaceBlend);set("--material-blend-opacity",std::to_string(blendStrength/100.f));set("--material-texture",std::to_string(grainAmount/100.f));
             set("--accent",AccentTone(i,false));set("--accent-ink",AccentTone(i,true));
             set("--accent-soft",AccentTone(i,false).substr(0,7)+"55");
+            const bool lightMenu=BaseAppearance()==1;const auto menuSurface=lightMenu?MaterialColor::Color{.94f,.94f,.94f}:BaseAppearance()==2?MaterialColor::Color{.11f,.12f,.12f}:MaterialColor::Color{.22f,.23f,.24f};set("--menu-fill",Hex(menuSurface[0],menuSurface[1],menuSurface[2],.91f));set("--menu-ink",lightMenu?"#202020ff":"#faf9f7ff");set("--menu-hover",lightMenu?"#0000000f":"#ffffff18");
+
             set("--shadow-opacity",std::to_string(i==2?.10f:.26f));
         }
         Select("theme-menu",customTheme?"":BaseAppearance()==1?"theme-light":BaseAppearance()==3?"theme-clear":"theme-dark");
@@ -569,7 +634,7 @@ struct Controller : Rml::EventListener
     }
     Rml::Element* Element(const char* id) { auto* e=document->GetElementById(id);Require(e!=nullptr,id);return e; }
     void Disabled(const char* id,bool disabled) {auto* e=Element(id);if(disabled)e->SetAttribute("disabled","");else e->RemoveAttribute("disabled");e->SetPseudoClass("disabled",disabled);e->SetProperty("focus",disabled?"none":"auto");}
-    void Visible(const char* id,bool visible) { Element(id)->SetProperty("display",visible ? (std::string(id)=="welcome"||std::string(id)=="main-panel"||std::string(id)=="appearance-more"||std::string(id)=="appearance-god-mode"?"flex":"block"):"none"); }
+    void Visible(const char* id,bool visible) { Element(id)->SetProperty("display",visible ? (std::string(id)=="welcome"||std::string(id)=="main-panel"||std::string(id)=="appearance-more"||std::string(id)=="appearance-god-mode"||std::string(id)=="accent-tint"?"flex":"block"):"none"); }
     void Message(const std::string& text) { Element("feedback")->SetInnerRML(text); }
     void Put(const std::string& key,float value) { auto before=values;values[key]=value;edits.Record(before,values); }
     void Select(const char* container,const std::string& id) {
@@ -637,6 +702,7 @@ struct Controller : Rml::EventListener
             popup->SetProperty("left",std::to_string(std::clamp(sidePanelSide=="right"?at.x-size.x-20*dp:at.x+mainSize.x+20*dp,12*dp,std::max(12*dp,view.x-size.x-12*dp)))+"px");popup->SetProperty("top",std::to_string(std::max(TopInset(),at.y))+"px");
         }
         if(inspectorAnchored) {inspectorSource=panel=="effects"?"open-effects":panel=="hdr"?"open-hdr":panel=="overview"?"open-session":panel=="passes"?"open-passes":panel=="frame"?"open-frame-options":panel=="processing"?"open-processing":"open-look";PlaceAnchoredInspector();}
+        if(RestorePosition("inspector")){inspectorAnchored=false;Element("inspector")->SetClass("anchored",false);}
     }
     void PlaceAnchoredInspector() {
         auto* context=document->GetContext();context->Update();const auto viewport=context->GetDimensions();const float dp=context->GetDensityIndependentPixelRatio();
@@ -652,8 +718,8 @@ struct Controller : Rml::EventListener
         if(syncing || typographySync||colorPicking)return;
         auto* target=event.GetTargetElement();
         if(setupStep>=0&&!colorEditorOpen&&event.GetType()=="keydown"&&event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_TAB){
-            const std::vector<const char*> choices=setupStep==0?std::vector<const char*>{"theme-light","theme-dark","theme-clear","accent-source-theme","accent-source-custom","accent-source-adaptive","accent-swatch","accent-tint","setup-skip","setup-next"}:std::vector<const char*>{"appearance-back","setup-layout-floating","setup-layout-centered","setup-layout-bar","setup-skip","setup-next"};
-            auto* focused=document->GetContext()->GetFocusElement();int index=-1;for(size_t i=0;i<choices.size();++i)if(Element(choices[i])==focused)index=int(i);const int direction=event.GetParameter<int>("shift_key",0)?-1:1;Element(choices[(index+direction+int(choices.size()))%int(choices.size())])->Focus();event.StopPropagation();return;
+            const std::vector<const char*> choices=setupStep==2?std::vector<const char*>{"appearance-back","setup-native-global","setup-skip","setup-native-confirm"}:setupStep==1?std::vector<const char*>{"appearance-back","theme-light","theme-clear","theme-dark","accent-source-theme","accent-source-adaptive","accent-source-custom","accent-swatch","accent-tint","setup-next"}:std::vector<const char*>{"setup-layout-floating","setup-layout-centered","setup-layout-bar","setup-appearance","setup-native","setup-skip","setup-next"};
+            std::vector<Rml::Element*> visible;for(const auto* id:choices){auto* e=Element(id);if(e->IsVisible(true)&&!e->IsPseudoClassSet("disabled"))visible.push_back(e);}auto* focused=document->GetContext()->GetFocusElement();int index=-1;for(size_t i=0;i<visible.size();++i)if(visible[i]==focused)index=int(i);const int direction=event.GetParameter<int>("shift_key",0)?-1:1;if(!visible.empty())visible[(index+direction+int(visible.size()))%int(visible.size())]->Focus();event.StopPropagation();return;
         }
         const auto inside=[&](const char* id){for(auto* e=target;e;e=e->GetParentNode())if(e->GetId()==id)return true;return false;};
         if(event.GetType()=="keydown"&&spectrumOpen&&(inside("spectrum-plane")||inside("spectrum-hue"))){const int key=event.GetParameter<int>("key_identifier",0);bool changed=false;
@@ -676,7 +742,7 @@ struct Controller : Rml::EventListener
                 if(key==Rml::Input::KI_DELETE||(key>=Rml::Input::KI_A&&key<=Rml::Input::KI_Z)||(key>=Rml::Input::KI_F1&&key<=Rml::Input::KI_F12)){
                     shortcut=key;shortcutModifiers=mods;shortcutLabel=(mods&Rml::Input::KM_CTRL?"Ctrl + ":"") + std::string(mods&Rml::Input::KM_ALT?"Alt + ":"") + (mods&Rml::Input::KM_SHIFT?"Shift + ":"");
                     shortcutLabel+=key==Rml::Input::KI_DELETE?"Del":key>=Rml::Input::KI_F1&&key<=Rml::Input::KI_F12?"F"+std::to_string(key-Rml::Input::KI_F1+1):std::string(1,char('A'+key-Rml::Input::KI_A));
-                    bindingShortcut=false;prefsDirty=true;SyncSettings();event.StopPropagation();return;
+                    bindingShortcut=false;prefsDirty=true;SyncSettings();Notify("Shortcut changed to "+shortcutLabel,"sliders");event.StopPropagation();return;
                 }
                 event.StopPropagation();return;
             }
@@ -695,13 +761,13 @@ struct Controller : Rml::EventListener
             if(!dragStarted){if(delta.x*delta.x+delta.y*delta.y<dragThreshold*dragThreshold)return;dragStarted=true;dragStart={event.GetParameter<float>("mouse_x",0),event.GetParameter<float>("mouse_y",0)};delta={};if(dragged==Element("inspector")){inspectorAnchored=false;Element("inspector")->SetClass("anchored",false);}}
             if(dragged==Element("main-panel")&&std::fabs(delta.x)+std::fabs(delta.y)>3)mainMoved=true;
             const auto viewport=document->GetContext()->GetDimensions();const auto size=dragged->GetBox().GetSize(Rml::BoxArea::Border);
-            const Rml::Vector2f position{std::clamp(dragOrigin.x+delta.x,8.f,std::max(8.f,viewport.x-size.x-8)),std::clamp(dragOrigin.y+delta.y,8.f,std::max(8.f,viewport.y-size.y-8))};
+            const auto position=SnappedPosition(Rml::Vector2f{dragOrigin.x+delta.x,dragOrigin.y+delta.y},size);
             const double now=Rml::GetSystemInterface()->GetElapsedTime();const float elapsed=std::max(.004f,float(now-dragTime));const auto raw=(position-dragLast)/elapsed;dragVelocity={std::clamp(dragVelocity.x*.6f+raw.x*.4f,-2200.f,2200.f),std::clamp(dragVelocity.y*.6f+raw.y*.4f,-2200.f,2200.f)};dragLast=position;dragTime=now;windowVelocity[dragged->GetId()]=dragVelocity;
             dragged->SetProperty("left",std::to_string(position.x)+"px");dragged->SetProperty("top",std::to_string(position.y)+"px");
 
             if(dragFollower){dragFollower->SetProperty("left",std::to_string(followerOrigin.x+position.x-dragOrigin.x)+"px");dragFollower->SetProperty("top",std::to_string(followerOrigin.y+position.y-dragOrigin.y)+"px");if(layout=="bar")inspectorAnchorX=followerAnchorOrigin+position.x-dragOrigin.x;}return;
         }
-        if(event.GetType()=="mouseup") {if(resizing){resizing=false;resizeEdge.clear();event.StopPropagation();return;}if(dragged){const auto id=dragged->GetId();if(dragStarted && !reducedMotion && std::fabs(dragVelocity.x)+std::fabs(dragVelocity.y)>50)coasting[id]={dragLast,dragVelocity,dragFollower?dragFollower->GetId():"",dragFollower?followerOrigin-dragOrigin:Rml::Vector2f{}};else windowVelocity[id]={};}dragged=nullptr;dragFollower=nullptr;dragStarted=false;return;}
+        if(event.GetType()=="mouseup") {if(resizing){resizing=false;resizeEdge.clear();RememberPosition("main-panel");event.StopPropagation();return;}if(dragged){const auto id=dragged->GetId();const bool snapped=dragStarted&&SnapReleased(id);if(dragStarted){RememberPosition(id);if(dragFollower)RememberPosition(dragFollower->GetId());}if(dragStarted && !snapped && !reducedMotion && std::fabs(dragVelocity.x)+std::fabs(dragVelocity.y)>50)coasting[id]={dragLast,dragVelocity,dragFollower?dragFollower->GetId():"",dragFollower?followerOrigin-dragOrigin:Rml::Vector2f{}};else windowVelocity[id]={};}dragged=nullptr;dragFollower=nullptr;dragStarted=false;return;}
         if(event.GetType()=="mousedown") {
             for(auto* edge=target;edge;edge=edge->GetParentNode())if(edge->IsClassSet("resize-edge")){
                 resizeEdge=edge->GetId();if(layout=="bar"&&resizeEdge!=(barPosition=="top"?"resize-bottom":"resize-top"))return;resizing=true;EndNrPreview();QuickLayouts(false);dragged=nullptr;Raise("main-panel");resizeStart={event.GetParameter<float>("mouse_x",0),event.GetParameter<float>("mouse_y",0)};resizeOrigin=Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border);resizeSize=Element("main-panel")->GetBox().GetSize(Rml::BoxArea::Border);coasting.erase("main-panel");entrances.erase("main-panel");pendingEntrance.erase("main-panel");event.StopPropagation();return;
@@ -756,7 +822,7 @@ struct Controller : Rml::EventListener
                 const auto name=field->GetValue();auto before=values;
                 if(presets.contains(name))values=presets.at(name);
                 else {values["style"]=name=="natural" ? 1.f:2.f;values["intensity"]=name=="natural" ? 1.f:.8f;}
-                edits.Record(before,values);edits.saved=values;Message(preview?"Preset loaded into this preview":"Preset selected");Notify(name+std::string(preview?" preset · Preview":" preset"));
+                edits.Record(before,values);edits.saved=values;Message(preview?"Preset loaded into this preview":"Preset selected");Notify(name+std::string(preview?" preset loaded · Preview":" preset loaded"),"floppy-disk");
             }
         } else if(event.GetType()=="click") {
             if(id=="accent-spectrum-swatch"){spectrumOpen=!spectrumOpen;if(spectrumOpen)spectrumHsv=MaterialColor::ToHsv(ActiveAccent());Materials();if(spectrumOpen)Element("spectrum-plane")->Focus();return;}
@@ -766,15 +832,18 @@ struct Controller : Rml::EventListener
             if(id=="accent-use-game"){customAccent.clear();colorEditorOpen=false;Materials();return;}
             if(id=="accent-eyedropper"){screenColorPicker.Start();colorPicking=true;Visible("tooltip",false);document->SetClass("color-picking",true);return;}
             if(id=="accent-poster"&&samplePoster){const auto at=target->GetAbsoluteOffset(Rml::BoxArea::Border);const auto size=target->GetBox().GetSize(Rml::BoxArea::Border);const auto color=samplePoster((event.GetParameter<float>("mouse_x",0)-at.x)/size.x,(event.GetParameter<float>("mouse_y",0)-at.y)/size.y);if(MaterialColor::ValidAccent(color)&&!color.empty()){customAccent=color;colorEditorOpen=false;Materials();}return;}
-            if(id.rfind("accent-source-",0)==0){const auto mode=id.substr(14);if(mode=="theme"||mode=="custom"||mode=="adaptive"){accentMode=mode;Materials();}return;}
+            if(id.rfind("accent-source-",0)==0){const auto mode=id.substr(14);if(mode=="theme"||mode=="custom"||mode=="adaptive"){accentMode=mode;nextAccentSample=0;Materials();}return;}
             if(id=="preview-close"&&closePreview)closePreview();
             else if(id=="close"){if(closePreview)closePreview();else ToggleOverlay();}
             else if(id=="window-back")Back();
             else if(id=="inspector-back"){if(BarSettings())Settings(false);else if(layout=="centered")Back();else{Visible("inspector",false);inspectorAnchored=false;}}
-            else if(id=="appearance-back"){if(setupStep==1){setupStep=0;UpdateSetup();}else Visible("type-panel",false);}
-            else if(id=="setup-next"){if(setupStep==0){setupStep=1;UpdateSetup();}else FinishSetup();}
-            else if(id=="setup-skip")FinishSetup();
-            else if(id.rfind("setup-layout-",0)==0){Layout(id.substr(13));UpdateSetup();}
+            else if(id=="appearance-back"){if(setupStep>=0){setupStep=0;UpdateSetup();}else Visible("type-panel",false);}
+            else if(id=="setup-next"){if(setupStep==1){setupStep=0;UpdateSetup();}else FinishSetup();}
+            else if(id=="setup-appearance"){setupStep=1;UpdateSetup();}
+            else if(id=="setup-native"){setupStep=2;UpdateSetup();}
+            else if(id=="setup-native-confirm")UseNativeOverlays();
+            else if(id=="setup-skip"){if(setupStep==2){setupStep=0;UpdateSetup();}else FinishSetup();}
+            else if(id.rfind("setup-layout-",0)==0){setupLayoutChosen=true;Layout(id.substr(13));UpdateSetup();}
             else if(id=="open-layout")QuickLayouts(true);
             else if(id.rfind("quick-",0)==0)Layout(id.substr(6));
             else if(id=="setting-original-labels"){originalLabels=!originalLabels;prefsDirty=true;Labels();}
@@ -815,7 +884,7 @@ struct Controller : Rml::EventListener
             else if(id=="welcome-close")Visible("welcome",false);
             else if(id=="theme")Visible("theme-menu",!Element("theme-menu")->IsVisible());
             else if(id=="theme-light"||id=="theme-dark"||id=="theme-clear")UseAppearance(id=="theme-light"?1:id=="theme-dark"?2:3,appearance==4);
-            else if(id=="accent-tint")UseAppearance(BaseAppearance(),appearance!=4);
+            else if(id=="accent-tint"&&accentMode!="theme")UseAppearance(BaseAppearance(),appearance!=4);
 
             else if(id=="open-passes")Open("passes");else if(id=="open-look")Open("look");
             else if(id=="open-session")Open("overview");
@@ -823,15 +892,15 @@ struct Controller : Rml::EventListener
             else if(id=="inspector-close") {Visible("inspector",false);Visible("overview",true);if(layout=="centered")Page(inspectorPanel=="look"||inspectorPanel=="passes"?"nav-neural":"nav-overview");Element("inspector")->SetClass("opening",false);}
             else if(id=="pass-2" || id=="pass-3")pass=id=="pass-2" ? 2:3;
             else if(id=="inherit")Put("pass"+std::to_string(pass)+"_inherit",values["pass"+std::to_string(pass)+"_inherit"] ? 0.f:1.f);
-            else if(id=="nr-toggle") {Put("enabled",values["enabled"] ? 0.f:1.f);Notify(values["enabled"]?(preview?"Neural rendering on · Preview":"Neural rendering on"):(preview?"Neural rendering off · Preview":"Neural rendering off"));}
+            else if(id=="nr-toggle") {Put("enabled",values["enabled"] ? 0.f:1.f);Notify(values["enabled"]?(preview?"Neural rendering on · Preview":"Neural rendering on"):(preview?"Neural rendering off · Preview":"Neural rendering off"),"cpu");}
             else if(id=="mfg-toggle")Put("mfg_enabled",values["mfg_enabled"] ? 0.f:1.f);
             else if(id=="undo")values=edits.Undo(values);else if(id=="redo")values=edits.Redo(values);
-            else if(id=="defaults") {edits.Record(values,defaults);values=defaults;}
+            else if(id=="defaults") {edits.Record(values,defaults);values=defaults;Notify(preview?"Settings reset · Preview":"Settings reset for this game","arrow-counter-clockwise");}
             else if(id=="save"&&!preview){Visible("save-sheet",!Element("save-sheet")->IsVisible());}
             else if(id=="delete-preset"&&deletePreset){const auto name=dynamic_cast<Rml::ElementFormControl*>(Element("presets"))->GetValue();if(!name.empty()&&deletePreset(name)){Visible("save-sheet",false);Message("Deleting preset…");}}
             else if(id=="save-cancel")Visible("save-sheet",false);
             else if(id=="save-confirm"&&savePreset){const auto name=dynamic_cast<Rml::ElementFormControl*>(Element("preset-name"))->GetValue();if(name.empty()||name.size()>60)Message(name.empty()?"Name your preset.":"Use a shorter preset name.");else if(savePreset(name)){Visible("save-sheet",false);Message("Saving preset…");}else Message("The helper is busy. Try saving again.");}
-            else if(id=="save") {const auto name=dynamic_cast<Rml::ElementFormControl*>(Element("presets"))->GetValue();presets[name]=values;edits.saved=values;Message("Session preset saved in memory · game settings unchanged");Notify("Preset saved · Preview");}
+            else if(id=="save") {const auto name=dynamic_cast<Rml::ElementFormControl*>(Element("presets"))->GetValue();presets[name]=values;edits.saved=values;Message("Session preset saved in memory · game settings unchanged");Notify("Preset saved · Preview","floppy-disk");}
             else if(id=="reset-inspector" && inspectorPanel=="hdr"){if(hdr.available)hdr.Reset();}
             else if(id=="reset-inspector") {auto before=values;for(auto& [key,value]:values){bool reset=inspectorPanel=="look"?(key=="detail"||key=="colour"||key=="tone"):inspectorPanel=="passes" && key.rfind("pass"+std::to_string(pass)+"_",0)==0;for(const auto& control:ExtraControls)if(key==control.key && std::string(control.page)==(inspectorPanel=="processing"?"neural":inspectorPanel=="frame"?"frame":inspectorPanel=="look"?"look":""))reset=true;if(reset)value=defaults.at(key);}edits.Record(before,values);}
             else if(id.rfind("style-",0)==0)Put("style",id=="style-default" ? 0.f:id=="style-natural" ? 1.f:2.f);

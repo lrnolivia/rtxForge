@@ -96,16 +96,13 @@ inline Color ClearSurface(Color backdrop,float tint,int mode,float strength) {
 }
 inline float LinearLuma(Color c) {for(auto& v:c)v=v<=.04045f?v/12.92f:std::pow((v+.055f)/1.055f,2.4f);return .2126f*c[0]+.7152f*c[1]+.0722f*c[2];}
 inline float Contrast(Color a,Color b) {const float x=LinearLuma(a),y=LinearLuma(b);return (std::max(x,y)+.05f)/(std::min(x,y)+.05f);}
+inline Color LightenForContrast(Color ink,Color backdrop,float target=3.f) {const float needed=target*(LinearLuma(backdrop)+.05f)-.05f;if(LinearLuma(ink)>=needed)return ink;if(needed>=1)return {1,1,1};float low=0,high=1;for(int step=0;step<12;++step){const float amount=(low+high)*.5f;Color raised{};for(size_t i=0;i<3;++i)raised[i]=ink[i]+(1-ink[i])*amount;if(LinearLuma(raised)<needed)low=amount;else high=amount;}for(auto& channel:ink)channel+=(1-channel)*high;return ink;}
 inline Color ClearHeading(Color accent) {
     // Soft, bright ink shared by every heading, never individually sampled.
     return Blend({.58f,.58f,.58f},accent,Mode("screen"));
 }
 inline bool ValidAccent(const std::string& color) {return color.empty()||(color.size()==7&&color[0]=='#'&&color.find_first_not_of("0123456789abcdefABCDEF",1)==std::string::npos);}
 inline Color ParseAccent(const std::string& color,Color fallback) {if(color.empty()||!ValidAccent(color))return fallback;const auto rgb=std::stoul(color.substr(1),nullptr,16);return {float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255};}
-inline Color SceneAccent(Color color) {
-    // Keep sampled color recognizable without deriving olive/brown highlights.
-    const float top=*std::max_element(color.begin(),color.end());
-    if(top>.001f){const float target=YellowFamily(color)?.96f:std::clamp(top,.62f,.94f);for(auto& v:color)v=std::clamp(v*target/top,0.f,1.f);}
-    return color;
-}
+inline Color SceneAccent(Color color) {for(auto& channel:color)channel=std::clamp(channel,0.f,1.f);return color;}
+inline Color AdaptiveClearSurface(Color color) {const auto hsv=ToHsv(color);return Hsv(hsv[0],hsv[1],.68f+.08f*(hsv[2]-.5f));}
 }

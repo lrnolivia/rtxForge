@@ -282,6 +282,7 @@ class Host:
         try:
             params={'row':row,'pid':pid}
             if op in ('hello','status'):
+                response['settings']['native_overlay_shortcuts']=overlay_settings.native_shortcuts(overlay_settings.effective(settings,row['game']),row['game'],row.get('exe',''))
                 response['settings']['game_poster']=game_poster(settings,row,self.state)
                 response['status']=self.controls.status(params)
                 import renodx_hdr_settings
@@ -291,6 +292,19 @@ class Host:
                 import renodx_hdr_settings
                 response['hdr']=renodx_hdr_settings.save({'storage':{'root':str(self.state)}},row,message.get('changes'))
                 response['message']='HDR preferences saved. Close and restart the game to apply.'
+            elif op=='use-native-overlays':
+                updated=overlay_settings.native_overlays(settings,row['game'],message.get('global_default',False))
+                changed={key:updated[key] for key in ('game_overlay_settings','overlay_renderer','optiscaler_ui','reshade_ui') if key in updated and updated.get(key)!=settings.get(key)}
+                if self.save_settings is not None:self.save_settings(changed)
+                else:
+                    import library_media
+                    path=self.state/'desktop/settings.json'
+                    fresh=library_media.DEFAULTS | (t.read_json(path) if path.is_file() else settings)
+                    fresh=overlay_settings.native_overlays(fresh,row['game'],message.get('global_default',False))
+                    t.atomic_file(path,(json.dumps(fresh,indent=2)+'\n').encode(),0o600)
+                    updated=fresh
+                response['settings']=proton_overlay.settings_snapshot(overlay_settings.effective(updated,row['game']),updated.get('theme'))
+                response['message']='Native overlays selected. Restart the game if its menus are not available yet.'
             elif op=='set-setting':
                 key, value = message.get('key'), message.get('value')
                 if key == 'panel_binding':

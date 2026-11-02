@@ -9,11 +9,17 @@ OptiScaler FreeType library. `Preview.ps1` opens the result. Delete toggles the
 controls; Settings contains layout, Appearance and shortcut preferences. The
 preview keeps its preferences separate from the game overlay.
 
-`--onboarding` previews the two-step first-open setup: appearance and Accent Tint,
-then Side Panel, Advanced or Bar. Choices update the live preview. Continue,
-Back, Skip and keyboard navigation are supported. The game renderer remembers
-completion separately from theme preferences and shows it only on the first
-opening of the controls. The welcome toast remains a separate notification.
+`--onboarding` starts with Side Panel, Advanced or Bar. Choosing a layout reveals
+its live preview; Appearance is a secondary button rather than a required step.
+Skip and keyboard navigation remain available. Use native overlays opens a brief confirmation showing the installed native
+menu shortcuts. Confirming saves an opt-out for this game and closes rtxForge
+only after the helper acknowledges it. Enabled native interfaces are also listed
+alongside the rtxForge key on the layout screen.
+The unchecked Make this my default option also changes app defaults, preserving
+other explicit game choices. Re-enable through Desktop or Game Mode Overlay
+settings or Game Details. Native menus may require a game restart. The standalone
+prototype cannot change the manager's overlay policy. Completion is stored
+separately from appearance, and the welcome toast remains independent.
 
 Advanced's initial footprint grows with the viewport, while text size and overlay
 scale remain user choices. Moving or resizing a window survives page changes.
@@ -23,7 +29,7 @@ undo/redo, hold-to-preview NR, pass controls, the four theme defaults and Settin
 Offscreen captures use a 2560 Ãƒâ€” 1440 canvas. The live window fits the monitor's
 work area, including its title bar.
 
-Appearance offers Clear, Light and Dark with an independent Accent Tint switch.
+Appearance offers Clear, Light and Dark with an independent Surface Tint switch.
 The approved tint presets keep each base style's character. Experimental character
 and saturation sliders remain in God Mode. More holds
 Blur and Motion. Experimental font and material tuning lives in the separate,
@@ -64,7 +70,7 @@ The runtime boundary and its acceptance limits are documented in
 
 ### Accent sources
 
-Appearance offers Theme, Custom, and Adaptive (the default), independently of Accent Tint. Theme uses neutral ink matched to the material. Custom uses the game color from rtxForge unless a valid #RRGGBB override is entered; clearing it restores the game color. Adaptive chooses a chromatic accent from the raw scene behind the main panel, reusing the existing 64 by 36 thumbnail every 250 ms. It holds its last color over neutral scenes and eases toward new colors over roughly a second. Overlay pixels never feed the sampler.
+Appearance offers None, Adaptive (the default), and Game. None uses neutral controls and hides Surface Tint. Game uses the game color from rtxForge unless a valid #RRGGBB override is entered; clearing it restores the game color. Adaptive chooses a chromatic accent from the raw scene behind the main panel, reusing the existing 64 by 36 thumbnail every 250 ms. It follows muted and vivid scene saturation, settles toward neutral in grey scenes, and seeds from the first valid scene sample, then eases toward changed colors with a 0.22-second response. Overlay pixels never feed the sampler.
 
 All headings share the same theme treatment: soft bright Clear, medium Dark, rich Light. Bright yellow in Light uses neutral text with vivid yellow controls, avoiding muddy derived ink. AccentMode and AccentColor round-trip through native preferences and helper snapshots. The inline desktop illustration approximates Adaptive using its screenshot; the full preview and injected overlay sample the actual region behind the panel. Use --accent-mode custom for Library-color showcase captures, or --accent-mode adaptive for scene-driven captures.
 
@@ -82,3 +88,12 @@ The controller caches unchanged material properties, and the runtime skips compo
 
 
 Custom color is a circular swatch. Open it for a compact frosted popover with a hex field and a small cached game-poster preview; clicking the poster samples its pixels. A circular swatch inside the hex field opens a compact saturation/brightness spectrum with a hue strip, replacing the poster until selection. It uses a single generated atlas under 1 MiB, without downloads or per-frame texture generation. There are no RGB sliders. The popover points to its swatch and dismisses as soon as a color is chosen. Escape or a click outside cancels without an extra close button. Pick from screen arms a temporary eyedropper: click a visible color, or cancel with Escape/right-click. Its hooks and screen reads exist only for that explicit interaction and are released afterward. Desktop uses the native Windows color picker, Linux uses its native color chooser, and the full preview uses the same glass controls as the injected overlay. Use `--color-picker --poster <image>` (or `--color-spectrum` to open the spectrum) for an isolated picker fixture.
+
+Dragged main overlays, appearance panels and detached inspectors retain normalized screen positions per game, layout and placement edge. Positions clamp into the current viewport when the display size changes. They are stored separately from appearance defaults, and Windows app-default reset removes the cached game positions too.
+
+First-run defaults are Light / Clear / Dark with Clear selected and None / Adaptive / Game with Adaptive selected. Surface Tint starts on; existing explicit appearance preferences remain unchanged. Toasts use event glyphs and concise feedback for preset, shortcut and reset actions; plugin error notices remain available.
+
+Panels softly snap near screen edges while dragging. Releasing a Side Panel or Bar at the opposite edge updates its placement choice and preserves the snapped position. Adaptive Clear retains sampled hue/saturation and varies its material brightness only within a narrow range.
+
+On Clear and Dark, low-contrast headings lighten toward white against a shared estimate that includes the game-title background and visible glass; the contrast rule never darkens the material or adds a heading shadow. Extremely bright backgrounds can still exceed what a light-only text rule can correct.
+Open dropdowns retain native RmlUi selection, scrolling and keyboard behavior. Their visual mirror uses the existing glass compositor and cached targets only while a menu is open, with bright ink in Clear/Dark and dark ink in Light. Selection uses a restrained highlight rather than a solid accent fill. Small supporting text uses regular weight; it adds no blur/glow/shadow text effects.

@@ -123,14 +123,14 @@ struct Runtime {
     nlohmann::json SettingsValues()const {const auto& c=*controls;return {{"overlay_appearance",AppearanceValues()},{"overlay_live_stats",c.showStats},{"overlay_welcome",c.showWelcome},{"overlay_welcome_position",c.welcomePosition},{"optiscaler_hotkey",c.optiShortcut},{"optiscaler_ui",c.menuSettings.at("opti-menu")},{"optiscaler_intro",c.menuSettings.at("opti-intro")},{"reshade_ui",c.menuSettings.at("reshade-menu")},{"reshade_intro",c.menuSettings.at("reshade-intro")}};}
     void Appearance(const nlohmann::json& a) {
         if(!a.is_object()||a.empty()||a==lastAppearance)return;lastAppearance=a;auto& c=*controls;
-        const auto previous=c.layout;c.UseTheme(std::clamp(a.value("Theme",3),1,4));
+        const auto previous=c.layout;c.UseTheme(std::clamp(a.value("Theme",4),1,4));
         c.accentMode=a.value("AccentMode",std::string("adaptive"));if(c.accentMode!="theme"&&c.accentMode!="custom")c.accentMode="adaptive";
         c.customAccent=a.value("AccentColor",std::string());if(!MaterialColor::ValidAccent(c.customAccent))c.customAccent.clear();
         dynamic_cast<Rml::ElementFormControl*>(c.Element("accent-color"))->SetValue(c.customAccent);
         c.copyFont=a.value("TextFont",std::string("roboto"));if(c.copyFont!="roboto"&&c.copyFont!="inter")c.copyFont="roboto";
         c.copySize=std::clamp(a.value("TextSize",22),16,26);c.overlayScale=std::clamp(a.value("Scale",100),70,150);
         c.lightOpacity=float(std::clamp(a.value("LightTint",100),0,100));c.darkOpacity=float(std::clamp(a.value("DarkTint",80),0,100));c.clearOpacity=float(std::clamp(a.value("ClearTint",20),0,100));
-        c.accentCharacter=float(std::clamp(a.value("AccentCharacter",35),0,100));c.accentOpacity=float(std::clamp(a.value("AccentTint",int(MaterialColor::AccentOpacity(c.accentCharacter)*100)),0,100));
+        c.accentCharacter=float(std::clamp(a.value("AccentCharacter",10),0,100));c.accentOpacity=float(std::clamp(a.value("AccentTint",int(MaterialColor::AccentOpacity(c.accentCharacter)*100)),0,100));
         c.accentSaturation=float(std::clamp(a.value("AccentSaturation",100),0,200));
         c.blurRadius=float(std::clamp(a.value("Blur",int(c.blurRadius)),16,48));c.grainAmount=std::clamp(a.value("Grain",40),0,80)/10.f;c.blendStrength=float(std::clamp(a.value("BlendStrength",int(c.blendStrength)),0,100));
         const auto blend=a.value("SurfaceBlend",c.surfaceBlend);if(MaterialColor::Valid(blend))c.surfaceBlend=blend;
@@ -171,13 +171,17 @@ struct Runtime {
     }
     void Helper(const char* text) {
         if(!text||std::strlen(text)>65536||lastHelper==text)return;lastHelper=text;const auto data=nlohmann::json::parse(text,nullptr,false);if(!data.is_object())return;
-        auto& c=*controls;helperReady=data.value("ready",false);c.Disabled("save",!helperReady||!data.value("named_supported",false)||data.value("pending",false));
+        auto& c=*controls;if(data.value("op",std::string())=="use-native-overlays")c.NativeOverlaysResult(data.value("error",false));helperReady=data.value("ready",false);c.Disabled("save",!helperReady||!data.value("named_supported",false)||data.value("pending",false));
         const int revision=data.value("revision",0);
         if(data.contains("settings")&&data["settings"].is_object()&&data["settings"]!=lastPreferences){const auto& prefs=data["settings"];lastPreferences=prefs;
             if(prefs.contains("overlay_appearance"))Appearance(prefs["overlay_appearance"]);
             if(prefs.contains("game_poster")&&prefs["game_poster"].is_string()){const auto path=std::filesystem::u8path(prefs["game_poster"].get<std::string>());if(path!=renderer->posterPath){renderer->posterPath=path;renderer->posterPixels.clear();c.Poster(path.empty()?"":"game-poster-"+std::to_string(std::hash<std::wstring>{}(path.wstring())));}}
 
             c.helperEnabled=prefs.value("overlay_helper",c.helperEnabled);c.startWithWindows=prefs.value("overlay_start_with_windows",c.startWithWindows);
+            if(prefs.contains("native_overlay_shortcuts")&&prefs["native_overlay_shortcuts"].is_array()){
+                c.nativeShortcuts.clear();for(const auto& item:prefs["native_overlay_shortcuts"])if(item.is_object()&&item.value("name",std::string()).size()<32&&item.value("key",std::string()).size()<64)c.nativeShortcuts.push_back({item.value("name",std::string()),item.value("key",std::string()),item.value("enabled",false)});
+                if(c.setupStep>=0)c.SetupShortcuts();
+            }
             if(prefs.contains("panel_key")){c.shortcut=Key(prefs.value("panel_key",VK_DELETE));const int mods=prefs.value("panel_modifiers",0);c.shortcutModifiers=(mods&1?Rml::Input::KM_ALT:0)|(mods&2?Rml::Input::KM_CTRL:0)|(mods&4?Rml::Input::KM_SHIFT:0);c.shortcutLabel=prefs.value("panel_hotkey",std::string("Del"));if(auto* keycap=c.Element("toast-message")->QuerySelector(".keycap"))keycap->SetInnerRML(Rml::StringUtilities::EncodeRml(c.shortcutLabel));}
             c.showStats=prefs.value("overlay_live_stats",c.showStats);c.showWelcome=prefs.value("overlay_welcome",c.showWelcome);c.welcomePosition=prefs.value("overlay_welcome_position",c.welcomePosition);c.primaryMenu=prefs.value("overlay_renderer",c.primaryMenu);c.optiShortcut=prefs.value("optiscaler_hotkey",c.optiShortcut);if(!c.showWelcome)c.Visible("welcome",false);
             for(const auto& [key,name]:std::map<std::string,std::string>{{"opti-menu","optiscaler_ui"},{"opti-intro","optiscaler_intro"},{"reshade-menu","reshade_ui"},{"reshade-intro","reshade_intro"}})c.menuSettings[key]=prefs.value(name,c.menuSettings[key]);c.SyncSettings();
@@ -198,7 +202,7 @@ struct Runtime {
             for(const auto& [key,label]:std::map<std::string,std::string>{{"items","READY"},{"blocked","NEEDS ATTENTION"},{"skipped","UNCHANGED"}})if(review.contains(key)&&review[key].is_array()&&!review[key].empty()){markup+="<h3>"+label+"</h3>";for(const auto& item:review[key])if(item.is_object())markup+="<p>"+Rml::StringUtilities::EncodeRml(item.value("title",std::string()))+"</p><p class=\"hint\">"+Rml::StringUtilities::EncodeRml(item.value("detail",std::string()))+"</p>";}c.Element("review-items")->SetInnerRML(markup);
         }
         c.Disabled("menus-review",!helperReady||data.value("pending",false));
-        const auto message=data.value("message",std::string());if(!message.empty()){c.Message(message);if(data.value("op",std::string())=="preset-save"&&!data.value("error",false)){c.edits.saved=c.values;c.Notify("Preset saved");}}
+        const auto message=data.value("message",std::string());if(!message.empty()){c.Message(message);const auto operation=data.value("op",std::string());if(operation=="preset-save"&&!data.value("error",false)){c.edits.saved=c.values;c.Notify("Preset saved","floppy-disk");}else if(operation=="preset-delete"&&!data.value("error",false))c.Notify("Preset deleted","floppy-disk");else if(data.value("error",false)&&(operation=="preset-save"||operation=="preset-delete"))c.Notify("Couldn’t update this preset. Try again.","info");}
     }
 
     ~Runtime(){if(controls)controls->RestorePreviewForTeardown();if(controls&&controls->prefsDirty)controls->SavePreferences();if(document&&controls)for(const auto* event:{"click","change","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,controls.get());if(initialized)Rml::Shutdown();controls.reset();}
@@ -238,7 +242,7 @@ struct Runtime {
             for(uint32_t i=0;i<std::min(snapshot.defaultCount,128u);i++)if(snapshot.defaults&&snapshot.defaults[i].key&&current.contains(snapshot.defaults[i].key)&&std::isfinite(snapshot.defaults[i].value))c.defaults[snapshot.defaults[i].key]=snapshot.defaults[i].value;
             supportedKeys.clear();for(const auto& [key,value]:current)supportedKeys.insert(key);
             c.values["mfg_enabled"]=current.contains("multiplier")&&current["multiplier"]!=0;
-            if(receivedSnapshot&&current.contains("enabled")&&beforeValues.at("enabled")!=current.at("enabled"))c.Notify(current.at("enabled")?"Neural rendering enabled":"Neural rendering disabled");receivedSnapshot=true;
+            if(receivedSnapshot&&current.contains("enabled")&&beforeValues.at("enabled")!=current.at("enabled"))c.Notify(current.at("enabled")?"Neural rendering on":"Neural rendering off","cpu");receivedSnapshot=true;
             if(c.values!=beforeValues)c.Sync();c.Capabilities(snapshot.nrAvailable,snapshot.fgAvailable);
             if(snapshot.title)document->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(snapshot.title));
             if(snapshot.accent){const std::string color=snapshot.accent;if(color.size()==7&&color[0]=='#'&&color.find_first_not_of("0123456789abcdefABCDEF",1)==std::string::npos){const auto rgb=std::stoul(color.substr(1),nullptr,16);c.accent={float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255};}}
@@ -262,6 +266,7 @@ struct Runtime {
             }
             lastValues=c.values;
         }
+        if(c.primaryMenu=="optiscaler"){nrActivationPending=false;frame.visible=false;for(const auto* id:{"main-panel","type-panel","inspector","welcome"})c.Visible(id,false);}
         if(hostVisible!=frame.visible){if(!frame.visible){c.EndNrPreview();if(c.BarSettings())c.Settings(false);}hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible){c.Enter("main-panel");c.MaybeSetup();}else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
         const auto beforeSettings=SettingsValues();c.PollColorPick();const int oldShortcut=c.shortcut,oldModifiers=c.shortcutModifiers;
         const bool focused=GetForegroundWindow()==frame.window;const int modifiers=focused?((frame.keys[VK_CONTROL]?Rml::Input::KM_CTRL:0)|(frame.keys[VK_SHIFT]?Rml::Input::KM_SHIFT:0)|(frame.keys[VK_MENU]?Rml::Input::KM_ALT:0)):0;
@@ -278,12 +283,12 @@ struct Runtime {
         ForgeWorkbench::Values changed;for(const auto& [key,value]:c.values)if(lastValues.contains(key)&&lastValues.at(key)!=value&&key!="mfg_enabled")changed[key]=value;
         if(c.values["mfg_enabled"]!=lastValues["mfg_enabled"]){changed["multiplier"]=c.values["mfg_enabled"]?rememberedMfgMultiplier:0;changed["dynamic_mfg"]=c.values["mfg_enabled"]?rememberedMfgDynamic:0;}
         if(!changed.empty()){std::vector<ForgeGlass::Value> updates;for(const auto& [key,value]:changed)updates.push_back({key.c_str(),value});if(!host.apply||!host.apply(host.user,updates.data(),uint32_t(updates.size()))){c.values=lastValues;c.Message("This change is unavailable in the current rendering route.");}c.Sync();}
-        c.reducedMotion=systemReducedMotion||!c.motionEnabled;document->SetClass("reduce-motion",c.reducedMotion);c.Animate(now);c.Adapt(backdrop->measured,now);context->Update();c.AdaptiveForeground(*backdrop,now);context->Update();
+        c.reducedMotion=systemReducedMotion||!c.motionEnabled;document->SetClass("reduce-motion",c.reducedMotion);c.Animate(now);c.Adapt(backdrop->measured,now);context->Update();c.AdaptiveForeground(*backdrop,now);context->Update();if(c.SelectMenu())context->Update();
         // Display changes resolve during Update. Reading the previous computed
         // visibility would immediately close a panel reopened by the host.
         frame.visible=c.Element("main-panel")->IsVisible()||(c.setupStep>=0&&c.Element("type-panel")->IsVisible());hostVisible=frame.visible;
         if(c.toastUntil>0&&now>c.toastUntil){c.Visible("welcome",false);c.toastUntil=0;}
-        if(nrActivationPending&&!nrActivationAnnounced&&c.toastUntil==0&&!c.Element("welcome")->IsVisible()){nrActivationAnnounced=true;nrActivationPending=false;c.Notify("Neural rendering active");}
+        if(c.primaryMenu!="optiscaler"&&nrActivationPending&&!nrActivationAnnounced&&c.toastUntil==0&&!c.Element("welcome")->IsVisible()){nrActivationAnnounced=true;nrActivationPending=false;c.Notify("Neural rendering active","cpu");}
         if(c.prefsDirty&&now>=nextPreferences){c.SavePreferences();nextPreferences=now+.5;}c.savePreset={};c.deletePreset={};c.requestJson={};
             std::vector<Backdrop::Panel> panels;
             for(const auto* id : {"main-panel","inspector","welcome","type-panel"}) {
@@ -313,8 +318,8 @@ struct Runtime {
                 const float clearInk[4]={};immediate->ClearRenderTargetView(inkView.Get(),clearInk);renderUi(c.Element(id.c_str()),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),byId.at(id),true);const auto velocity=c.windowVelocity[id];backdrop->ComposeLayer(frame.target,windowSource.Get(),velocity.x,velocity.y,c.reducedMotion);
             }
 
-            for(const auto* popup:{"layout-picker","accent-editor","tooltip"})if(c.Element(popup)->IsVisible()){
-                if((std::string(popup)=="layout-picker"&&byId.contains("main-panel"))||(std::string(popup)=="accent-editor"&&!c.colorPicking&&byId.contains("type-panel"))){const auto panel=c.QuickLayoutSurface(byId.at(std::string(popup)=="accent-editor"?"type-panel":"main-panel"),popup);const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target,windowView.Get(),{panel},true,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(c.Element(popup),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,true);backdrop->ComposeLayer(frame.target,windowSource.Get(),0,0,true);}
+            for(const auto* popup:{"layout-picker","accent-editor","select-menu","tooltip"})if(c.Element(popup)->IsVisible()){
+                if((std::string(popup)=="layout-picker"&&byId.contains("main-panel"))||(std::string(popup)=="accent-editor"&&!c.colorPicking&&byId.contains("type-panel"))||(std::string(popup)=="select-menu"&&byId.contains(c.selectMenuOwner))){const auto panel=c.QuickLayoutSurface(byId.at(std::string(popup)=="select-menu"?c.selectMenuOwner:std::string(popup)=="accent-editor"?"type-panel":"main-panel"),popup);const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target,windowView.Get(),{panel},true,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(c.Element(popup),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,true);backdrop->ComposeLayer(frame.target,windowSource.Get(),0,0,true);}
                 else if(outputSpace){backdrop->Draw(target,frame.target,{},false,false);const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);renderUi(c.Element(popup),windowView.Get());backdrop->ComposeLayer(frame.target,windowSource.Get(),0,0,true);}
                 else renderUi(c.Element(popup));
             }
@@ -338,7 +343,7 @@ extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::H
         const bool supported=frame->colorSpace==0?sdr:frame->colorSpace==1?desc.Format==DXGI_FORMAT_R16G16B16A16_FLOAT:desc.Format==DXGI_FORMAT_R10G10B10A2_UNORM;
         if(!supported)throw std::runtime_error("Unsupported glass format and transfer-function pair");
         if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format||runtime->outputSpace!=frame->colorSpace)){notificationsActive.store(false,std::memory_order_relaxed);runtime.reset();}
-        if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*host,*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());notificationsActive.store(drawn,std::memory_order_relaxed);
+        if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*host,*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());notificationsActive.store(drawn&&runtime->controls->primaryMenu!="optiscaler",std::memory_order_relaxed);
     }catch(const std::exception& error){notificationsActive.store(false,std::memory_order_relaxed);runtime.reset();if(!logged&&host->log){host->log(host->user,error.what());logged=true;}}
     if(uninitialize)CoUninitialize();return drawn;
 }

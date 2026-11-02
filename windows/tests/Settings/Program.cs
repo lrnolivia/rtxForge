@@ -279,6 +279,11 @@ var appearancePath = Path.Combine(Path.GetTempPath(), "rtxforge-glass-" + Guid.N
 Directory.CreateDirectory(Path.GetDirectoryName(appearancePath)!);
 try
 {
+    var freshAppearance=GlassAppearance.Load(appearancePath);
+    if(freshAppearance.BaseTheme!="clear"||!freshAppearance.AccentEnabled||freshAppearance.AccentMode!="adaptive"||freshAppearance.Tint!=26)throw new Exception("Fresh overlay defaults must be Clear + Adaptive with Accent Tint on");
+    var rendererGame=new Game { Id="native-renderer-fixture",Name="Native fixture" };
+    var rendererSettings=new ForgeSettings();rendererSettings.GameOverlaySettings[rendererGame.Id]=new(){["overlay_renderer"]="optiscaler"};
+    if(GlassAppearance.OverlayOptions(rendererSettings,rendererGame)["overlay_renderer"]?.ToString()!="optiscaler"||GlassAppearance.OverlayOptions(rendererSettings)["overlay_renderer"]?.ToString()!="game")throw new Exception("Per-game native overlay must not replace the global default");
     File.WriteAllText(appearancePath, "[Appearance]\nThemeVersion=4\nTheme=3\nLayout=bar\nTextFont=inter\nTextSize=26\nScale=115\nCustom=1\nClearTint=33\n[Unrelated]\nKeep=this\n");
     var gameAppearance=new Game { Id="fixture-game",Name="Fixture" };
     var authoritative=new ForgeSettings { OverlayAppearance=new() { ["Theme"]=1 } };

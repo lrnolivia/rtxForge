@@ -11,6 +11,7 @@
 #include <cmath>
 #include <chrono>
 #include <cstring>
+#include <cwchar>
 #include <unordered_map>
 #include <cstdio>
 #include "ForgePanelChannel.h"
@@ -84,6 +85,10 @@ inline LSTATUS ReadUser(const wchar_t* path, const wchar_t* name, DWORD type, vo
 inline DWORD Preference(const wchar_t* name, DWORD fallback)
 {
     DWORD value = fallback;
+    if(std::wcscmp(name,L"InGamePanel")==0) {
+        wchar_t executable[32768]{};GetModuleFileNameW(nullptr,executable,32768);
+        if(ReadUser(L"Software\\rtxForge\\Overlay\\Renderers",executable,RRF_RT_REG_DWORD,&value,sizeof(value))==ERROR_SUCCESS)return value;
+    }
     const auto result = ReadUser(L"Software\\rtxForge\\Overlay", name, RRF_RT_REG_DWORD, &value, sizeof(value));
     if(result != ERROR_SUCCESS) LOG_WARN("rtxForge panel preference read failed: {}, using default {}", result, fallback);
     return result == ERROR_SUCCESS ? value : fallback;

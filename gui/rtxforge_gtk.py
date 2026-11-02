@@ -10410,7 +10410,7 @@ class Window(Adw.ApplicationWindow):
             widget.connect('notify::active',lambda w,*_:save(key,w.get_active()))
             group.add(widget);return widget
         panel=Adw.PreferencesGroup(title='rtxForge Panel',description='NR and MFG controls drawn inside the game. Saved here, then written to each game on its next reviewed install or repair.')
-        if not game:choice('Panel','Where rtxForge\u2019s controls appear while you play.',['game','optiscaler'],['In the game','OptiScaler menu only'],'overlay_renderer',panel)
+        choice('Overlay','Choose rtxForge to enable its panel.' if game else 'The default overlay for your games.',['game','optiscaler'],['rtxForge','Native'],'overlay_renderer',panel)
         import glass_preferences as glass
         appearance=Adw.PreferencesGroup(title='Appearance',description='Saved for this game.' if game else 'Defaults for game overlays. In-game changes stay with that game.')
         refreshing=[False];refreshers=[]
@@ -10420,7 +10420,9 @@ class Window(Adw.ApplicationWindow):
             if not self.options.demo:
                 fresh=library_media.load_settings(self.service.config)
                 s['overlay_appearance']=overlay_settings.effective(fresh,game['game'] if game else None)['overlay_appearance']
-            glass.edit(s,key,value);save('overlay_appearance',s['overlay_appearance'])
+            glass.edit(s,key,value)
+            if key=='AccentMode' and value=='theme':glass.appearance(s,tint=False)
+            save('overlay_appearance',s['overlay_appearance'])
             for row,mode in position_rows:row.set_visible(glass.current(s)['Layout']==mode)
             appearance.set_description('Custom appearance' if glass.current(s)['Custom'] else 'The same layouts and materials as the glass overlay.')
         def material_choice(title,key,keys,captions,parent=appearance):
@@ -10452,9 +10454,9 @@ class Window(Adw.ApplicationWindow):
                 for refresh in refreshers:refresh()
             finally:refreshing[0]=False
             appearance.set_description('The same layouts and materials as the glass overlay.')
-        visual_row('Theme',ThemePicker(glass.base_theme(s),select_theme))
-        source_row=material_choice('Accent','AccentMode',['theme','custom','adaptive'],['Theme','Custom','Adaptive'])
-        source_row.set_subtitle('Theme is neutral. Custom uses your color. Adaptive follows the scene.')
+        visual_row('Surface',ThemePicker(glass.base_theme(s),select_theme))
+        source_row=material_choice('Accent','AccentMode',['theme','adaptive','custom'],['None','Adaptive','Game'])
+        source_row.set_subtitle('None is neutral. Game uses your Library color. Adaptive follows the scene.')
         sample_game=game or (self.games[0] if self.games else {})
         def custom_hex():return glass.current(s)['AccentColor'] or self.settings.get('game_accents',{}).get(sample_game.get('game')) or ('#'+sample_game.get('accent_class','art-a0a0a0').removeprefix('art-'))
         dot=Gtk.DrawingArea(content_width=28,content_height=28)
@@ -10494,11 +10496,18 @@ class Window(Adw.ApplicationWindow):
         swatch_button.connect('clicked',open_custom)
         def custom_visibility(*_):custom_row.set_visible(glass.current(s)['AccentMode']=='custom')
         source_row.connect('notify::selected',custom_visibility);refreshers.append(custom_visibility);custom_visibility()
-        accent_row=Adw.SwitchRow(title='Accent Tint' ,subtitle="Tint surfaces with this game's accent color.",active=glass.current(s)['Theme']==4)
+        accent_row=Adw.SwitchRow(title='Surface Tint' ,subtitle="Tint surfaces with this game's accent color.",active=glass.current(s)['Theme']==4 and glass.current(s)['AccentMode']!='theme')
         def tint_changed(widget,*_):
             if refreshing[0]:return
             glass.appearance(s,tint=widget.get_active());save('overlay_appearance',s['overlay_appearance'])
         accent_row.connect('notify::active',tint_changed);appearance.add(accent_row)
+        def tint_visibility(*_):
+            enabled=glass.current(s)['AccentMode']!='theme';accent_row.set_visible(enabled)
+            if not enabled and accent_row.get_active():
+                refreshing[0]=True
+                try:accent_row.set_active(False)
+                finally:refreshing[0]=False
+        source_row.connect('notify::selected',tint_visibility);refreshers.append(tint_visibility);tint_visibility()
         material_choice('Original labels','OriginalLabels',[0,1],['Off','On'])
         material_choice('Text size','TextSize',[20,22,24],['Aa  Smaller','Aa  Default','Aa  Larger'])
         material_choice('Motion effects','Motion',[1,0],['On','Off'])

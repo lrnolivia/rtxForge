@@ -2,9 +2,9 @@
 import transactions as t
 import re
 
-DEFAULTS = dict(AccentMode="adaptive", AccentColor="", ThemeVersion=4, Theme=3, Custom=0, Layout='floating', SidePanelSide='left', BarPosition='bottom', TextFont='roboto', TextSize=22,
-                Scale=100, ScaleBaseline=120, LightTint=100, DarkTint=80, ClearTint=20, AccentCharacter=35, AccentTint=67, AccentSaturation=100,
-                Blur=48, Grain=40, BlendStrength=50, SurfaceBlend='soft-light', TextDepth=1,
+DEFAULTS = dict(AccentMode="adaptive", AccentColor="", ThemeVersion=4, Theme=4, Custom=0, Layout='floating', SidePanelSide='left', BarPosition='bottom', TextFont='roboto', TextSize=22,
+                Scale=100, ScaleBaseline=120, LightTint=100, DarkTint=80, ClearTint=20, AccentCharacter=10, AccentTint=26, AccentSaturation=100,
+                Blur=48, Grain=40, BlendStrength=0, SurfaceBlend='normal', TextDepth=1,
                 InvertDark=0, ToastPill=0, Motion=1, ShowNotifications=1, OriginalLabels=0)
 BLENDS = ('normal','overlay','soft-light','multiply','screen','hard-light','darken','lighten','color','luminosity','difference')
 ENUMS = dict(AccentMode=("theme","custom","adaptive"), Layout=('floating','centered','bar'), SidePanelSide=('left','right'), BarPosition=('bottom','top'), TextFont=('roboto','inter'), SurfaceBlend=BLENDS)

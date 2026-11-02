@@ -132,17 +132,17 @@ sealed class OverlayPreviewView : StackPanel
     static Color Mix(Color a,Color b,double amount)=>Color.FromArgb(a.A,(byte)(a.R+(b.R-a.R)*amount),(byte)(a.G+(b.G-a.G)*amount),(byte)(a.B+(b.B-a.B)*amount));
 }
 
-/// <summary>Native swatches with the overlay's Theme / Accent Tint hierarchy.</summary>
+/// <summary>Native swatches with the overlay's Theme / Surface Tint hierarchy.</summary>
 sealed class OverlayThemePicker : UserControl
 {
     public int SelectedIndex {get;private set;}
     public event EventHandler? SelectionChanged;
     public OverlayThemePicker(string theme)
     {
-        var root=new StackPanel {Spacing=8};root.Children.Add(new TextBlock {Text="Theme"});
+        var root=new StackPanel {Spacing=8};root.Children.Add(new TextBlock {Text="Surface"});
         var choices=new Grid {ColumnSpacing=8};var group="overlay-theme-"+Guid.NewGuid();
-        string[] keys=["clear","light","dark"];string[] labels=["Clear","Light","Dark"];
-        Color[] colors=[Color.FromArgb(65,225,225,225),Color.FromArgb(255,234,234,234),Color.FromArgb(255,48,48,48)];
+        string[] keys=["light","clear","dark"];string[] labels=["Light","Clear","Dark"];
+        Color[] colors=[Color.FromArgb(255,234,234,234),Color.FromArgb(65,225,225,225),Color.FromArgb(255,48,48,48)];
         SelectedIndex=Math.Max(0,Array.IndexOf(keys,theme));
         for(var i=0;i<3;i++){
             choices.ColumnDefinitions.Add(new());var body=new StackPanel {Spacing=8,HorizontalAlignment=HorizontalAlignment.Center};

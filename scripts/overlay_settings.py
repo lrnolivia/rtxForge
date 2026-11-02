@@ -37,7 +37,7 @@ def effective(settings, game=None):
         for path, override in overrides.items():
             t.need(isinstance(path, str) and isinstance(override, dict), 'Invalid per-game overlay settings.')
             if os.path.normcase(str(Path(path).resolve())) == identity:
-                t.need(set(override) <= set(DEFAULTS) - {'overlay_renderer'}, 'Unknown per-game overlay option. The primary overlay is an app-wide choice.')
+                t.need(set(override) <= set(DEFAULTS), 'Unknown per-game overlay option.')
                 merged=values | override
                 merged['overlay_appearance']=values['overlay_appearance'] | override.get('overlay_appearance',{})
                 values = options(merged)
@@ -67,7 +67,7 @@ def describe(values):
 
 def game_edit(settings, game, key, value):
     """Overlay-originated writes never replace app-wide defaults."""
-    t.need(key in DEFAULTS and key != 'overlay_renderer', 'Change app defaults in Desktop or Game Mode settings.')
+    t.need(key in DEFAULTS, 'Change app defaults in Desktop or Game Mode settings.')
     identity=str(Path(game).resolve())
     result=effective(settings,game) | {key:value}
     options(result)
@@ -75,6 +75,45 @@ def game_edit(settings, game, key, value):
     matching=next((path for path in mapping if os.path.normcase(str(Path(path).resolve()))==os.path.normcase(identity)),identity)
     mapping.setdefault(matching,{})[key]=value
     return mapping
+
+
+def native_overlays(settings, game, global_default=False):
+    """An explicit onboarding opt-out; other games keep their overrides."""
+    t.need(type(global_default) is bool, 'Choose whether to change the default.')
+    changes={'overlay_renderer':'optiscaler','optiscaler_ui':True,'reshade_ui':True}
+    mapping=game_edit(settings,game,'overlay_renderer','optiscaler')
+    current=settings | {'game_overlay_settings':mapping}
+    for key,value in changes.items():
+        mapping=game_edit(current,game,key,value)
+        current['game_overlay_settings']=mapping
+    if effective(current,game)['optiscaler_hotkey']=='Disabled':
+        current['game_overlay_settings']=game_edit(current,game,'optiscaler_hotkey','Insert')
+    if global_default:current.update(changes)
+    return current
+
+
+def native_shortcuts(settings, game, exe=''):
+    """Read the installed native menu keys, without changing a game file."""
+    root=Path(game).resolve();folder=(root/exe).resolve().parent if exe else root
+    if not folder.is_relative_to(root):folder=root
+    result=[]
+    names={code:name for name,code in proton_overlay._KEYS.items()}
+    names[45]='Insert'
+    def key_name(key,mods=()):return '+'.join([name for name,on in mods if on]+[names.get(key,hex(key))])
+    for name,filename,section,key in [('OptiScaler','OptiScaler.ini','Menu','ShortcutKey'),('ReShade','ReShade.ini','INPUT','KeyOverlay')]:
+        path=next((base/filename for base in (folder,folder/'OptiScaler',root) if (base/filename).is_file()),None)
+        if path is None:continue
+        try:
+            if path.stat().st_size>256*1024:continue
+            parser=t.ini(path.read_text(encoding='utf-8-sig',errors='replace'))
+            raw=parser.get(section,key,fallback='0x2D' if name=='OptiScaler' else '36,0,0,0')
+            parts=[part.strip() for part in raw.split(',')]
+            code=int(parts[0],16 if parts[0].lower().startswith('0x') else 10)
+            mods=list(zip(('Ctrl','Shift','Alt'),[part=='1' for part in parts[1:4]])) if name=='ReShade' else []
+            enabled=code!=0 and settings.get('optiscaler_ui' if name=='OptiScaler' else 'reshade_ui',True)
+            result.append({'name':name,'key':key_name(code if code else 45 if name=='OptiScaler' else 36,mods),'enabled':enabled})
+        except (OSError,ValueError,KeyError):continue
+    return result
 
 
 def shortcut_binding(value):

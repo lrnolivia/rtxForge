@@ -8,6 +8,9 @@ body {
     --accent-ink: #17457a;
     --accent-soft: #c7685024;
     --muted: #66615b;
+    --menu-fill: #303030f7;
+    --menu-ink: #f5f2eeff;
+    --menu-hover: #ffffff22;
 }
 * { box-sizing: border-box; }
 div, section, h1, h2, p { display: block; }
@@ -846,11 +849,11 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .reduce-motion .glass .settings-layouts button.selected { animation: none; }
 
 /* First-open setup reuses the live Appearance and layout controls. */
-.setup-intro, .setup-layout-host, .setup-footer { display: none; }
+.setup-intro, .setup-layout-host, .setup-options, .setup-footer { display: none; }
 .setup-open .main-panel { pointer-events: none; }
 .setup-flow .setup-intro { display: block; margin: 0 0 26dp; font-size: var(--hint-size); line-height: 1.5; }
 .setup-flow .settings-heading { margin-bottom: 16dp; }
-.setup-flow #type-close, .setup-theme #appearance-back { display: none; }
+.setup-flow #type-close, .setup-layout #appearance-back { display: none; }
 .setup-flow .appearance-body > * { display: none; }
 .setup-flow.setup-theme #appearance-theme { display: block; margin-bottom: 0; }
 .setup-flow #theme-description { display: none; }
@@ -859,8 +862,28 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .setup-layout .setup-layout-host { display: block; padding: 18dp; border-radius: 18dp; background: var(--section-fill); box-shadow: var(--section-shadow); }
 .setup-layout .settings-layouts { gap: 12dp; }
 .setup-layout .settings-layouts button { min-height: 148dp; }
+.setup-layout .setup-options { display: block; margin-top: 18dp; }
+.setup-options .more-trigger { margin: 0; }
+.setup-native-options { margin-top: 22dp; }
+#setup-native { display: flex; align-items: center; justify-content: center; gap: 10dp; width: 100%; }
+#setup-native.native-link { justify-content: flex-start; padding: 0; background: transparent; color: var(--accent-ink); font-size: var(--hint-size); opacity: .72; }
+#setup-native.native-link:hover { opacity: 1; background: #ffffff08; }
+.setup-native-confirm-content, .setup-native-confirm-button { display: none; }
+.setup-native-confirm .appearance-body, .setup-native-confirm #setup-next { display: none; }
+.setup-native-confirm .setup-native-confirm-content, .setup-native-confirm .setup-native-confirm-button { display: flex; align-items: center; justify-content: center; }
+.setup-native-confirm-content { padding: 18dp; background: var(--section-fill); border-radius: 16dp; }
+.setup-shortcut { display: flex; align-items: center; justify-content: space-between; gap: 16dp; margin-top: 10dp; font-size: var(--hint-size); }
+.setup-shortcuts .hint { margin: 0 0 12dp; }
+.setup-native-confirm-button { background: var(--accent-soft); padding: 0 18dp; }
+.setup-global { position: relative; display: flex; align-items: center; gap: 10dp; min-height: 24dp; font-size: var(--hint-size); margin: 14dp 0 8dp; }
+.setup-global input { width: 18dp; height: 18dp; }
+.setup-global input { background: var(--section-fill); border: 1dp var(--accent); border-radius: 4dp; tab-index: auto; }
+.setup-global input:checked { background: var(--accent); }
+.setup-check-mark { display: none; position: absolute; left: 6dp; top: 6dp; width: 6dp; height: 10dp; border-right: 2dp #ffffff; border-bottom: 2dp #ffffff; transform: rotate(45deg); pointer-events: none; }
+.setup-global input:checked + .setup-check-mark { display: block; }
+.setup-native-options .hint { margin: 0; }
 .setup-flow .setup-footer { display: flex; align-items: center; gap: 12dp; margin-top: 26dp; }
-.setup-footer > span { flex: 1; font-size: var(--meta-size); opacity: .75; }
+.setup-footer { justify-content: flex-end; }
 .setup-footer .setup-next { display: flex; align-items: center; justify-content: center; gap: 10dp; padding: 0 18dp; background: var(--accent-soft); }
 .setup-next .glyph { width: 20dp; height: 20dp; transform: rotate(180deg); margin: 0; }
 
@@ -957,3 +980,36 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .color-picking #color-pick-stage { display: block; }
 .color-picking #main-panel, .color-picking #inspector, .color-picking #welcome { opacity: 0; }
 .color-picking #accent-editor { display: none; }
+
+/* Shared gutters survive wide mosaics, stacked pages and nested scrollers. */
+#settings-cards { margin-top: 24dp; }
+#settings-cards > .settings-group:first-child { margin-top: 0; }
+.settings-group { margin-top: 24dp; }
+.main-panel > .overview, .main-panel > .settings-screen { padding-right: 0; overflow-x: visible; }
+.main-panel > .overview > scrollbarvertical, .main-panel > .settings-screen > scrollbarvertical { right: -20dp; }
+.appearance-body { padding-right: 8dp; }
+.layout-centered .overview, .layout-centered .settings-screen, .layout-centered .inspector { padding-right: 28dp; }
+
+.wide-content #nr-body { flex-wrap: wrap; gap: 20dp; align-items: flex-start; }
+.wide-content #nr-body > .field-heading, .wide-content #nr-style, .wide-content #nr-body > .inspector-links { flex: 1 0 100%; }
+.wide-content #nr-body > .slider-field { flex: 1 1 300dp; min-width: 0; margin: 0; }
+.wide-content #nr-body > .model-single { flex: 1 1 300dp; min-width: 0; margin: 0; }
+.wide-content #nr-body > .model-row { flex: 2 1 580dp; min-width: 0; margin: 0; }
+.welcome .toast-icon { width: 22dp; height: 22dp; margin: 0 2dp 0 auto; }
+.welcome .toast-icon + .welcome-message { margin-left: 0; }
+
+/* Open selects share the current material hue and choose legible menu ink. */
+.glass select selectbox, .glass.dark select selectbox, .glass.clear select selectbox { padding: 6dp; background: var(--menu-fill); color: var(--menu-ink); border: 0; border-radius: 12dp; box-shadow: 0dp 8dp 24dp #100e0c38; }
+.glass select option, .glass.dark select option, .glass.clear select option { color: var(--menu-ink); border-radius: 7dp; padding: 8dp 12dp; }
+.glass select option:hover, .glass select option:checked, .glass.dark select option:hover, .glass.dark select option:checked, .glass.clear select option:hover, .glass.clear select option:checked { background: var(--menu-hover); color: var(--menu-ink); }
+.prototype-toolbar select selectvalue { white-space: nowrap; overflow: hidden; }
+
+/* The native dropdown stays interactive; its ink is painted on real glass. */
+select selectbox { opacity: 0; }
+.select-menu { position: absolute; z-index: 200; pointer-events: none; overflow: hidden; background: transparent; border: 0; border-radius: 12dp; }
+.select-menu .menu-option { position: absolute; padding: 8dp 12dp; border-radius: 7dp; line-height: 1.3; white-space: nowrap; overflow: hidden; }
+.select-menu .menu-option.active { background: #ffffff18; }
+.light-foreground .select-menu .menu-option.active { background: #0000000e; }
+.glass .hint, .glass .setting-description, .glass .preview-note,
+.glass .metadata-line, .glass .status-chip, .glass .status-note,
+.glass .live-card-label, .glass .live-size { font-weight: 400; }

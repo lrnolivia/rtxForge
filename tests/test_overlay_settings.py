@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 import unittest
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import overlay_settings as overlay
@@ -8,6 +9,32 @@ import transactions as t
 
 
 class OverlaySettingsTest(unittest.TestCase):
+    def test_native_shortcuts_use_installed_game_values(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);folder=root/'bin';folder.mkdir()
+            (folder/'OptiScaler.ini').write_text('[Menu]\nShortcutKey=0x77\n')
+            (folder/'ReShade.ini').write_text('[INPUT]\nKeyOverlay=36,1,0,0\n')
+            values=overlay.native_shortcuts({},root,'bin/game.exe')
+            self.assertEqual(values,[{'name':'OptiScaler','key':'F8','enabled':True},{'name':'ReShade','key':'Ctrl+Home','enabled':True}])
+            self.assertFalse(overlay.native_shortcuts({'reshade_ui':False},root,'bin/game.exe')[1]['enabled'])
+            (folder/'OptiScaler.ini').write_text('[Menu]\nShortcutKey=0\n')
+            self.assertEqual(overlay.native_shortcuts({},root,'bin/game.exe')[0],{'name':'OptiScaler','key':'Insert','enabled':False})
+
+    def test_native_onboarding_is_local_unless_default_explicitly_selected(self):
+        game=str(Path('one').resolve())
+        settings={'overlay_renderer':'game','game_overlay_settings':{str(Path('two').resolve()):{'overlay_renderer':'game'}}}
+        local=overlay.native_overlays(settings,game)
+        self.assertEqual(local['overlay_renderer'],'game')
+        self.assertEqual(overlay.effective(local,game)['overlay_renderer'],'optiscaler')
+        self.assertEqual(overlay.effective(local,'three')['overlay_renderer'],'game')
+        global_default=overlay.native_overlays(settings,game,True)
+        self.assertEqual(overlay.effective(global_default,'three')['overlay_renderer'],'optiscaler')
+        self.assertEqual(overlay.effective(global_default,'two')['overlay_renderer'],'game')
+        self.assertEqual(settings['game_overlay_settings'][str(Path('two').resolve())],{'overlay_renderer':'game'})
+        restored=overlay.game_edit(local,game,'overlay_renderer','game')
+        self.assertEqual(overlay.effective(local|{'game_overlay_settings':restored},game)['overlay_renderer'],'game')
+        with self.assertRaises(t.Refusal):overlay.native_overlays(settings,game,'yes')
+
     def test_per_game_choices_do_not_leak_to_another_game(self):
         game = str(Path('game-a').resolve())
         settings = {'overlay_welcome': True, 'game_overlay_settings': {game: {

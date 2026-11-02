@@ -74,7 +74,7 @@ public:
             const float high=std::max({c.r,c.g,c.b}),low=std::min({c.r,c.g,c.b}),chroma=high-low;
             if(high<.08f||chroma<.06f||chroma/high<.16f)continue;
             float hue=high==c.r?std::fmod((c.g-c.b)/chroma+6.f,6.f):high==c.g?(c.b-c.r)/chroma+2.f:(c.r-c.g)/chroma+4.f;
-            const int bin=std::clamp(int(hue*2),0,11);const float weight=chroma*chroma/high;
+            const int bin=std::clamp(int(hue*2),0,11);const float weight=std::sqrt(high);
             weights[bin]+=weight;bins[bin].r+=c.r*weight;bins[bin].g+=c.g*weight;bins[bin].b+=c.b*weight;
         }
         const auto best=std::max_element(weights.begin(),weights.end());if(*best<.01f)return {};

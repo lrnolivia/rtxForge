@@ -59,8 +59,8 @@
               <button id="layout-centered"><span class="layout-screen layout-advanced"><span class="mini-panel"><span class="mini-nav"><span class="mini-heading"/><span class="mini-line"/><span class="mini-line"/><span class="mini-line"/></span><span class="mini-content"><span class="mini-card"/><span class="mini-card"/></span></span></span><span class="layout-caption">Advanced</span></button>
               <button id="layout-bar"><span class="layout-screen layout-bottom"><span class="mini-popover"><span class="mini-heading"/><span class="mini-card"/></span><span class="mini-panel"><span class="mini-heading"/><span class="mini-line"/><span class="mini-line"/></span></span><span class="layout-caption">Bar</span></button>
             </div>
-            <div class="side-panel-position"><label>Side Panel position</label><div id="side-panel-side" class="segments"><button id="side-left" class="selected">Left</button><button id="side-right">Right</button></div></div>
-            <div class="bar-position"><label>Bar position</label><div id="bar-position" class="segments"><button id="bar-bottom" class="selected">Bottom</button><button id="bar-top">Top</button></div></div>
+            <div class="side-panel-position"><label>Side Panel position</label><div id="side-panel-side" class="segments"><button id="side-left" class="selected"><span class="button-label">Left</span></button><button id="side-right"><span class="button-label">Right</span></button></div></div>
+            <div class="bar-position"><label>Bar position</label><div id="bar-position" class="segments"><button id="bar-bottom" class="selected"><span class="button-label">Bottom</span></button><button id="bar-top"><span class="button-label">Top</span></button></div></div>
           </div>
           <div class="settings-group"><h3>SHORTCUT</h3><button id="shortcut-bind" class="shortcut-bind"><span>Open controls</span><span id="shortcut-key" class="keycap">Del</span></button><p id="shortcut-help" class="hint">Choose a key with optional Ctrl, Alt or Shift.</p></div>
           <div class="settings-group"><h3>CONTROL LABELS</h3><div class="inherit-row"><label>Original labels</label><button id="setting-original-labels" class="switch"><span class="thumb" /></button></div><p class="hint">Use upstream option names. With friendly labels, hover to see the original name.</p></div>
@@ -448,6 +448,7 @@
     <paint-root id="welcome" class="glass welcome">
       <img class="brand-logo" src="logo-mark.png" />
       <span class="welcome-wordmark">rtxForge</span>
+      <img id="toast-icon" class="glyph toast-icon" src="icons/info-light.png" style="display: none"/>
       <span id="toast-message" class="welcome-message">Press <span class="keycap">Del</span> to open controls</span>
       <button id="welcome-close" class="close" title="Dismiss notification">
         <span class="stroke first" />
@@ -468,7 +469,7 @@
       <div class="appearance-body">
         <div id="appearance-theme" class="appearance-block">
           <div class="field-heading">
-            <label>Theme</label>
+            <label>Surface</label>
             <span id="theme-label">Clear</span>
           </div>
           <div id="theme-menu" class="theme-swatches">
@@ -476,25 +477,25 @@
               <span class="theme-sample light-sample" />
               <span>Light</span>
             </button>
-            <button id="theme-dark">
-              <span class="theme-sample dark-sample" />
-              <span>Dark</span>
-            </button>
             <button id="theme-clear">
               <span class="theme-sample clear-sample" />
               <span>Clear</span>
+            </button>
+            <button id="theme-dark">
+              <span class="theme-sample dark-sample" />
+              <span>Dark</span>
             </button>
           </div>
           <p id="theme-description" class="hint">Frosted glass, tuned to the scene.</p>
           <label>Accent</label>
           <div class="segments" id="accent-sources">
-            <button id="accent-source-theme"><span class="button-label">Theme</span></button><button id="accent-source-custom"><span class="button-label">Custom</span></button><button id="accent-source-adaptive" class="selected"><span class="button-label">Adaptive</span></button>
+            <button id="accent-source-theme"><span class="button-label">None</span></button><button id="accent-source-adaptive" class="selected"><span class="button-label">Adaptive</span></button><button id="accent-source-custom"><span class="button-label">Game</span></button>
           </div>
           <p class="hint" id="accent-source-hint">Samples the scene behind this panel, with gentle transitions.</p>
           <div id="accent-custom-row">
             <div class="inherit-row"><label>Custom color</label><button id="accent-swatch" class="color-swatch" title="Choose custom color" aria-label="Choose custom color"><span class="color-dot"/></button></div>
           </div>
-          <button id="accent-tint" class="accent-tint-row" aria-label="Accent tint"><span class="accent-tint-swatch"/><span>Accent Tint</span><span class="switch"><span class="thumb"/></span></button>
+          <button id="accent-tint" class="accent-tint-row" aria-label="Surface tint"><span class="accent-tint-swatch"/><span>Surface Tint</span><span class="switch"><span class="thumb"/></span></button>
 
         </div>
         <div class="appearance-block">
@@ -623,11 +624,23 @@
             </div>
           </div>
           <button id="theme-reset" class="text-link preview-only">
-            <img class="glyph" src="icons/arrow-counter-clockwise-light.png" /><span class="button-label">Reset theme</span></button>
+            <img class="glyph" src="icons/arrow-counter-clockwise-light.png" /><span class="button-label">Reset surface</span></button>
         </div>
       </div>
       <div id="setup-layout-host" class="setup-layout-host"><div id="setup-layouts" class="settings-layouts"/></div>
-      <div class="setup-footer"><span id="setup-progress"/><button id="setup-skip" class="quiet"><span class="button-label">Skip</span></button><button id="setup-next" class="quiet setup-next"><span id="setup-next-label" class="button-label">Continue</span><img class="glyph" src="icons/arrow-left-light.png"/></button></div>
+      <div class="setup-options">
+        <button id="setup-appearance" class="more-trigger"><img class="glyph" src="icons/palette-light.png"/><span>Appearance</span><span class="chevron"/></button>
+        <div class="setup-native-options">
+          <div id="setup-existing-menus" class="setup-shortcuts"/>
+          <button id="setup-native" class="native-link"><span class="button-label">Use native overlays instead</span></button>
+        </div>
+      </div>
+      <div class="setup-native-confirm-content">
+        <div id="setup-native-shortcuts" class="setup-shortcuts"/>
+        <label for="setup-native-global" class="setup-global"><input id="setup-native-global" type="checkbox"/><span class="setup-check-mark"/><span>Make this my default</span></label>
+        <p id="setup-native-message" class="hint">Re-enable in Game Details, under Overlay.</p>
+      </div>
+      <div class="setup-footer"><button id="setup-skip" class="quiet"><span id="setup-skip-label" class="button-label">Skip</span></button><button id="setup-native-confirm" class="quiet setup-native-confirm-button"><span class="button-label">Use native overlays</span></button><button id="setup-next" class="quiet setup-next"><span id="setup-next-label" class="button-label">Let’s play</span><img class="glyph" src="icons/arrow-left-light.png"/></button></div>
     </paint-root>
     <paint-root id="accent-editor" class="glass color-editor" style="display: none" role="dialog" aria-label="Custom color">
       <div class="color-editor-heading"><span>Custom color</span></div>
@@ -645,6 +658,7 @@
       <button id="quick-centered"><img class="glyph" src="icons/app-window-light.png" /><span>Advanced</span></button>
       <button id="quick-bar"><img class="glyph" src="icons/rows-light.png" /><span>Bar</span></button>
     </paint-root>
+    <paint-root id="select-menu" class="glass select-menu" style="display: none" aria-hidden="true"/>
     <paint-root id="tooltip" />
   </body>
 </rml>

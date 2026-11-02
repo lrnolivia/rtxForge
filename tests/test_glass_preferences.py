@@ -12,6 +12,12 @@ import transactions as t
 
 
 class GlassPreferencesTest(unittest.TestCase):
+    def test_fresh_defaults_are_clear_adaptive_with_tint_on(self):
+        values=glass.current({})
+        self.assertEqual((glass.base_theme({}),values['AccentMode'],values['Theme'],values['AccentCharacter'],values['AccentTint']),('clear','adaptive',4,10,26))
+        self.assertEqual((values['SurfaceBlend'],values['BlendStrength']),('normal',0))
+        self.assertEqual(glass.current({'overlay_appearance':{'Theme':3}})['Theme'],3)
+
     def test_reset_to_untouched_defaults_sends_resolved_appearance(self):
         game=str(Path('one').resolve())
         settings={'overlay_appearance':{},'game_overlay_settings':{game:{'overlay_appearance':{'Theme':2,'AccentColor':'#ff0000'}}}}

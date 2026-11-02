@@ -26,13 +26,13 @@ sealed class OverlayPresentationView : Grid
         theme = new(glass.BaseTheme);
         side = new() { ItemsSource = new[] { "Left", "Right" }, SelectedIndex = glass.SidePanelSide == "right" ? 1 : 0, MinWidth = 100 };
         bar = new() { ItemsSource = new[] { "Bottom", "Top" }, SelectedIndex = glass.BarPosition == "top" ? 1 : 0, MinWidth = 100 };
-        tint = new() { IsOn = glass.AccentEnabled, MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        tint = new() { IsOn = glass.AccentEnabled && glass.AccentMode != "theme", MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(side, "Side Panel position");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(bar, "Bar position");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(tint, "Accent Tint");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(tint, "Surface Tint");
         var sideRow = Prefs.Row("Side Panel position", "Choose which edge the Side Panel opens on.", side, glyph: "\uE8A0");
         var barRow = Prefs.Row("Bar position", "Open the Bar at the top or bottom of the screen.", bar, glyph: "\uE8A0");
-        accentSource = new() { ItemsSource = new[] { "Theme", "Custom", "Adaptive" }, SelectedIndex = Array.IndexOf(new[] { "theme", "custom", "adaptive" },glass.AccentMode), MinWidth = 130 };
+        accentSource = new() { ItemsSource = new[] { "None", "Adaptive", "Game" }, SelectedIndex = Array.IndexOf(new[] { "theme", "adaptive", "custom" },glass.AccentMode), MinWidth = 130 };
         var colorDot=new Microsoft.UI.Xaml.Shapes.Ellipse {Width=28,Height=28};
         accentColor=new() {Content=colorDot,Width=40,Height=40,Padding=new Thickness(4),CornerRadius=new CornerRadius(20),HorizontalAlignment=HorizontalAlignment.Right};
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(accentColor,"Choose custom accent color");
@@ -40,9 +40,9 @@ sealed class OverlayPresentationView : Grid
         customRow.Visibility = glass.AccentMode == "custom" ? Visibility.Visible : Visibility.Collapsed;
         var options = new StackPanel { Spacing = 16 };
         options.Children.Add(layout); options.Children.Add(sideRow); options.Children.Add(barRow); options.Children.Add(theme);
-        options.Children.Add(Prefs.Row("Accent", "Theme is neutral. Custom uses your color. Adaptive follows the scene.", accentSource, glyph: "\uE790"));
+        options.Children.Add(Prefs.Row("Accent", "None is neutral. Game uses your Library color. Adaptive follows the scene.", accentSource, glyph: "\uE790"));
         options.Children.Add(customRow);
-        options.Children.Add(Prefs.Row("Accent Tint", "Use the selected accent on overlay surfaces.", tint, glyph: "\uE790"));
+        var tintRow=Prefs.Row("Surface Tint", "Use the selected accent on overlay surfaces.", tint, glyph: "\uE790");tintRow.Visibility=glass.AccentMode=="theme"?Visibility.Collapsed:Visibility.Visible;options.Children.Add(tintRow);
         ColumnSpacing = 24; RowSpacing = 16;
         ColumnDefinitions.Add(new()); ColumnDefinitions.Add(new() { Width = new GridLength(440) });
         RowDefinitions.Add(new() { Height = GridLength.Auto }); RowDefinitions.Add(new() { Height = GridLength.Auto });
@@ -70,9 +70,9 @@ sealed class OverlayPresentationView : Grid
         layout.SelectionChanged += (_, _) => { if (layout.SelectedIndex >= 0) Change(() => Set("Layout", GlassAppearance.Layouts[layout.SelectedIndex])); SideVisibility(); };
         side.SelectionChanged += (_, _) => { if (side.SelectedIndex >= 0) Change(() => Set("SidePanelSide", side.SelectedIndex == 1 ? "right" : "left")); };
         bar.SelectionChanged += (_, _) => { if (bar.SelectedIndex >= 0) Change(() => Set("BarPosition", bar.SelectedIndex == 1 ? "top" : "bottom")); };
-        theme.SelectionChanged += (_, _) => { if (theme.SelectedIndex >= 0) Change(() => GlassAppearance.UseAppearance(new[] { "clear", "light", "dark" }[theme.SelectedIndex],path:path)); };
+        theme.SelectionChanged += (_, _) => { if (theme.SelectedIndex >= 0) Change(() => GlassAppearance.UseAppearance(new[] { "light", "clear", "dark" }[theme.SelectedIndex],path:path)); };
         tint.Toggled += (_, _) => Change(() => GlassAppearance.UseAppearance(tint: tint.IsOn,path:path));
-        accentSource.SelectionChanged += (_, _) => { if(accentSource.SelectedIndex < 0)return;var mode=new[] { "theme", "custom", "adaptive" }[accentSource.SelectedIndex];Change(() => Set("AccentMode",mode));customRow.Visibility=mode=="custom"?Visibility.Visible:Visibility.Collapsed; };
+        accentSource.SelectionChanged += (_, _) => { if(accentSource.SelectedIndex < 0)return;var mode=new[] { "theme", "adaptive", "custom" }[accentSource.SelectedIndex];Change(() => {Set("AccentMode",mode);if(mode=="theme")GlassAppearance.UseAppearance(tint:false,path:path);});customRow.Visibility=mode=="custom"?Visibility.Visible:Visibility.Collapsed;tintRow.Visibility=mode=="theme"?Visibility.Collapsed:Visibility.Visible;if(mode=="theme"&&tint.IsOn)tint.IsOn=false; };
         async Task UpdateSwatch(){var current=GlassAppearance.Load(path);var target=game??preview?.SelectedGame;
             var color=current.AccentColor.Length==7&&ArtAccent.TryParse(current.AccentColor,out var parsed)?parsed:target is not null?(await OverlayAccent.ForGameAsync(target)).Color:global::Windows.UI.Color.FromArgb(255,160,160,160);
             colorDot.Fill=new Microsoft.UI.Xaml.Media.SolidColorBrush(color);ToolTipService.SetToolTip(accentColor,"Choose custom color: "+ArtAccent.Hex(color));}

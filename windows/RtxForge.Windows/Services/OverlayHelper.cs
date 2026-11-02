@@ -22,12 +22,27 @@ public static class OverlayHelper
     }
     internal static string PipeName => "rtxForge.Overlay." + Process.GetCurrentProcess().SessionId;
     public static string StartupCommand(string executable) => $"\"{executable}\" --overlay-helper";
+    static void CacheRenderer(string executable,string gameId,ForgeSettings settings)
+    {
+        var renderer=settings.OverlayRenderer;
+        if(settings.GameOverlaySettings.TryGetValue(gameId,out var local)&&local["overlay_renderer"]?.ToString() is "game" or "optiscaler")renderer=local["overlay_renderer"]!.ToString();
+        using var renderers=Registry.CurrentUser.CreateSubKey(@"Software\rtxForge\Overlay\Renderers");
+        renderers.SetValue(executable,renderer=="game"?1:0,RegistryValueKind.DWord);
+    }
+    internal static void CacheRenderer(Game game,ForgeSettings settings)
+    {
+        if(game.EngineRow?["exe"] is null)return;
+        var executable=Path.GetFullPath(Path.Combine(game.Location,game.EngineRow["exe"]!.ToString()));
+        using var roots=Registry.CurrentUser.CreateSubKey(@"Software\rtxForge\Overlay\RendererGames");
+        roots.SetValue(executable,game.Id,RegistryValueKind.String);CacheRenderer(executable,game.Id,settings);
+    }
 
     public static async Task CacheGameIdentitiesAsync(IEnumerable<Game> games)
     {
         try
         {
             using var identities = Registry.CurrentUser.CreateSubKey(@"Software\rtxForge\Overlay\Games");
+            var settings=ForgeSettings.Load();
             foreach (var game in games.Where(g => g.EngineRow?["exe"] is not null))
             {
                 var relative = game.EngineRow!["exe"]!.ToString();
@@ -36,6 +51,7 @@ public static class OverlayHelper
                 var palette = await OverlayAccent.ForGameAsync(game);
                 var color = palette.Color;
                 identities.SetValue(exe, $"#{color.R:X2}{color.G:X2}{color.B:X2}|{game.Name}", RegistryValueKind.String);
+                CacheRenderer(game,settings);
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException) { }
@@ -52,7 +68,7 @@ public static class OverlayHelper
         }
         ConfigurePanel(settings);
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-        if (settings.OverlayHelper && settings.OverlayStartWithWindows && settings.OverlayRenderer != "optiscaler")
+        if (settings.OverlayHelper && settings.OverlayStartWithWindows && (settings.OverlayRenderer=="game"||settings.GameOverlaySettings.Values.Any(value=>value["overlay_renderer"]?.ToString()=="game")))
             key.SetValue("rtxForge Overlay", StartupCommand(Environment.ProcessPath!), RegistryValueKind.String);
         else key.DeleteValue("rtxForge Overlay", throwOnMissingValue: false);
     }
@@ -71,6 +87,8 @@ public static class OverlayHelper
         overlay.SetValue("ShowWelcome", settings.OverlayWelcome ? 1 : 0, RegistryValueKind.DWord);
         overlay.SetValue("WelcomePosition", Array.IndexOf(ForgeSettings.WelcomePositions, settings.OverlayWelcomePosition), RegistryValueKind.DWord);
         overlay.SetValue("InGamePanel", settings.OverlayRenderer == "game" ? 1 : 0, RegistryValueKind.DWord);
+        using var roots=Registry.CurrentUser.OpenSubKey(@"Software\rtxForge\Overlay\RendererGames");
+        if(roots is not null)foreach(var executable in roots.GetValueNames())if(roots.GetValue(executable) is string gameId)CacheRenderer(executable,gameId,settings);
     }
 
     public static async Task<string?> CommandAsync(string command, bool start = true)

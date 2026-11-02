@@ -6,7 +6,7 @@ const calls=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
 let source,reviewed,positionSupport=true;
 const nav=name=>page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name,exact:true});
 const section=name=>page.getByRole('navigation',{name:'Settings sections'}).getByRole('button',{name,exact:true});
-await page.route('**/api/snapshot',async route=>{const response=await route.fetch();source=await response.json();if(positionSupport)source.overlayDefaults={...source.overlayDefaults,SidePanelSide:'left',BarPosition:'bottom'};await route.fulfill({json:source});});
+await page.route('**/api/snapshot',async route=>{const response=await route.fetch();source=await response.json();if(positionSupport)source.overlayDefaults={...source.overlayDefaults,SidePanelSide:'left',BarPosition:'bottom'};else{source.overlayDefaults={...source.overlayDefaults};delete source.overlayDefaults.SidePanelSide;delete source.overlayDefaults.BarPosition;}await route.fulfill({json:source});});
 await page.route('**/api/engine/status',route=>route.fulfill({json:{enabled:true,reason:'Contract fixture; no actual operations.'}}));
 await page.route('**/api/engine',async route=>{
   const request=route.request().postDataJSON();calls.push(request);

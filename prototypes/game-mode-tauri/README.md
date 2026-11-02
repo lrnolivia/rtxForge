@@ -1,6 +1,6 @@
-# Game Mode prototype
+# rtxForge Game Mode
 
-A shared Tauri 2 shell for Windows and Linux, using the approved overlay glass materials. This is an isolated prototype; the existing native applications remain the production interfaces.
+The Game Mode application for Windows and Linux, using the approved overlay glass materials and shared rtxForge engine. The browser demo uses the same interface with game-file operations disabled. Native platform and game-operation qualification are tracked explicitly in [FEATURE_PARITY.md](FEATURE_PARITY.md).
 
 Library opens game tiles directly. Details uses a full-width desktop-style hero header with the poster beside the title, followed by the section navigation and translucent control workspace. Accent Tint affects that Details window only. Clear, Light and Dark remain independent choices.
 
@@ -72,4 +72,6 @@ Set `RTXFORGE_BROWSER=chrome` to use an installed Chrome channel for headless ch
 
 See [FEATURE_PARITY.md](FEATURE_PARITY.md) for exact implemented scope, evidence and remaining work. Compilation is not game runtime acceptance or approval to replace the existing native shell.
 
-The Windows Desktop Game Details page also uses the approved poster/title/information-card layout. Its information card uses light accent-hued ink on a moderately dark surface, or dark accent-hued ink on a light surface in Light mode. Hero titles adapt to sampled artwork without Screen blending. The existing native page continues to own navigation, operations and hero collapse.
+The Library fills the available workspace. Poster and capsule results use available height and width to fit complete rows in a scrollable pane, with reserved shadow padding. At a 2560×1440 CSS viewport (3840×2160 at 150%), the poster layout shows two complete rows. All games remain reachable by scrolling or controller focus. Search and resize recalculate the layout.
+
+Per-game color previews apply consistently to Details and Library selection in all three layouts and are remembered locally by this shell. Saved desktop accents remain the source when a local preview is absent. Automatic accents sample the original saved poster before display thumbnail conversion. Idle game names remain neutral.

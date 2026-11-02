@@ -32,13 +32,13 @@ The same shell carries Packages, Extras, Settings, and exact-token operation rev
 | Focus | 3px true accent outline, 5px offset |
 | Motion | 170–320ms; spring focus `cubic-bezier(.2,1.16,.32,1)` |
 
-Clear mode with Accent Tint on is the default. Accent Tint remains a persisted independent option. It applies only to the Details workspace. Clear and Dark tint use Screen blending with the actual accent; Light keeps neutral text with vivid accent selections. Global chrome and Library, Packages, Extras and Settings surfaces stay neutral. The generic background is the existing 3840×1240 Steam hero. Poster focus uses the original Game Mode artwork-derived core and bloom glow levels, with a subtle lift and scale. Nested cards do not reapply an opaque theme tint.
+Clear mode with Accent Tint on is the default. Accent Tint remains a persisted independent option and applies to the Details workspace. Hero titles use an adaptive shade of the actual accent with normal blending. Clear and Dark information cards use pale accent-hued text; Light uses dark accent-hued text over translucent light glass. Global chrome and Library, Packages, Extras and Settings surfaces stay neutral. General shadows are neutral; tinted Details cards may use soft accent shadows. The generic background is the existing 3840×1240 Steam hero. Poster focus lifts and scales the complete card. Nested cards do not reapply an opaque theme tint.
 
 The logo is the existing raw mark without a platter, paired with the neutral rtxForge wordmark. Font and icon licenses are retained beside the copied files.
 
 ## Responsiveness and access
 
-Desktop, compact desktop and narrow layouts are tested at 1440, 1280, 960 and 390 pixels. Most controls have 48px minimum height, with stable focus and no hover-only actions. Controller selection is available beside each tile. Reduced motion, forced colors, accessible labels, proper form controls and keyboard access are foundations.
+The shell uses the full viewport width, including 2560×1440 CSS pixels for a native 3840×2160 display at 150%. Library results fit complete poster or capsule rows using available width and height; their own inset scroller preserves toolbar access and shadow padding. Compact desktop and narrow layouts reflow controls, steppers and Presets columns. Most controls have 48px minimum height, with stable focus and no hover-only actions. Controller selection is available beside each tile. Xbox uses colored ABXY circles, PlayStation uses colored shapes, and Nintendo uses monochrome letter prompts. Reduced motion, forced colors, accessible labels, proper form controls and keyboard access are foundations.
 
 ## Truth
 

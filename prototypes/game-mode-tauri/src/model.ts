@@ -1,7 +1,7 @@
 import { completeArtwork } from './artwork';
 export type View = 'library' | 'presets' | 'details' | 'packages' | 'extras' | 'settings' | 'operation';
 export type Theme = 'clear' | 'light' | 'dark';
-export interface Game { id: string; name: string; path: string; appid: string | null; source: string; status: string; art: string | null; hero?: string | null; capsule?: string | null; description?: string; developers?: string[] | string; release?: string; accent?: string; artworkAccent?: string | null; localArtwork?: string[]; heroFocus?: [number,number]; testStatus?: string; notes?: string; testActive?: boolean; savedRecord?: Record<string,unknown> }
+export interface Game { id: string; name: string; path: string; appid: string | null; source: string; status: string; art: string | null; hero?: string | null; capsule?: string | null; description?: string; developers?: string[] | string; release?: string; accent?: string; artworkAccent?: string | null; artworkAccentReady?: boolean; localArtwork?: string[]; heroFocus?: [number,number]; testStatus?: string; notes?: string; testActive?: boolean; savedRecord?: Record<string,unknown> }
 export interface Package { id: string; name: string; version: string; repository: string; sha256: string; status: string }
 export interface Snapshot {
   schema: number; source: string; platform: string; readOnly: boolean; capturedAt: string;
@@ -16,6 +16,12 @@ export interface Snapshot {
 }
 export interface Appearance { theme: Theme; tint: boolean; accent: string; motion: boolean; text: 'standard' | 'large'; navigation: 'top' | 'bottom'; detailsNavigation: 'tabs' | 'sidebar'; scale: 'auto' | number; background?:string }
 export const appearanceDefaults: Appearance = { theme: 'clear', tint: true, accent: '#d8d5ce', motion: true, text: 'standard', navigation: 'top', detailsNavigation: 'sidebar', scale: 'auto' };
+export function readGameAccents(): Map<string,string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem('rtxforge-game-mode-accents') || '{}');
+    return new Map(Object.entries(saved).slice(0,1000).filter((entry): entry is [string,string] => typeof entry[1] === 'string' && /^#[0-9a-f]{6}$/i.test(entry[1])));
+  } catch { return new Map(); }
+}
 export function readAppearance(): Appearance {
   try {
     const value = JSON.parse(localStorage.getItem('rtxforge-game-mode-prototype') || '{}');

@@ -2,9 +2,11 @@ import './style.css';
 import { captureArrival, arrive } from './motion';
 import { bindArtworkFailures, hydrateArtwork, clearArtworkCache } from './artwork';
 // Artwork sources remain exact library identities.
-import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type Snapshot, type View } from './model';
+import { appearanceDefaults, escape as e, readAppearance, readGameAccents, readSnapshot, type Appearance, type Game, type Snapshot, type View } from './model';
 import { operationFlow,operationStep,flowGame } from './operation-ui';
 import { installInput } from './input';
+import { setupLibraryLayout } from './library-layout';
+import { controllerGlyph, controllerLabels as familyLabels, type ControllerFamily } from './controller-glyphs';
 import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero } from './art-accent';
 import { enhanceSelects, closeSelectMenu, selectMenuOpen } from './select-menu';
 import { settingsSections, settingsContent } from './settings-content';
@@ -42,7 +44,11 @@ let artworkRole = 'poster', artworkPath = '', artworkQuery = '', artworkMatches:
 let artworkAssets: Record<string, unknown>[] = [], artworkMessage = '', gridConnected: boolean | null = null;
 let shellMenuOpen = false, detailsMenuOpen=false, presetSelection = false;
 const presetId = '__library-presets__';
-const gameAccentDrafts = new Map<string, string>();
+const gameAccentDrafts = readGameAccents();
+function persistGameAccents() {
+  try { localStorage.setItem('rtxforge-game-mode-accents',JSON.stringify(Object.fromEntries(gameAccentDrafts))); }
+  catch { announce('The color is available for this session, but could not be saved locally.'); }
+}
 const supportSelection = new Set<string>();
 let heroResize: ResizeObserver | undefined;
 let renderedView: View | undefined, renderedGame = '';
@@ -81,10 +87,11 @@ function setView(next: View, focus = true) {
   if (operation?.stage === 'running' && next !== 'operation') { announce('The operation is running. Request cancellation to stop safely.'); return; }
   if (view === 'operation' && next !== 'operation' && operation?.stage === 'checking') operation.dismissed = true;
   const previousView = view;
-  if (view === 'library') libraryScroll=app.querySelector<HTMLElement>('#content')?.scrollTop||0;
+  if (view === 'library') libraryScroll=app.querySelector<HTMLElement>('#game-results')?.scrollTop||app.querySelector<HTMLElement>('#content')?.scrollTop||0;
   shellMenuOpen = false; detailsMenuOpen=false; view = next; render();
   if (focus) document.querySelector<HTMLElement>('#page-title')?.focus();
   const content=app.querySelector<HTMLElement>('#content');if(content)content.scrollTop=next==='library'?libraryScroll:0;
+  if(next==='library'){const results=app.querySelector<HTMLElement>('#game-results');if(results)results.scrollTop=libraryScroll;}
   if(next==='library'&&previousView==='details'&&focus) [...app.querySelectorAll<HTMLElement>('[data-game]')].find(node=>node.dataset.game===selectedId)?.focus({preventScroll:true});
   if (next === 'settings' && backend.enabled && !sharedPreferences) void loadPreferences();
   if(next==='details'&&backend.enabled){const game=selectedGame();if(game)void getEngineRows(game).then(()=>{if(view==='details'&&selectedId===game.id)render();}).catch(problem=>announce(problem.message));}
@@ -149,7 +156,7 @@ function gameResults(filtered: Game[], total: number) {
     const osBadges=oses.length?`<span class="library-os-badges" title="${actual?'Current engine check':'Saved library check'}">${oses.map(os=>`<img src="/icons/os-${os}.svg" alt="${String(os)==='windows'?'Windows':'Linux'}" width="16" height="16"/>`).join('')}</span>`:'';
     const profile=record?.installed?String(record.profile||'Configured'):record?.installed===false?'Not configured':'Not checked';
     const state=actual?actual.blocked?String(actual.blocked):actual.installed?'Installed':'Available':record?.installed?'Installed':'Not checked';
-    const color=game.accent||game.artworkAccent||'var(--ink)';
+    const color=detailsAccent(game)||'var(--ink)';
     return `<article class="game-item" data-library-game="${e(game.id)}" data-selected="${batchSelection.has(game.id)}" style="--game-accent:${e(color)};--game-selected-ink:${selectionInk(color)}">${art?`<img class="artwork-glow glow-core" src="${e(art)}" alt="" aria-hidden="true"/><img class="artwork-glow glow-bloom" src="${e(art)}" alt="" aria-hidden="true"/>`:''}<button class="game-card" data-game="${e(game.id)}" aria-label="Open ${e(game.name)} details"><div class="poster">${thumbnail({...game,art:art||null})}${libraryView==='list'?'':osBadges}</div><div class="game-copy"><h3 class="game-title">${e(game.name)}</h3><span class="game-source">${e(game.source)}</span>${libraryView!=='list'?`<span class="library-card-status" title="${actual?'Current engine check':'Saved library check'}">${icon(actual?.blocked?'warning':record?.installed?'check':'info')}<span>${e(record?.installed?profile:actual?state:'Not checked')}</span></span>`:''}</div>${libraryView==='list'?`<span class="library-profile-chip" title="${actual?'Current engine check':'Saved library check'}">${e(profile)}</span><span class="library-row-state" title="${actual?'Current engine check':'Saved library check'}"><i class="state-dot ${record?.installed?'configured':''}"></i><span>${e(state)}</span>${osBadges}</span><span class="library-open-chip">Details</span>`:''}</button><button class="select-game" data-select-game="${e(game.id)}" aria-label="Select ${e(game.name)} for batch review" aria-pressed="${batchSelection.has(game.id)}"><span class="selection-check" aria-hidden="true">${batchSelection.has(game.id)?icon('check'):''}</span></button></article>`;
   }).join('')}</div>`;
 }
@@ -224,13 +231,13 @@ function gameCredits(game:Game) {
 }
 async function resolveLibraryAccents(data:Snapshot,games:Game[]=data.games) {
   await Promise.all(games.map(async game=>{
-    if(game.accent)return;
     const source=game.art||game.capsule||game.hero;if(!source)return;
-    const accent=await artworkAccent(game.id,source);
+    if(!game.accent&&!game.artworkAccentReady&&game.localArtwork?.includes('poster'))return;
+    const accent=game.artworkAccentReady?game.artworkAccent:await artworkAccent(game.id,source);
     // A cached local poster can arrive while the remote fallback is still sampling.
     if(snapshot!==data||(game.art||game.capsule||game.hero)!==source)return;
-    game.artworkAccent=accent;
-    const item=app.querySelector<HTMLElement>(`[data-library-game="${CSS.escape(game.id)}"]`);if(item){item.style.setProperty('--game-accent',game.artworkAccent||'var(--ink)');item.style.setProperty('--game-selected-ink',selectionInk(game.artworkAccent||'#b4b4b4'));}
+    if(!game.artworkAccentReady)game.artworkAccent=accent||'#b4b4b4';
+    const item=app.querySelector<HTMLElement>(`[data-library-game="${CSS.escape(game.id)}"]`);if(item){const color=detailsAccent(game);item.style.setProperty('--game-accent',color||'var(--ink)');item.style.setProperty('--game-selected-ink',selectionInk(color||'#b4b4b4'));}
     if(view==='details'&&selectedId===game.id){applyDetailsAccent();if(detailsSection==='appearance')render();}
   }));
 }
@@ -581,9 +588,9 @@ async function chooseBackground(file:File) {
   finally{URL.revokeObjectURL(source);}
 }
 function controlGuide() {
-  const [accept,back,previous,next]=controllerLabels();
+  const glyph=(index:number)=>controllerGlyph(controllerFamily(),index);
   const row=(action:string,keys:string)=>`<div><dt>${action}</dt><dd>${keys}</dd></div>`;
-  return `<div class="control-guide"><section><h3>${icon('keyboard')}Keyboard</h3><dl>${row('Move','<kbd>Tab</kbd><span>or arrow keys</span>')}${row('Select','<kbd>Enter</kbd>')}${row('Back','<kbd>Esc</kbd>')}${row('Sections','<kbd>[</kbd><kbd>]</kbd>')}</dl></section><section><h3>${icon('controller')}Controller</h3><dl>${row('Move','<span>D-pad or left stick</span>')}${row('Select',`<kbd>${accept}</kbd>`)}${row('Back',`<kbd>${back}</kbd>`)}${row('Sections',`<kbd>${previous}</kbd><kbd>${next}</kbd>`)}</dl></section></div><p class="control-status subtle">${controller?'Controller connected.':'Connect a controller to navigate with a gamepad.'}</p>`;
+  return `<div class="control-guide"><section><h3>${icon('keyboard')}Keyboard</h3><dl>${row('Move','<kbd>Tab</kbd><span>or arrow keys</span>')}${row('Select','<kbd>Enter</kbd>')}${row('Back','<kbd>Esc</kbd>')}${row('Sections','<kbd>[</kbd><kbd>]</kbd>')}</dl></section><section><h3>${icon('controller')}Controller</h3><dl>${row('Move','<span>D-pad or left stick</span>')}${row('Select',glyph(0))}${row('Back',glyph(1))}${row('Sections',glyph(2)+glyph(3))}${row('Face buttons',glyph(4)+glyph(5))}</dl></section></div><p class="control-status subtle">${controller?'Controller connected.':'Connect a controller to navigate with a gamepad.'}</p>`;
 }
 function currentPreferences() { return { ...snapshot?.preferences, ...sharedPreferences, ...preferenceChanges }; }
 function sharedSettings() {
@@ -630,19 +637,22 @@ function setupScrollFades() {
   }
 }
 let arrivalKey = '';
+let disposeLibraryLayout = () => {};
 function render() {
   const priorFocus = document.activeElement instanceof HTMLElement && app.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = priorFocus ? (priorFocus.id ? `#${CSS.escape(priorFocus.id)}` : [...priorFocus.attributes].filter(a=>a.name.startsWith('data-')).map(a=>`[${a.name}="${CSS.escape(a.value)}"]`).join('')) : null;
   const nextArrival = `${view}:${view==='details'?selectedGame()?.id+':'+detailsSection:view==='settings'?settingsCategory:view==='operation'?operation?.stage:''}`;
   const arrival = nextArrival !== arrivalKey ? captureArrival(app) : null;
   closeSelectMenu(false);
+  disposeLibraryLayout();
   const sameSurface = renderedView === view && (view !== 'details' || renderedGame === selectedGame()?.id);
   const contentScroll = sameSurface ? app.querySelector<HTMLElement>('#content')?.scrollTop || 0 : 0;
   const detailsScroll = sameSurface ? app.querySelector<HTMLElement>('.details-scroll')?.scrollTop || 0 : 0;
+  const resultsScroll = sameSurface ? app.querySelector<HTMLElement>('#game-results')?.scrollTop || 0 : 0;
   applyAppearance();
   document.documentElement.dataset.surface = view;
   const content = view === 'library' ? library() : view === 'presets' ? presets() : view === 'details' ? details() : view === 'packages' ? packages() : view === 'extras' ? extras() : view === 'operation' ? operationView() : settings();
-  app.innerHTML = `<div class="shell"><header class="app-header"><a href="#library" class="brand" data-route="library" aria-label="rtxForge library"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></a><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><span>${icon('eye')}<span>Read-only preview</span></span><div id="input-hints">${hints()}</div><span class="reader-state"><i class="${snapshot ? 'connected' : ''}"></i>${loading ? 'Reading library' : snapshot ? 'Local library loaded' : 'Reader unavailable'}</span></footer></div>`;
+  app.innerHTML = `<div class="shell"><header class="app-header"><a href="#library" class="brand" data-route="library" aria-label="rtxForge library"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></a><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><span>${icon('eye')}<span>${backend.enabled?'Game Mode':'Read-only demo'}</span></span><div id="input-hints">${hints()}</div><span class="reader-state"><i class="${snapshot ? 'connected' : ''}"></i>${loading ? 'Reading library' : snapshot ? 'Local library loaded' : 'Reader unavailable'}</span></footer></div>`;
   const game = selectedGame(), scene = document.querySelector<HTMLElement>('#scene')!;
   scene.style.backgroundImage = '';
   scene.dataset.hero = 'false';
@@ -651,25 +661,28 @@ function render() {
   bind();
   setupHero();
   setupSettingsLayout();
+  disposeLibraryLayout = setupLibraryLayout(app);
   enhanceSelects(app);
   bindArtworkFailures(app);
   setupScrollFades();
   const main = app.querySelector<HTMLElement>('#content'); if(main)main.scrollTop=contentScroll;
+  const results = app.querySelector<HTMLElement>('#game-results'); if(results)results.scrollTop=resultsScroll;
   const scrollingDetails=app.querySelector<HTMLElement>('.details-scroll'); if(scrollingDetails) { scrollingDetails.scrollTop=detailsScroll; scrollingDetails.dispatchEvent(new Event('scroll')); }
   renderedView=view;renderedGame=selectedGame()?.id||'';
   if (arrival) arrive(app, arrival, view);
+  if (sameSurface && focusKey) app.querySelector<HTMLElement>(focusKey)?.focus({preventScroll:true});
   arrivalKey = nextArrival;
   showHints();
 }
-function controllerLabels() {
+function controllerFamily(): ControllerFamily {
   let family = String(preferenceChanges.controller_glyphs ?? sharedPreferences?.controller_glyphs ?? snapshot?.defaults.controller_glyphs ?? 'auto');
   if (family === 'auto') family = /dual|sony|playstation/i.test(controllerId) ? 'playstation' : /nintendo|switch/i.test(controllerId) ? 'nintendo' : /steam/i.test(controllerId) ? 'steam' : 'xbox';
-  const labels = ({ xbox: ['A', 'B', 'LB', 'RB'], playstation: ['Cross', 'Circle', 'L1', 'R1'], nintendo: ['B', 'A', 'L', 'R'], steam: ['A', 'B', 'L1', 'R1'], generic: ['South', 'East', 'L', 'R'] } as Record<string, string[]>)[family] || ['A', 'B', 'LB', 'RB'];
-  return labels;
+  return (['xbox','playstation','nintendo','steam','generic'].includes(family) ? family : 'xbox') as ControllerFamily;
 }
+function controllerLabels() { return familyLabels(controllerFamily()); }
 function hints() {
-  const labels=controllerLabels();
-  return controller ? `<span><kbd>${labels[0]}</kbd> Select</span><span><kbd>${labels[1]}</kbd> Back</span><span><kbd>${labels[2]}</kbd><kbd>${labels[3]}</kbd> Sections</span>` : '<span><kbd>Enter</kbd> Select</span><span><kbd>Esc</kbd> Back</span><span><kbd>Tab</kbd> Navigate</span>';
+  const glyph=(index:number)=>controllerGlyph(controllerFamily(),index);
+  return controller ? `<span>${glyph(0)} Select</span><span>${glyph(1)} Back</span><span>${glyph(2)}${glyph(3)} Sections</span>` : '<span><kbd>Enter</kbd> Select</span><span><kbd>Esc</kbd> Back</span><span><kbd>Tab</kbd> Navigate</span>';
 }
 function enhanceActionLabels() {
   const selector='.operation-actions button,.library-operation-actions button,.selection-bar button,.page-heading>button,.shortcut-actions button,button.extra-actions,.detail-nav button,.app-header nav button,.settings-tabs button';
@@ -693,14 +706,14 @@ function bind() {
   app.querySelector<HTMLInputElement>('#background-image-file')?.addEventListener('change',event=>{const file=(event.target as HTMLInputElement).files?.[0];if(file)void chooseBackground(file);});
   app.querySelectorAll<HTMLElement>('[data-tool-kind]').forEach(node=>node.addEventListener('click',()=>{ extraKind=node.dataset.toolKind!; extraSource=''; toolImportOpen=true; render(); app.querySelector<HTMLInputElement>('#extra-source')?.focus(); }));
   app.querySelector<HTMLSelectElement>('#test-result')?.addEventListener('change',event=>{ const game=selectedGame(); if(game) void engineRequest('notes_save',{game:game.path,status:(event.target as HTMLSelectElement).value,notes:noteDrafts.get(game.id)??game.notes??''}).then(()=>announce('Test result saved.')).catch(problem=>announce(problem.message)); });
-  app.querySelector<HTMLInputElement>('#game-accent-color')?.addEventListener('input',event=>{ const game=selectedGame(); if(game)gameAccentDrafts.set(game.id,(event.target as HTMLInputElement).value); applyDetailsAccent(); });
+  app.querySelector<HTMLInputElement>('#game-accent-color')?.addEventListener('input',event=>{ const game=selectedGame(); if(game){gameAccentDrafts.set(game.id,(event.target as HTMLInputElement).value);persistGameAccents();const reset=app.querySelector<HTMLButtonElement>('[data-action="reset-game-accent"]');if(reset)reset.disabled=false;} applyDetailsAccent(); });
   app.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLButtonElement>('[data-preset-key]').forEach(node => node.addEventListener(node instanceof HTMLButtonElement ? 'click' : 'change',()=>{ drafts.set(presetId,{...drafts.get(presetId),[node.dataset.presetKey!]:node.dataset.presetValue ?? node.value}); render(); app.querySelector<HTMLElement>(`[data-preset-key="${node.dataset.presetKey}"]${node.dataset.presetValue ? `[data-preset-value="${node.dataset.presetValue}"]` : ''}`)?.focus(); }));
   app.querySelectorAll<HTMLElement>('[data-route]').forEach(node => node.addEventListener('click', event => { event.preventDefault(); setView(node.dataset.route as View); }));
   app.querySelectorAll<HTMLElement>('[data-game]').forEach(node => node.addEventListener('click', () => { selectedId = node.dataset.game!; detailsSection='overview'; extraRecords=[];extraSource='';toolImportOpen=false; setView('details'); }));
   app.querySelectorAll<HTMLButtonElement>('[data-layout]').forEach(node => node.addEventListener('click', () => { libraryView = node.dataset.layout!; render(); app.querySelector<HTMLElement>(`[data-layout="${libraryView}"]`)?.focus(); }));
   app.querySelectorAll<HTMLElement>('[data-library-mode]').forEach(node=>node.addEventListener('click',()=>{libraryMode=node.dataset.libraryMode;const group=node.closest<HTMLElement>('.feature-mode-segments')!;group.style.setProperty('--selected-mode',String(['nr-only','mfg-only','nr-mfg'].indexOf(libraryMode!)));group.querySelectorAll<HTMLElement>('button').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.libraryMode===libraryMode)));}));
   app.querySelector<HTMLSelectElement>('#library-filter')?.addEventListener('change',event=>void filterLibrary((event.target as HTMLSelectElement).value));
-  app.querySelector<HTMLInputElement>('#library-search')?.addEventListener('input', event => { query = (event.target as HTMLInputElement).value; app.querySelector('#game-results')!.innerHTML = gameResults(filteredLibrary(), snapshot?.games.length || 0); bindResults(); });
+  app.querySelector<HTMLInputElement>('#library-search')?.addEventListener('input', event => { query = (event.target as HTMLInputElement).value; disposeLibraryLayout(); app.querySelector('#game-results')!.innerHTML = gameResults(filteredLibrary(), snapshot?.games.length || 0); bindResults(); disposeLibraryLayout = setupLibraryLayout(app); });
   app.querySelectorAll<HTMLElement>('[data-number-step]').forEach(node=>node.addEventListener('click',()=>{const field=node.parentElement?.querySelector<HTMLInputElement>('input[type=number]');if(!field||field.disabled)return; if(node.dataset.numberStep==='1')field.stepUp();else field.stepDown();field.dispatchEvent(new Event('change',{bubbles:true}));}));
   app.querySelectorAll<HTMLElement>('[data-action]').forEach(node => node.addEventListener('click', () => action(node.dataset.action!)));
   app.querySelectorAll<HTMLElement>('[data-theme-choice]').forEach(node => node.addEventListener('click', () => { appearance.theme = node.dataset.themeChoice as Appearance['theme']; applyAppearance(); render(); app.querySelector<HTMLElement>(`[data-theme-choice="${appearance.theme}"]`)?.focus(); }));
@@ -782,7 +795,7 @@ function bindSelections() {
   app.querySelectorAll<HTMLElement>('[data-select-game]').forEach(node => node.addEventListener('click', () => { const id = node.dataset.selectGame!; if (batchSelection.has(id)) batchSelection.delete(id); else batchSelection.add(id); render(); app.querySelector<HTMLElement>(`[data-select-game="${CSS.escape(id)}"]`)?.focus(); }));
 }
 function action(name: string) {
-  if (name === 'reset-game-accent') { const game=selectedGame(); if(game)gameAccentDrafts.delete(game.id); render(); return; }
+  if (name === 'reset-game-accent') { const game=selectedGame(); if(game)gameAccentDrafts.delete(game.id); persistGameAccents();render(); return; }
   if (name === 'reset-presets') { drafts.delete(presetId); render(); return; }
   if (name === 'select-preset-games') { presetSelection=true; batchSelection.clear(); setView('library'); announce('Select configured games, then review their preset changes.'); return; }
   if (name === 'end-preset-selection') { presetSelection=false; batchSelection.clear(); setView('presets'); return; }
@@ -952,6 +965,7 @@ async function chooseArtworkAsset(index: number) {
 }
 async function refresh() {
   clearArtworkCache();
+  document.documentElement.dataset.artworkReady='false';
   loading = true; error = ''; render();
   try {
     const firstRead=!snapshot;snapshot = await readSnapshot();
@@ -967,9 +981,10 @@ async function refresh() {
         const item=app.querySelector<HTMLElement>(`[data-library-game="${CSS.escape(game.id)}"]`);
         const source=libraryView==='grid'?game.art:game.capsule||game.art;
         if(role==='hero'||!source)return;
-        item?.querySelectorAll<HTMLImageElement>('img').forEach(image=>{image.src=source;image.style.visibility='';image.hidden=false;image.parentElement?.classList.remove('art-unavailable');});
+        item?.querySelectorAll<HTMLImageElement>('.poster>img,.artwork-glow').forEach(image=>{image.src=source;image.style.visibility='';image.hidden=false;image.parentElement?.classList.remove('art-unavailable');});
+        item?.querySelector('.artwork-unavailable')?.remove();
       }
-    }).then(()=>{if(snapshot===captured)void resolveLibraryAccents(captured);});
+    }).then(async()=>{if(snapshot===captured){await resolveLibraryAccents(captured);document.documentElement.dataset.artworkReady='true';}});
     announce(`Library refreshed. ${snapshot.games.length} games found.`);
   } catch (problem) { error = problem instanceof Error ? problem.message : 'The local reader is unavailable. Refresh to try again.'; announce(error); }
   finally { loading = false; render(); }
@@ -980,7 +995,7 @@ document.addEventListener('pointerdown',event=>{
   if(shellMenuOpen&&!target.closest('.shell-more')){shellMenuOpen=false;const menu=app.querySelector<HTMLElement>('#shell-menu');if(menu)menu.hidden=true;app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false');}
   if(detailsMenuOpen&&!target.closest('.hero-more')){detailsMenuOpen=false;const menu=app.querySelector<HTMLElement>('.game-menu');if(menu)menu.hidden=true;app.querySelector('[data-action="game-menu"]')?.setAttribute('aria-expanded','false');}
 });
-installInput(() => { if(selectMenuOpen()){closeSelectMenu();return;} if(detailsMenuOpen){detailsMenuOpen=false;render();app.querySelector<HTMLElement>('[data-action="game-menu"]')?.focus();return;} if (shellMenuOpen) { shellMenuOpen=false; const menu=app.querySelector<HTMLElement>('#shell-menu'); if(menu)menu.hidden=true; app.querySelector<HTMLElement>('#shell-menu-button')?.focus(); return; } if (view === 'operation' && operation?.stage === 'running') { announce('The operation is running. Use Request cancellation to stop safely.'); return; } if (view === 'operation' && (operation?.stage === 'review'||operation?.stage==='startup'||operation?.stage==='checking')) { void discardReview(); return; } if (view !== 'library') setView('library'); else app.querySelector<HTMLElement>('[data-route="library"]')?.focus(); }, delta => {
+installInput(() => { if(selectMenuOpen()){closeSelectMenu();return;} if(detailsMenuOpen){detailsMenuOpen=false;render();app.querySelector<HTMLElement>('[data-action="game-menu"]')?.focus();return;} if (shellMenuOpen) { shellMenuOpen=false; const menu=app.querySelector<HTMLElement>('#shell-menu'); if(menu)menu.hidden=true; app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false'); app.querySelector<HTMLElement>('#shell-menu-button')?.focus(); return; } if (view === 'operation' && operation?.stage === 'running') { announce('The operation is running. Use Request cancellation to stop safely.'); return; } if (view === 'operation' && (operation?.stage === 'review'||operation?.stage==='startup'||operation?.stage==='checking')) { void discardReview(); return; } if (view !== 'library') setView('library'); else app.querySelector<HTMLElement>('[data-route="library"]')?.focus(); }, delta => {
   if(selectMenuOpen()||shellMenuOpen||detailsMenuOpen||view==='operation')return;
   const index = tabs.findIndex(tab => tab.id === (view === 'details' ? 'library' : view));
   setView(tabs[(index + delta + tabs.length) % tabs.length].id);

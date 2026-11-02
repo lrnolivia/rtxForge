@@ -20,6 +20,7 @@
     "check:polish": "node tests/ui-polish.mjs",
     "check:install": "node tests/install-flow.mjs",
     "check:controller": "node tests/controller.mjs"
+    ,"check:shell": "node tests/shell.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",

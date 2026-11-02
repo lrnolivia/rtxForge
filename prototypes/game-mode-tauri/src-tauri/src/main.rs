@@ -83,5 +83,5 @@ async fn artwork(app: tauri::AppHandle, id: String, role: String) -> Result<serd
 
 fn main() {
     tauri::Builder::default().plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![snapshot, artwork, choose_path, desktop_mode, exit_app, engine::engine_status, engine::engine_request])
-        .run(tauri::generate_context!()).expect("Could not run the Game Mode prototype");
+        .run(tauri::generate_context!()).expect("Could not run Game Mode");
 }

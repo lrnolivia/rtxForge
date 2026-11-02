@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "rtxForge Game Mode Prototype",
+  "productName": "rtxForge Game Mode",
   "version": "0.1.0",
   "identifier": "fi.loew.rtxforge.gamemode.prototype",
   "build": {

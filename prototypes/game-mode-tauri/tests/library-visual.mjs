@@ -28,7 +28,7 @@ try{
  }
  await page.locator('.game-card').first().click();
  expect(await page.locator('.details-layout').evaluate(n=>getComputedStyle(n,'::before').left)).toBe('0px');
- const hero=await page.locator('.hero-artwork').boundingBox(),frame=await page.locator('#content').boundingBox();expect(Math.abs(hero.x-frame.x)).toBeLessThan(1);expect(Math.abs(hero.width-frame.width)).toBeLessThan(1);
+ await expect.poll(async()=>{const hero=await page.locator('.hero-artwork').boundingBox(),frame=await page.locator('#content').boundingBox();return Math.max(Math.abs(hero.x-frame.x),Math.abs(hero.width-frame.width));}).toBeLessThan(1);
  await page.getByRole('button',{name:'DLSS Files',exact:true}).click();expect(await page.locator('.detail-body h3').first().evaluate(n=>getComputedStyle(n).color)).toBe(await page.locator('body').evaluate(n=>getComputedStyle(n).color));
  for(const theme of ['clear','dark','light'])for(const accent of ['#ff473a','#ffd950','#ffffff','#000000','#17ff67','#307de8','#dc5ed1']){
   await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(({theme,accent})=>{document.documentElement.dataset.theme=theme;document.querySelector('#content').style.setProperty('--accent',accent);},{theme,accent});

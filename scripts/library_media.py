@@ -135,6 +135,16 @@ class LibraryMedia:
                 stamp=re.search(r'"Timestamp"\s*"(\d+)"',body)
                 accounts.append((int(stamp[1]) if stamp else 0,int(uid)-76561197960265728))
             grid=root/'userdata'/str(max(accounts)[1])/'config/grid' if accounts else None
+            from library_identity import legendary_number, legendary_shortcut_id
+            if grid and str(row.get('appid'))=='1328670' and legendary_number(row):
+                try:
+                    import engine_bridge
+                    if not hasattr(self,'engine'):self.engine=engine_bridge.module(self.config)
+                    appid=str(legendary_shortcut_id(self.engine,row,{
+                        'root':root,'shortcuts':grid.parent/'shortcuts.vdf'}))
+                except (OSError,ValueError):
+                    # Never show the collection's shared artwork for a missing child shortcut.
+                    continue
             if grid and row.get('source')!='Steam':
                 try:
                     import engine_bridge
@@ -146,7 +156,7 @@ class LibraryMedia:
                     if match:appid=str(self.engine._shortcut_int(match,'appid') & 0xffffffff)
                 except Exception:pass
             if not appid.isdigit():continue
-            for kind,custom,native in [('poster',appid+'p','library_600x900'),('capsule',appid,'header'),('hero',appid+'_hero','library_hero')]:
+            for kind,custom,native in [('poster',appid+'p','library_600x900'),('capsule',appid,'header'),('hero',appid+'_hero','library_hero'),('logo',appid+'_logo','logo')]:
                 paths=[]
                 if grid:paths.extend(grid/(custom+ext) for ext in ('.png','.jpg','.jpeg','.webp'))
                 cache=root/'appcache/librarycache'
@@ -158,7 +168,7 @@ class LibraryMedia:
                 paths.extend(sorted((p for p in cached if p.is_file()),key=lambda p:p.stat().st_mtime,reverse=True))
                 match=next((p for p in paths if p.is_file()),None)
                 if match:
-                    result[kind]=str(match);prefix={'poster':'art','capsule':'capsule','hero':'hero'}[kind]
+                    result[kind]=str(match);prefix='art' if kind=='poster' else kind
                     result[prefix+'_credit']='Your Steam library';result[prefix+'_link']=''
         return result
 
@@ -167,7 +177,10 @@ class LibraryMedia:
         return artwork_overrides.apply(self.settings,row,self._enrich(row,refresh))
 
     def _enrich(self,row,refresh=False):
-        ident=hashlib.sha256((str(row.get('appid') or '')+row['name']).encode()).hexdigest()[:24]
+        from library_identity import legendary_metadata
+        campaign=legendary_metadata(row)
+        metadata_key='|metadata:'+campaign['appid'] if campaign else ''
+        ident=hashlib.sha256((str(row.get('appid') or '')+row['name']+metadata_key).encode()).hexdigest()[:24]
         record=self.root/(ident+'.json');result={};errors=[];local=self.steam_art(row)
         timeout=max(5,min(30,int(self.settings.get('network_timeout',10))))
         if record.exists():
@@ -177,7 +190,8 @@ class LibraryMedia:
                 fresh=max(1,int(self.settings.get('cache_days',7)))*86400 if result.get('poster') or not self.settings['online_art'] else 6*3600
                 if not refresh and time.time()-saved.get('time',0)<fresh:return {**result,**local}
             except (OSError,ValueError,KeyError):result={}
-        appid=str(row.get('appid') or '')
+        appid=campaign['appid'] if campaign else str(row.get('appid') or '')
+        if campaign:result['metadata_appid']=appid
         if not appid.isdigit():appid=''
         if not appid and self.settings['steam_metadata']:
             # Enrichment identity is separate from the installed game's launcher ID.
@@ -192,6 +206,10 @@ class LibraryMedia:
                 response=json_request('https://store.steampowered.com/api/appdetails?'+urllib.parse.urlencode({'appids':appid,'l':'english','filters':'basic,genres,developers,release_date'})).get(appid,{})
                 if response.get('success'):
                     data=response['data'];result.update({'description':html.unescape(re.sub('<[^>]+>','',data.get('short_description',''))),'developers':', '.join(data.get('developers',[])),'genres':', '.join(g['description'] for g in data.get('genres',[])[:3]),'release':data.get('release_date',{}).get('date',''),'metadata_source':'Steam (exact title match)' if result.get('metadata_appid') else 'Steam','capsule_url':data.get('header_image','')})
+                    if campaign:
+                        result.update(metadata_source='Steam · '+campaign['title']+' · Legendary Edition',
+                                      release=campaign['year']+' · LE 2021',
+                                      metadata_title=campaign['title'],edition=campaign['edition'])
             except Exception:errors.append('Steam metadata unavailable')
         if not self.settings['online_art']:
             result.update(local)
@@ -200,8 +218,9 @@ class LibraryMedia:
         image_url='';credit='';link=''
         try:
             base='https://www.steamgriddb.com/api/public/'
-            matches=json_request(base+'search/autocomplete?'+urllib.parse.urlencode({'term':row['name'].lower()})).get('data',[])
-            exact=[m for m in matches if normalized(m['name'])==normalized(row['name'])]
+            lookup_name=campaign['title'] if campaign else row['name']
+            matches=json_request(base+'search/autocomplete?'+urllib.parse.urlencode({'term':lookup_name.lower()})).get('data',[])
+            exact=[m for m in matches if normalized(m['name'])==normalized(lookup_name)]
             if len(exact)==1:
                 game=exact[0];game_id=int(game['id'])
                 payload={'asset_type':'grid','game_id':[game_id],'page':0,'limit':8,'styles':['all'],'dimensions':['600x900'],'formats':['all'],'languages':['all'],'order':'score_desc','static':True,'animated':False,'nsfw':False,'humor':False,'epilepsy':False,'untagged':True}

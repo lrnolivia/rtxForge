@@ -26,6 +26,19 @@ def legendary_name(row):
     return f'Mass Effect {number} (LE)' if number else None
 
 
+def legendary_metadata(row):
+    """Campaign metadata is separate from the collection's launch app ID."""
+    number = legendary_number(row)
+    if not number or str(row.get('appid')) != '1328670':
+        return None
+    appid, title, year = {
+        1: ('17460', 'Mass Effect', '2007'),
+        2: ('24980', 'Mass Effect 2', '2010'),
+        3: ('1238020', 'Mass Effect 3', '2012'),
+    }[number]
+    return {'appid': appid, 'title': title, 'year': year, 'edition': 'Legendary Edition'}
+
+
 def legendary_shortcut_id(engine, row, account):
     """Match the separate entry by target and arguments, never its editable name."""
     number = legendary_number(row)

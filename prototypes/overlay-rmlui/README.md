@@ -29,6 +29,11 @@ and saturation sliders remain in God Mode. More holds
 Blur and Motion. Experimental font and material tuning lives in the separate,
 collapsed God Mode section, available only in this preview.
 
+Clear headings retain the game's hue with stronger chroma. Their perceptual
+lightness adapts to the sampled frosted surface for readable large text instead
+of Screen blending them into pale pastels. Bright yellow is kept out of olive
+or brown variants. Custom preview blend experiments remain available in God Mode.
+
 The self-test also checks window containment, Advanced content slots, Bar
 footer separation, Settings navigation and toast placement across 54 layout,
 viewport, text-size and scale combinations. `--layout-test` runs these bounds

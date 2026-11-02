@@ -310,8 +310,8 @@ struct Controller : Rml::EventListener
     std::array<float,3> clearAccent{};
     bool AccentLight()const {return appearance==4&&accentCharacter>=20&&accentCharacter<72;}
     std::array<float,3> SurfaceTint()const {return MaterialColor::AccentSurface(accent,accentCharacter,accentSaturation);}
-    std::string AccentTone(size_t slot,bool heading) {
-        auto source=accent;const auto scene=filtered[slot];MaterialColor::Color base=scene.valid?MaterialColor::Color{scene.r,scene.g,scene.b}:MaterialColor::Color{.35f,.35f,.35f};
+    std::string AccentTone(size_t slot,bool heading,Backdrop::SceneColor local={}) {
+        auto source=accent;const auto scene=local.valid?local:filtered[slot];MaterialColor::Color base=scene.valid?MaterialColor::Color{scene.r,scene.g,scene.b}:MaterialColor::Color{.35f,.35f,.35f};
         if(appearance==3)base=MaterialColor::ClearSurface(base,clearOpacity/100.f,MaterialColor::Mode(surfaceBlend),blendStrength/100.f);
         else if(appearance==4){const auto tint=SurfaceTint();for(size_t i=0;i<3;++i)base[i]=base[i]*(1-accentOpacity/100.f)+tint[i]*accentOpacity/100.f;}
         else {const float tint=(appearance==1?lightOpacity:darkOpacity)/100.f,tone=appearance==1?.86f:.07f;for(auto& channel:base)channel=channel*(1-tint)+tone*tint;}
@@ -319,6 +319,7 @@ struct Controller : Rml::EventListener
         auto mixed=MaterialColor::Blend(base,source,MaterialColor::Mode(mode));
         if(mode=="screen"&&MaterialColor::LinearLuma(source)>.55f)mixed=source;
         for(size_t i=0;i<3;++i)source[i]+=(mixed[i]-source[i])*strength;
+        if(heading&&BaseAppearance()==3&&!customTheme)source=MaterialColor::ClearHeading(accent,base);
         if(appearance==1||AccentLight()){
             const float contrast=(MaterialColor::LinearLuma(base)+.05f)/(MaterialColor::LinearLuma(source)+.05f);
             if(MaterialColor::YellowFamily(accent)){
@@ -329,16 +330,17 @@ struct Controller : Rml::EventListener
         return Hex(source[0],source[1],source[2]);
     }
     void AdaptiveForeground(const Backdrop& backdrop,double now) {
-        const float dt=lastForeground<0?.1f:float(now-lastForeground);lastForeground=now;document->SetClass("clear-foreground",appearance==3);
+        const float dt=lastForeground<0?.1f:float(now-lastForeground);lastForeground=now;document->SetClass("clear-foreground",BaseAppearance()==3);
         if(clearAccent!=accent)clearAccent=accent;
         Rml::ElementList elements;document->QuerySelectorAll(elements,"h1,h2,h3,h1 span,h2 span,h3 span,label,.hint,.brand,.welcome-wordmark,.welcome-message,.preview-note,button,select,selectvalue,.button-label,.field-heading span,.status-note,.glyph,.metadata-line,.mini-stat strong,.mini-stat-detail");
         const std::unordered_set<Rml::Element*> alive(elements.begin(),elements.end());
         std::erase_if(clearForeground,[&](auto* e){return !alive.contains(e);});
-        if(appearance!=3){for(auto* e:clearForeground){e->RemoveProperty("color");e->RemoveProperty("image-color");e->RemoveProperty("font-effect");}clearForeground.clear();return;}
+        if(BaseAppearance()!=3){for(auto* e:clearForeground){e->RemoveProperty("color");e->RemoveProperty("image-color");e->RemoveProperty("font-effect");}clearForeground.clear();return;}
         for(auto* e:elements){bool panel=false,menu=false;for(auto* p=e;p;p=p->GetParentNode()){if(p->IsClassSet("glass"))panel=true;if(p->GetId()=="settings-menu"||p->GetTagName()=="selectbox")menu=true;}if(!panel||menu)continue;
-            bool heading=false;size_t slot=0;for(auto* p=e;p;p=p->GetParentNode()){heading|=p->GetTagName()=="h1"||p->GetTagName()=="h2"||p->GetTagName()=="h3";if(p->GetId()=="inspector")slot=1;else if(p->GetId()=="welcome")slot=2;else if(p->GetId()=="type-panel")slot=3;}
+            Rml::Element* heading=nullptr;size_t slot=0;for(auto* p=e;p;p=p->GetParentNode()){if(p->GetTagName()=="h1"||p->GetTagName()=="h2"||p->GetTagName()=="h3")heading=p;if(p->GetId()=="inspector")slot=1;else if(p->GetId()=="welcome")slot=2;else if(p->GetId()=="type-panel")slot=3;}
             clearForeground.insert(e);
-            const auto property=e->IsClassSet("glyph")?"image-color":"color";const auto desired=heading?AccentTone(slot,true):"#f5f1eaff";
+            Backdrop::SceneColor sampled{};if(heading){const auto at=heading->GetAbsoluteOffset(Rml::BoxArea::Border),size=heading->GetBox().GetSize(Rml::BoxArea::Border);sampled=backdrop.Background(at.x,at.y,size.x,size.y);}
+            const auto property=e->IsClassSet("glyph")?"image-color":"color";const auto desired=heading?AccentTone(slot,true,sampled):"#f5f1eaff";
             const auto packed=std::stoul(desired.substr(1),nullptr,16);const Rml::Colourb color{Rml::byte(packed>>24),Rml::byte(packed>>16),Rml::byte(packed>>8),Rml::byte(packed)};
             const auto* local=e->GetLocalProperty(property);if(!local||local->Get<Rml::Colourb>()!=color)e->SetProperty(property,desired);
             if(!e->GetLocalProperty("font-effect"))e->SetProperty("font-effect","none");

@@ -79,4 +79,22 @@ inline Color ClearSurface(Color backdrop,float tint,int mode,float strength) {
     return source;
 }
 inline float LinearLuma(Color c) {for(auto& v:c)v=v<=.04045f?v/12.92f:std::pow((v+.055f)/1.055f,2.4f);return .2126f*c[0]+.7152f*c[1]+.0722f*c[2];}
+inline float Contrast(Color a,Color b) {const float x=LinearLuma(a),y=LinearLuma(b);return (std::max(x,y)+.05f)/(std::min(x,y)+.05f);}
+inline Color ClearHeading(Color accent,Color backdrop) {
+    // Screen alone dilutes the game's chroma with the scene. Recover the hue
+    // first, then move perceptual lightness only as far as readability needs.
+    const auto vivid=Saturation(accent,150);
+    if(Contrast(vivid,backdrop)>=3.f)return vivid;
+    const bool darken=LinearLuma(backdrop)>.25f;
+    const bool brightYellow=YellowFamily(accent)&&*std::max_element(accent.begin(),accent.end())>.9f
+        &&*std::max_element(accent.begin(),accent.end())-*std::min_element(accent.begin(),accent.end())>.6f;
+    for(int step=0;step<=50;++step){
+        const float lightness=darken?.80f-step*.01f:.50f+step*.01f;
+        const auto candidate=AccentTone(vivid,lightness);
+        // A bright yellow must remain yellow, never become olive or brown.
+        if(brightYellow&&MuddyShade(candidate))continue;
+        if(Contrast(candidate,backdrop)>=3.f)return candidate;
+    }
+    return vivid;
+}
 }

@@ -239,11 +239,12 @@ float4 Average(Vertex v):SV_Target {float3 color=0;[unroll]for(int y=0;y<4;y++)[
         context->IASetInputLayout(nullptr);context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);context->VSSetShader(vertex.Get(),nullptr,0);context->GSSetShader(nullptr,nullptr,0);context->RSSetState(raster.Get());context->OMSetDepthStencilState(depth.Get(),0);context->OMSetBlendState(alpha.Get(),nullptr,0xffffffff);
         auto* cb=constants.Get();context->PSSetConstantBuffers(0,1,&cb);auto* sm=sampler.Get();context->PSSetSamplers(0,1,&sm);data.axis[0]=reducedMotion?0:std::clamp(vx/120.f,-12.f,12.f)/width;data.axis[1]=reducedMotion?0:std::clamp(vy/120.f,-12.f,12.f)/height;if(data.output[0]>.5f)context->OMSetBlendState(opaque.Get(),nullptr,0xffffffff);auto* background=sceneView.Get();context->PSSetShaderResources(1,1,&background);Bind(destination,source,layer.Get(),width,height);ID3D11ShaderResourceView* none[2]={};context->PSSetShaderResources(0,2,none);
     }
-    void Sample(const std::vector<Panel>& panels,double now)
+    void Sample(const std::vector<Panel>& panels,double now,bool wait=false)
     {
-        if(gridPending){D3D11_MAPPED_SUBRESOURCE map{};if(SUCCEEDED(context->Map(gridReadback.Get(),0,D3D11_MAP_READ,D3D11_MAP_FLAG_DO_NOT_WAIT,&map))){for(int y=0;y<36;y++)for(int x=0;x<64;x++){const auto* p=static_cast<const unsigned char*>(map.pData)+y*map.RowPitch+x*4;grid[y*64+x]={p[0]/255.f,p[1]/255.f,p[2]/255.f,true};}context->Unmap(gridReadback.Get(),0);gridPending=false;}}
+        if(gridPending){D3D11_MAPPED_SUBRESOURCE map{};const auto result=context->Map(gridReadback.Get(),0,D3D11_MAP_READ,wait?0:D3D11_MAP_FLAG_DO_NOT_WAIT,&map);if(wait)Check(result);if(SUCCEEDED(result)){for(int y=0;y<36;y++)for(int x=0;x<64;x++){const auto* p=static_cast<const unsigned char*>(map.pData)+y*map.RowPitch+x*4;grid[y*64+x]={p[0]/255.f,p[1]/255.f,p[2]/255.f,true};}context->Unmap(gridReadback.Get(),0);gridPending=false;}}
         for(size_t i=0;i<readbacks.size();++i)if(pending[i]) {
-            D3D11_MAPPED_SUBRESOURCE map{};const auto result=context->Map(readbacks[i].Get(),0,D3D11_MAP_READ,D3D11_MAP_FLAG_DO_NOT_WAIT,&map);
+            D3D11_MAPPED_SUBRESOURCE map{};const auto result=context->Map(readbacks[i].Get(),0,D3D11_MAP_READ,wait?0:D3D11_MAP_FLAG_DO_NOT_WAIT,&map);
+            if(wait)Check(result);
             if(SUCCEEDED(result)) {const auto* p=static_cast<const unsigned char*>(map.pData);measured[i]={p[0]/255.f,p[1]/255.f,p[2]/255.f,true};context->Unmap(readbacks[i].Get(),0);pending[i]=false;}
         }
         if(now-lastSample<.25)return;

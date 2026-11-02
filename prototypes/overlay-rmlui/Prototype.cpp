@@ -512,7 +512,7 @@ int wmain(int argc,wchar_t** argv)
             Require(sceneSelect->GetNumOptions()==int(library.names.size())&&sceneSelect->GetValue()=="0","Preview game choices did not initialize");
         }
         std::vector<double> costs;int frames=0;double lastPreferences=0,nextSample=0;int selectedScene=0;auto stableAccent=accent;
-        if(!desktopPreview)for(const auto& scene:ScenePresets)if(background.stem()==fs::path(scene.file).stem()){selectedScene=scene.app;controller.sceneRequest=scene.app;break;}
+        if(!desktopPreview){for(const auto& scene:ScenePresets)if(background.stem()==fs::path(scene.file).stem()){selectedScene=scene.app;break;}sceneSelect->SetValue(std::to_string(selectedScene));controller.sceneRequest=-1;}
         auto lastStyle=fs::last_write_time(assets/L"overlay.rcss");double nextStyleCheck=0;
         if(window)ShowWindow(window,SW_SHOW);
         do {
@@ -528,7 +528,7 @@ int wmain(int argc,wchar_t** argv)
             if((layoutTest||selfTest)&&frames==8)TestLayout(controller,context);
             if(selfTest && frames==8){TestPreviewPicker(controller,context);TestController(controller,context);}
             if(controller.sceneRequest>=0&&!library.names.empty()){library.Choose(controller.sceneRequest);controller.sceneRequest=-1;document->QuerySelector(".preview-label")->SetInnerRML("Loading…");}
-            if(controller.sceneRequest>=0){const int chosen=controller.sceneRequest;controller.sceneRequest=-1;try{
+            if(controller.sceneRequest>=0){const int chosen=controller.sceneRequest;controller.sceneRequest=-1;if(chosen!=selectedScene)try{
                 fs::path path=background;float selectedCrop=crop;std::array<float,3> selectedAccent=accent;std::string title="Overlay preview";
                 for(const auto& scene:ScenePresets)if(scene.app==chosen){path=sceneCache/scene.file;selectedCrop=0;selectedAccent={float((scene.accent>>16)&255)/255,float((scene.accent>>8)&255)/255,float(scene.accent&255)/255};title=scene.title;}
                 if(!gameTitle.empty())title=gameTitle;auto next=LoadImage(path);const auto uv=CropImage(next,width,height,selectedCrop);backdrop->SetPhoto(next.rgba.data(),next.width,next.height,uv.data());image=std::move(next);activeCrop=selectedCrop;selectedScene=chosen;nextSample=0;controller.accent=selectedAccent;controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(title));dynamic_cast<Rml::ElementFormControl*>(controller.Element("scene-select"))->SetValue(std::to_string(chosen));document->SetProperty("--accent",Controller::Hex(selectedAccent[0],selectedAccent[1],selectedAccent[2]));controller.filtered={};controller.lastAdapt=-1;
@@ -572,6 +572,15 @@ int wmain(int argc,wchar_t** argv)
                 const auto savedAccent=controller.accent;
                 auto paint=[&]{controller.Adapt(backdrop->measured,system.GetElapsedTime());controller.AdaptiveForeground(*backdrop,system.GetElapsedTime());context->Update();};
                 auto* label=document->QuerySelector(".field-heading label");auto* glyph=controller.Element("open-settings")->QuerySelector(".glyph");
+                for(const auto gameAccent:{MaterialColor::Color{143.f/255,169.f/255,130.f/255},MaterialColor::Color{236.f/255,61.f/255,40.f/255}})
+                    for(float level:{.15f,.35f,.55f,.75f,.95f}){
+                        const MaterialColor::Color surface{level,level,level};const auto ink=MaterialColor::ClearHeading(gameAccent,surface);
+                        Require(MaterialColor::Contrast(ink,surface)>=2.99f,"Clear game heading lost contrast over its surface");
+                        const float chroma=*std::max_element(ink.begin(),ink.end())-*std::min_element(ink.begin(),ink.end());
+                        Require(chroma>.12f,"Clear game heading washed out its accent");
+                    }
+                const auto clearYellow=MaterialColor::ClearHeading({252.f/255,238.f/255,9.f/255},{.75f,.75f,.75f});
+                Require(!MaterialColor::MuddyShade(clearYellow),"Clear generated a muddy yellow heading");
                 controller.UseTheme(3);paint();Require(label->GetProperty("color")->Get<Rml::Colourb>().red>=225,"Clear label is not light");
                 controller.accent={.9f,.7f,.4f};paint();controller.headingAccentBlend="hard-light";controller.controlAccentBlend="soft-light";controller.Materials();paint();
                 controller.UseTheme(1);paint();Require(label->GetProperty("color")->Get<Rml::Colourb>().red<160&&glyph->GetProperty("image-color")->Get<Rml::Colourb>().red<160,"Clear foreground leaked into Light after changing accents");
@@ -603,7 +612,10 @@ int wmain(int argc,wchar_t** argv)
             // Compose each window and its UI as a unit. A front window must
             // frost the already composited lower windows, not leave their text on top.
             backdrop->Draw(target.Get(),view.Get(),{},false);
-            backdrop->Sample(panels,system.GetElapsedTime());
+            // Headless exports lack Present's pacing. Finish the previous tiny
+            // readback so their adaptive colors reflect the actual scene too.
+            backdrop->Sample(panels,system.GetElapsedTime(),!window);
+            if(!window&&frames==70&&!panels.empty()){Require(backdrop->grid[0].valid,"Export background grid never settled");for(const auto& panel:panels)Require(backdrop->measured[panel.sampleIndex].valid,"Export panel background never settled");if(selfTest)std::cout<<"native_export_background_sampling_checks=passed\n";}
             std::map<std::string,Backdrop::Panel> byId;size_t panelIndex=0;
             for(const auto* id:{"main-panel","inspector","welcome","type-panel"})if(controller.Element(id)->IsVisible())byId[id]=panels.at(panelIndex++);
             const auto renderUi=[&](Rml::Element* root,ID3D11RenderTargetView* destination=nullptr) {if(!destination)destination=view.Get();immediate->OMSetRenderTargets(1,&destination,nullptr);D3D11_VIEWPORT viewport{0,0,float(width),float(height),0,1};immediate->RSSetViewports(1,&viewport);renderer.BeginFrame();auto& manager=context->GetRenderManager();manager.PrepareRender({width,height});static_cast<PaintRoot*>(root)->Paint();manager.ResetState();renderer.EndFrame(destination);};

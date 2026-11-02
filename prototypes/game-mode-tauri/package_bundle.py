@@ -65,7 +65,8 @@ def verify(folder):
 def smoke(folder):
     folder = Path(folder).resolve()
     python = folder / ('python/python.exe' if os.name == 'nt' else 'python/bin/python3')
-    env = dict(os.environ, RTXFORGE_ROOT=str(folder / 'engine'), RTXFORGE_ENGINE_BRIDGE='1')
+    env = dict(os.environ, RTXFORGE_ROOT=str(folder / 'engine'), RTXFORGE_ENGINE_BRIDGE='1',
+               RTXFORGE_APP_EXE=str(folder / ('rtxforge-game-mode.exe' if os.name == 'nt' else 'rtxforge-game-mode')))
     for key in ('PYTHONPATH', 'RTXFORGE_PREVIEW_READ_ONLY', 'RTXFORGE_PYTHON', 'RTXFORGE_READ_ONLY'):
         env.pop(key, None)
     child = subprocess.Popen([str(python), '-u', '-B', str(folder / 'bridge/engine_host.py')],

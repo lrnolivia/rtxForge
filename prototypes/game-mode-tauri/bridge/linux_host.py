@@ -12,6 +12,16 @@ import threading
 import uuid
 
 
+def app_entry():
+    value = os.environ.get('RTXFORGE_APP_EXE')
+    if not value:
+        raise ValueError('Open the installed Game Mode application before adding it to Steam.')
+    entry = Path(value).resolve(strict=True)
+    if not entry.is_file() or not os.access(entry, os.X_OK):
+        raise ValueError('The installed Game Mode executable is unavailable.')
+    return entry
+
+
 def bind(root, send):
     sys.path.insert(0, str(root / 'scripts'))
     sys.path.insert(1, str(root / 'windows/engine-host'))
@@ -155,16 +165,18 @@ def bind(root, send):
 
     def steam_review(params):
         settings = library_media.load_settings(service.config)
-        plan = steam_self_install.review(service.config, settings)
+        entry = app_entry()
+        plan = steam_self_install.review(service.config, settings, entry=entry)
         result = reviewed('Review Steam shortcut', [{'name': 'rtxForge shortcut', 'detail': str(plan.get('roles', []))}], plan,
-                          lambda value: steam_self_install.install(service.config, settings, reviewed=value), action='Add to Steam')
+                          lambda value: steam_self_install.install(service.config, settings, reviewed=value, entry=entry), action='Add to Steam')
         return result | {key: plan.get(key) for key in ('created', 'profile', 'roles')}
 
     def steam_status(params):
         settings = library_media.load_settings(service.config)
-        status = steam_self_install.shortcut_status(service.config, settings)
+        entry = app_entry()
+        status = steam_self_install.shortcut_status(service.config, settings, entry=entry)
         result = reviewed('Remove rtxForge from Steam', [{'name': 'rtxForge shortcut', 'detail': 'Remove the exact recorded shortcut'}], status,
-                          lambda value: steam_self_install.remove(service.config, settings, reviewed=value), action='Remove shortcut')
+                          lambda value: steam_self_install.remove(service.config, settings, reviewed=value, entry=entry), action='Remove shortcut')
         return result | {'added': status['added']}
 
     def notes(params):

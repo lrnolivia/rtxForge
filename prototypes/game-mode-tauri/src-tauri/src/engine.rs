@@ -21,7 +21,9 @@ fn session(app: &tauri::AppHandle, state: &EngineState) -> Result<Arc<Session>, 
     let reader = crate::runtime::bridge(app, "engine_host.py")?;
     let python = crate::runtime::python()?;
     let mut command = Command::new(python);
-    command.env("RTXFORGE_ROOT", crate::runtime::root()?).env("RTXFORGE_ENGINE_BRIDGE", "1").arg("-u").arg("-B").arg(reader).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    command.env("RTXFORGE_ROOT", crate::runtime::root()?).env("RTXFORGE_ENGINE_BRIDGE", "1")
+        .env("RTXFORGE_APP_EXE", std::env::current_exe().map_err(|_| "Application executable is unavailable.")?)
+        .arg("-u").arg("-B").arg(reader).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
     let mut child = command.spawn().map_err(|_| "Could not start Python for the reviewed host.")?;
     let input = child.stdin.take().ok_or("Host input is unavailable.")?;

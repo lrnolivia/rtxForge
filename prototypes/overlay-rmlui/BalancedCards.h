@@ -21,15 +21,16 @@ struct BalancedCards {
             } else if (child->IsClassSet("option-group") || child->IsClassSet("settings-group")) cards.push_back(child);
         }
         if (cards.empty()) return;
+        const std::string display=wide?"flex":"block";const auto* local=host->GetLocalProperty("display");if(!local||local->Get<Rml::String>()!=display)host->SetProperty("display",display);
         for (size_t i=0; i<cards.size(); ++i) if (!cards[i]->HasAttribute("data-mosaic-order")) cards[i]->SetAttribute("data-mosaic-order",int(i));
         std::stable_sort(cards.begin(),cards.end(),[](auto* a,auto* b){return a->template GetAttribute<int>("data-mosaic-order",0)<b->template GetAttribute<int>("data-mosaic-order",0);});
         std::string signature=wide?"wide":"stack";
         std::vector<float> weights;
         for (auto* card:cards) {
             Rml::ElementList controls;card->QuerySelectorAll(controls,"input, select, .switch, .settings-layouts, .shortcut-bind");
-            float weight=1;
+            float weight=card->IsVisible()?1.f:0.f;
             auto* body=card->QuerySelector(".group-body");
-            if(!body || body->IsVisible()) for(auto* control:controls) weight+=control->IsClassSet("settings-layouts")?2.5f:1.f;
+            if(card->IsVisible()&&(!body || body->IsVisible())) for(auto* control:controls) if(control->IsVisible())weight+=control->IsClassSet("settings-layouts")?2.5f:1.f;
             weights.push_back(weight);
             signature+="/"+std::to_string(reinterpret_cast<uintptr_t>(card))+":"+std::to_string(weight);
         }

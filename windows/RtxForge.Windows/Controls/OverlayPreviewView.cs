@@ -21,18 +21,21 @@ sealed class OverlayPreviewView : StackPanel
     readonly TextBlock status = new() { Text = "Explore every control in the full preview.", FontSize = 12, Opacity = .75, TextWrapping = TextWrapping.Wrap };
     readonly Microsoft.UI.Dispatching.DispatcherQueueTimer timer;
     IReadOnlyList<Game> games;
+    public Game SelectedGame=>selected;
     Game selected = new() { Id = "overlay-preview-control", Name = "Control Resonant" };
     OverlayPreview.Screenshot shot = new(Path.Combine(AppContext.BaseDirectory,"Assets","OverlayScene.webp"), "Control Resonant · gameplay", .27f);
     CancellationTokenSource? loading;
     Process? fullPreview;
     Color accent = Color.FromArgb(255,213,137,117);
+    readonly string? preferencesPath;
+    Color sampledAccent = Color.FromArgb(255,163,163,163);
     Color sceneAccent = Color.FromArgb(255,213,137,117);
     string stamp = "";
     bool active;
 
-    public OverlayPreviewView(EngineForgeService engine, IReadOnlyList<Game> library, Game? initialGame = null)
+    public OverlayPreviewView(EngineForgeService engine, IReadOnlyList<Game> library, Game? initialGame = null, string? preferencesPath = null)
     {
-        this.engine=engine; games=library; Spacing=12; MaxWidth=440; HorizontalAlignment=HorizontalAlignment.Stretch;VerticalAlignment=VerticalAlignment.Center;
+        this.preferencesPath=preferencesPath;this.engine=engine; games=library; Spacing=12; MaxWidth=440; HorizontalAlignment=HorizontalAlignment.Stretch;VerticalAlignment=VerticalAlignment.Center;
         // Frame the unobstructed right side of the existing gameplay photograph.
         // This small illustration has no telemetry, live controls or GPU renderer.
         scene.Clip=new RectangleGeometry { Rect=new global::Windows.Foundation.Rect(0,0,960,540) };
@@ -50,7 +53,7 @@ sealed class OverlayPreviewView : StackPanel
         search.GotFocus+=(_,_)=>search.ItemsSource=Matches().Take(30).ToArray();
         search.SuggestionChosen+=async(_,e)=>{if(e.SelectedItem is Game game)await ChooseAsync(game);};
         search.QuerySubmitted+=async(_,e)=>{if(e.ChosenSuggestion is not Game && Matches().FirstOrDefault() is { } game)await ChooseAsync(game);};
-        async Task OpenAsync(){try{OverlayPreview.Close(fullPreview);fullPreview=await OverlayPreview.StartAsync(engine.EngineRoot,selected,shot,games,sceneAccent);}catch(Exception error)when(error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception){status.Text=error.Message;}}
+        async Task OpenAsync(){try{OverlayPreview.Close(fullPreview);fullPreview=await OverlayPreview.StartAsync(engine.EngineRoot,selected,shot,games,sceneAccent,preferencesPath);}catch(Exception error)when(error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception){status.Text=error.Message;}}
         frame.Click+=async(_,_)=>await OpenAsync();open.Click+=async(_,_)=>await OpenAsync();
         frame.RegisterPropertyChangedCallback(Control.IsEnabledProperty,(_,_)=>open.IsEnabled=frame.IsEnabled);
         timer=DispatcherQueue.CreateTimer();timer.Interval=TimeSpan.FromMilliseconds(400);
@@ -83,7 +86,9 @@ sealed class OverlayPreviewView : StackPanel
             var found=await photo;
             if(!Current())return;
             if(found is null){accent=sceneAccent;Draw();status.Text="No screenshot available · showing "+selected.Name;return;}
-            selected=game;shot=found;sceneAccent=accent;SetPhoto(shot);Draw();status.Text="Explore every control in the full preview.";
+            selected=game;shot=found;sceneAccent=accent;SetPhoto(shot);Draw();
+            var sampled=await ArtAccent.SignatureColorAsync(await File.ReadAllBytesAsync(found.Path,request.Token));
+            if(!Current())return;sampledAccent=sampled ?? Color.FromArgb(255,163,163,163);Draw();status.Text="Explore every control in the full preview.";
         }
         catch(OperationCanceledException){}
         catch(Exception error)when(error is IOException or HttpRequestException or System.Text.Json.JsonException or UnauthorizedAccessException){if(Current()){accent=sceneAccent;Draw();status.Text="Screenshot unavailable · showing the previous scene";}}
@@ -98,8 +103,10 @@ sealed class OverlayPreviewView : StackPanel
     }
     void Draw()
     {
-        var appearance=GlassAppearance.Load();var light=appearance.BaseTheme=="light";
+        var appearance=GlassAppearance.Load(preferencesPath);var light=appearance.BaseTheme=="light";
         var clear=appearance.BaseTheme=="clear";diagram.Children.Clear();
+        var accent = appearance.AccentMode == "theme" ? (light ? Color.FromArgb(255,82,82,82) : Color.FromArgb(255,180,180,180)) : appearance.AccentMode == "adaptive" ? sampledAccent : this.accent;
+        if(appearance.AccentMode=="custom" && appearance.AccentColor.Length==7){var rgb=Convert.ToUInt32(appearance.AccentColor[1..],16);accent=Color.FromArgb(255,(byte)(rgb>>16),(byte)(rgb>>8),(byte)rgb);}
         var neutral=light?Color.FromArgb(238,235,235,235):clear?Color.FromArgb(112,225,225,225):Color.FromArgb(225,40,40,40);
         if(appearance.AccentEnabled)neutral=Mix(neutral,accent,light?.26:clear?.30:.32);
         var ink=light?Color.FromArgb(255,59,59,59):Color.FromArgb(255,246,246,246);
@@ -125,17 +132,17 @@ sealed class OverlayPreviewView : StackPanel
     static Color Mix(Color a,Color b,double amount)=>Color.FromArgb(a.A,(byte)(a.R+(b.R-a.R)*amount),(byte)(a.G+(b.G-a.G)*amount),(byte)(a.B+(b.B-a.B)*amount));
 }
 
-/// <summary>Native swatches with the overlay's Theme / Accent Tint hierarchy.</summary>
+/// <summary>Native swatches with the overlay's Theme / Surface Tint hierarchy.</summary>
 sealed class OverlayThemePicker : UserControl
 {
     public int SelectedIndex {get;private set;}
     public event EventHandler? SelectionChanged;
     public OverlayThemePicker(string theme)
     {
-        var root=new StackPanel {Spacing=8};root.Children.Add(new TextBlock {Text="Theme"});
+        var root=new StackPanel {Spacing=8};root.Children.Add(new TextBlock {Text="Surface"});
         var choices=new Grid {ColumnSpacing=8};var group="overlay-theme-"+Guid.NewGuid();
-        string[] keys=["clear","light","dark"];string[] labels=["Clear","Light","Dark"];
-        Color[] colors=[Color.FromArgb(65,225,225,225),Color.FromArgb(255,234,234,234),Color.FromArgb(255,48,48,48)];
+        string[] keys=["light","clear","dark"];string[] labels=["Light","Clear","Dark"];
+        Color[] colors=[Color.FromArgb(255,234,234,234),Color.FromArgb(65,225,225,225),Color.FromArgb(255,48,48,48)];
         SelectedIndex=Math.Max(0,Array.IndexOf(keys,theme));
         for(var i=0;i<3;i++){
             choices.ColumnDefinitions.Add(new());var body=new StackPanel {Spacing=8,HorizontalAlignment=HorizontalAlignment.Center};

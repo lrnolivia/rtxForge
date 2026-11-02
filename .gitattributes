@@ -8,6 +8,7 @@ providers/skynizz-bridge/ForgePanelChannel.h text eol=lf
 providers/skynizz-bridge/Generate-Panel.ps1 text eol=lf
 providers/skynizz-bridge/controls.json text eol=lf
 providers/skynizz-bridge/panel-candidate.json text eol=lf
+gui/fonts/OFL-BakbakOne.txt text eol=lf
 providers/skynizz-bridge/ForgeWorkbench.h text eol=lf
 providers/glass-overlay/** text eol=lf
 prototypes/overlay-rmlui/*.cpp text eol=lf

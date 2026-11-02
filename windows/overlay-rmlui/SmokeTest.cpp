@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <filesystem>
+#include <chrono>
 using Microsoft::WRL::ComPtr;
 static void Need(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
 struct TestProfile {
@@ -31,13 +32,24 @@ static void TestAppearance(ForgeGlass::Draw draw,ForgeGlass::Release release,con
     Need(draw(&host,&frame),"Initial appearance rejected");
     settings=R"({"revision":17,"ready":true,"settings":{"overlay_appearance":{"Theme":2,"Layout":"bar","SidePanelSide":"right","BarPosition":"top","TextFont":"inter","TextSize":26,"Scale":115}}})";
     Need(draw(&host,&frame),"Updated appearance rejected");release();
-    const auto ini=profile/L"rtxForge"/L"overlay-appearance.ini";wchar_t value[64]{};
+    Need(!std::filesystem::exists(profile/L"rtxForge"/L"overlay-appearance.ini"),"In-game appearance modified app defaults");
+    std::filesystem::path ini;for(const auto& entry:std::filesystem::directory_iterator(profile/L"rtxForge"/L"overlay-games"))if(entry.path().extension()==L".ini")ini=entry.path();
+    Need(!ini.empty(),"Per-game appearance was not saved");wchar_t value[64]{};
     Need(GetPrivateProfileIntW(L"Appearance",L"Theme",0,ini.c_str())==2&&GetPrivateProfileIntW(L"Appearance",L"TextSize",0,ini.c_str())==26&&GetPrivateProfileIntW(L"Appearance",L"Scale",0,ini.c_str())==115,"Appearance update with unchanged preset revision was lost");
     GetPrivateProfileStringW(L"Appearance",L"Layout",L"",value,64,ini.c_str());Need(std::wstring(value)==L"bar","Layout update was lost");
     GetPrivateProfileStringW(L"Appearance",L"SidePanelSide",L"",value,64,ini.c_str());Need(std::wstring(value)==L"right","Side Panel edge update was lost");
     GetPrivateProfileStringW(L"Appearance",L"BarPosition",L"",value,64,ini.c_str());Need(std::wstring(value)==L"top","Bar edge update was lost");
     GetPrivateProfileStringW(L"Appearance",L"TextFont",L"",value,64,ini.c_str());Need(std::wstring(value)==L"inter","Font update was lost");
     std::cout<<"helper_appearance_checks=passed unchanged_preset_revision=passed isolated_profile=passed\n";
+}
+static void TestIdle(ForgeGlass::Draw draw,ForgeGlass::Release release){
+    ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;Need(SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,0,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context)),"Idle device failed");
+    D3D11_TEXTURE2D_DESC desc{};desc.Width=1280;desc.Height=720;desc.MipLevels=desc.ArraySize=1;desc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;desc.SampleDesc.Count=1;desc.BindFlags=D3D11_BIND_RENDER_TARGET;
+    ComPtr<ID3D11Texture2D> target;ComPtr<ID3D11RenderTargetView> view;Need(SUCCEEDED(device->CreateTexture2D(&desc,nullptr,&target))&&SUCCEEDED(device->CreateRenderTargetView(target.Get(),nullptr,&view)),"Idle target failed");
+    unsigned reads=0;ForgeGlass::Host host{sizeof(host),ForgeGlass::Abi};host.user=&reads;host.read=[](void* state,ForgeGlass::Snapshot* value){++*static_cast<unsigned*>(state);*value={};return true;};
+    ForgeGlass::Frame frame{};frame.size=sizeof(frame);frame.abi=ForgeGlass::Abi;frame.device=device.Get();frame.target=view.Get();Need(draw(&host,&frame),"Idle initialization failed");reads=0;
+    const auto start=std::chrono::steady_clock::now();for(unsigned i=0;i<600;++i)Need(draw(&host,&frame),"Idle frame failed");const auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
+    Need(reads<=2+unsigned(ms/250),"Hidden overlay polled its host every frame");release();std::cout<<"hidden_overlay_checks=passed frames=600 host_reads="<<reads<<" cpu_mean_ms="<<ms/600<<"\n";
 }
 static void Test12(HMODULE dll,ForgeGlass::Release release,bool hdr=false){
     const auto draw=reinterpret_cast<ForgeGlass::Draw12>(GetProcAddress(dll,"ForgeGlassDraw12"));Need(draw,"DX12 export missing");
@@ -75,7 +87,7 @@ static void TestHdr11(ForgeGlass::Draw draw,ForgeGlass::Release release,ID3D11De
         const float scrgb[4]={5,3,1,1},pq[4]={.65f,.70f,.60f,1};context->ClearRenderTargetView(view.Get(),space==1?scrgb:pq);
         desc.Usage=D3D11_USAGE_STAGING;desc.BindFlags=0;desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;ComPtr<ID3D11Texture2D> staging;Need(SUCCEEDED(device->CreateTexture2D(&desc,nullptr,&staging)),"HDR readback failed");
         const unsigned stride=space==1?8:4;std::array<unsigned char,8> original{};D3D11_MAPPED_SUBRESOURCE mapped{};context->CopyResource(staging.Get(),target.Get());Need(SUCCEEDED(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped)),"HDR baseline map failed");std::memcpy(original.data(),mapped.pData,stride);context->Unmap(staging.Get(),0);
-        ForgeGlass::Host host{sizeof(host),ForgeGlass::Abi};host.log=[](void*,const char* message){std::cerr<<message<<'\n';};host.read=[](void*,ForgeGlass::Snapshot* snapshot){static const ForgeGlass::Value values[]={{"enabled",1},{"intensity",1},{"style",1},{"passes",1},{"preset",0}};*snapshot={"HDR COMPOSITION TEST","#d58975",values,5,true,true,false,false,false,false,2.3,60,-1,-1,true,false,true};return true;};
+        ForgeGlass::Host host{sizeof(host),ForgeGlass::Abi};host.log=[](void*,const char* message){std::cerr<<message<<'\n';};host.read=[](void*,ForgeGlass::Snapshot* snapshot){static const ForgeGlass::Value values[]={{"enabled",1},{"intensity",1},{"style",1},{"passes",1},{"preset",0}};*snapshot={"HDR COMPOSITION TEST","#d58975",values,5,true,true,false,false,false,false,2.3,60,-1,-1,true,false,true};snapshot->helperJson=R"({"revision":1,"settings":{"overlay_appearance":{"Theme":3,"ShowNotifications":0}}})";return true;};
         ForgeGlass::Frame frame{};frame.size=sizeof(frame);frame.abi=ForgeGlass::Abi;frame.device=device;frame.target=view.Get();frame.visible=true;frame.colorSpace=space;
         for(unsigned i=0;i<3;i++)Need(draw(&host,&frame),"HDR composition rejected a valid format/transfer pair");
         context->CopyResource(staging.Get(),target.Get());Need(SUCCEEDED(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped)),"HDR final map failed");
@@ -116,5 +128,5 @@ int wmain(int argc,wchar_t** argv){try{
     const auto setup=profile.path/L"rtxForge"/L"overlay-setup.ini";std::filesystem::create_directories(setup.parent_path());Need(WritePrivateProfileStringW(L"Setup",L"Version",L"1",setup.c_str()),"Setup fixture state failed");
     TestHdr11(draw,release,device.Get(),context.Get());if(flags)TestHdr11(draw,release,device.Get(),context.Get(),3840,2160);
     }
-    Test12(dll,release);Test12(dll,release,true);TestAppearance(draw,release,profile.path);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
+    Test12(dll,release);Test12(dll,release,true);TestAppearance(draw,release,profile.path);TestIdle(draw,release);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

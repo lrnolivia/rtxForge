@@ -17,7 +17,7 @@ internal sealed class NativePanelCoordinator : IDisposable
     IReadOnlyList<Game> targets = [];
     NativePanelChannel? channel;
     Game? game;
-    int pid, reviewId;
+    int pid;
     EngineReview? review;
     bool busy, disposed, exitRequested;
     string? targetProblem, pollProblem;
@@ -106,7 +106,10 @@ internal sealed class NativePanelCoordinator : IDisposable
     JsonObject SettingsSnapshot()
     {
         var s = ForgeSettings.Load();
-        var values = s.GameOverlayOptions(game);
+        var values = GlassAppearance.OverlayOptions(s,game);
+        if(game is not null)values["native_overlay_shortcuts"]=NativeShortcuts(game,values);
+        values["overlay_appearance"]=GlassAppearance.Resolve(s,game);
+        if(game is not null)values["game_poster"]=OverlayPreview.Poster(game,s)??"";
         OverlayShortcut.TryParse(values["panel_hotkey"]?.ToString(), out _, out var binding, out _);
         values["panel_key"] = (int)binding.Key;
         values["panel_modifiers"] = (int)binding.Modifiers;
@@ -115,23 +118,34 @@ internal sealed class NativePanelCoordinator : IDisposable
         values["overlay_light"] = OverlayHelper.LightTheme(s, values["overlay_theme"]?.ToString());
         return values;
     }
+    static JsonArray NativeShortcuts(Game game,JsonObject settings)
+    {
+        var result=new JsonArray();var root=Path.GetFullPath(game.Location);var folder=Path.GetDirectoryName(Path.GetFullPath(Path.Combine(root,game.EngineRow?["exe"]?.ToString()??"")))??root;
+        if(!folder.StartsWith(root+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)&&!folder.Equals(root,StringComparison.OrdinalIgnoreCase))folder=root;
+        string Key(int code)=>code is >=0x70 and <=0x87?"F"+(code-0x6f):code is >=48 and <=90?((char)code).ToString():code switch{0x2d=>"Insert",0x24=>"Home",0x23=>"End",0x2e=>"Delete",0x20=>"Space",0x09=>"Tab",0x1b=>"Escape",_=>"0x"+code.ToString("X2")};
+        foreach(var (name,file,section,key) in new[]{("OptiScaler","OptiScaler.ini","Menu","ShortcutKey"),("ReShade","ReShade.ini","INPUT","KeyOverlay")})try{
+            var path=new[]{folder,Path.Combine(folder,"OptiScaler"),root}.Select(basePath=>Path.Combine(basePath,file)).FirstOrDefault(File.Exists);if(path is null||new FileInfo(path).Length>256*1024)continue;
+            var current="";var raw=name=="OptiScaler"?"0x2D":"36,0,0,0";var savedKey="36,0,0,0";
+            foreach(var line in File.ReadLines(path)){var text=line.Trim();if(text.StartsWith('[')){current=text.Trim('[',']');continue;}var at=text.IndexOf('=');if(at<=0)continue;var field=text[..at].Trim();var value=text[(at+1)..].Split(';')[0].Trim();if(current.Equals(section,StringComparison.OrdinalIgnoreCase)&&field.Equals(key,StringComparison.OrdinalIgnoreCase))raw=value;if(current.Equals("rtxForge.UI",StringComparison.OrdinalIgnoreCase)&&field.Equals("ReShadeShortcut",StringComparison.OrdinalIgnoreCase))savedKey=value;}
+            if(name=="OptiScaler")raw=settings["optiscaler_hotkey"]?.ToString() switch{"F8"=>"0x77","Disabled"=>"0",_=>"0x2D"};
+            var parts=raw.Split(',');var number=parts[0].Trim();var code=Convert.ToInt32(number.StartsWith("0x",StringComparison.OrdinalIgnoreCase)?number[2..]:number,number.StartsWith("0x",StringComparison.OrdinalIgnoreCase)?16:10);if(code<0||code>255)continue;
+            var enabled=code!=0&&(settings[name=="OptiScaler"?"optiscaler_ui":"reshade_ui"]?.GetValue<bool>()??true);
+            if(name=="ReShade"&&code==0){parts=savedKey.Split(',');code=Convert.ToInt32(parts[0].Trim());if(code<0||code>255)continue;}
+            var caption=name=="ReShade"?(parts.Length>1&&parts[1].Trim()=="1"?"Ctrl+":"")+(parts.Length>3&&parts[3].Trim()=="1"?"Alt+":"")+(parts.Length>2&&parts[2].Trim()=="1"?"Shift+":""):"";
+            caption+=Key(code==0?name=="OptiScaler"?0x2d:0x24:code);
+            result.Add(new JsonObject{["name"]=name,["key"]=caption,["enabled"]=enabled});
+        }catch(Exception error)when(error is IOException or UnauthorizedAccessException or FormatException or OverflowException){ }
+        return result;
+    }
     static JsonArray Entries(IEnumerable<ReviewItem> entries) => new(entries.Select(item => (JsonNode)new JsonObject
     { ["title"] = item.Title, ["detail"] = item.Detail }).ToArray());
     void ClearReview() { if (review is not null) engine.DiscardReview(review); review = null; }
 
     async Task<JsonObject> HandleAsync(JsonObject message, int request)
     {
-        bool progressOpen = true;
         var action = message["op"]?.GetValue<string>() ?? "";
         JsonObject Done(string text) => new() { ["op"] = action, ["message"] = text, ["settings"] = SettingsSnapshot() };
-        void Progress(PrepareProgress progress)
-        {
-            if (!progressOpen || disposed || channel is null) return;
-            try { channel.Reply(request, new JsonObject { ["op"] = action, ["busy"] = true,
-                ["message"] = progress.Total > 0 ? $"{progress.Label} · {progress.Checked} of {progress.Total}" : progress.Label }); }
-            catch (Exception) { }
-        }
-        try { switch (action)
+        switch (action)
         {
             case "hello":
             case "status":
@@ -175,6 +189,17 @@ internal sealed class NativePanelCoordinator : IDisposable
             case "reset":
                 var reset = await engine.CompanionAsync("reset", game!, pid: pid);
                 return Done(reset["panel_message"]?.GetValue<string>() ?? "Reset to this game's installed settings");
+            case "use-native-overlays":
+                if(game is null)throw new InvalidOperationException("Open a game before choosing its overlays.");
+                var globalDefault=message["global_default"]?.GetValue<bool>()??false;
+                var nativeSettings=ForgeSettings.EditOverlay(s=>{
+                    if(!s.GameOverlaySettings.TryGetValue(game.Id,out var local))s.GameOverlaySettings[game.Id]=local=new JsonObject();
+                    local["overlay_renderer"]="optiscaler";local["optiscaler_ui"]=true;local["reshade_ui"]=true;
+                    if(GlassAppearance.OverlayOptions(s,game)["optiscaler_hotkey"]?.ToString()=="Disabled")local["optiscaler_hotkey"]="Insert";
+                    if(globalDefault){s.OverlayRenderer="optiscaler";s.OptiScalerUi=true;s.ReShadeUi=true;if(s.OptiScalerHotkey=="Disabled")s.OptiScalerHotkey="Insert";}
+                });
+                OverlayHelper.CacheRenderer(game,nativeSettings);engine.Settings.CopyOverlayFrom(nativeSettings);preferencesChanged();ClearReview();
+                return Done("Native overlays selected. Restart the game if its menus are not available yet.");
             case "set-setting":
                 SetPreference(message);
                 return Done(message["key"]?.ToString() is "overlay_theme" or "overlay_appearance" ? "Saved" : "Saved · game-menu changes take effect after restarting the game");
@@ -182,36 +207,23 @@ internal sealed class NativePanelCoordinator : IDisposable
                 ClearReview(); return Done("");
             case "global-review":
             case "menus-review":
-                ClearReview();
-                review = action == "global-review"
-                    ? await engine.ReviewGlobalControlsAsync(message["changes"] as JsonObject ?? new(), new Progress<PrepareProgress>(Progress))
-                    : await engine.ReviewOverlayUiAsync(ForgeSettings.Load().GameUiOptions(), new Progress<PrepareProgress>(Progress));
-                if (disposed || channel?.Visible != true) { ClearReview(); return Done("Review closed"); }
-                reviewId++;
-                return new JsonObject { ["op"] = action, ["review_id"] = reviewId, ["ready"] = review.Ready,
-                    ["message"] = review.Summary, ["items"] = Entries(review.Items), ["blocked"] = Entries(review.Blocked), ["skipped"] = Entries(review.Skipped) };
             case "apply-review":
-                if (review is null || message["review_id"]?.GetValue<int>() != reviewId)
-                    throw new InvalidOperationException("Review the games again before applying.");
-                var pending = review; review = null; Applying = true;
-                var result = await engine.RunReviewAsync(pending, new Progress<PrepareProgress>(Progress));
-                await engine.ReloadCompanionPresetsAsync();
-                return Done(result.Message + (result.Errors.Count > 0 ? "\n" + string.Join("\n", result.Errors) : ""));
+                throw new InvalidOperationException("Review library-wide changes in Desktop or Game Mode settings.");
             default: throw new InvalidOperationException("Unsupported panel request.");
-        } }
-        finally { progressOpen = false; }
+        }
     }
     void SetPreference(JsonObject message)
     {
         var setting = message["key"]?.GetValue<string>();
         var value = message["value"] ?? throw new InvalidOperationException("Choose a setting value.");
-        var fresh = ForgeSettings.EditOverlay(s =>
+        if(game is null || setting is "overlay_helper" or "overlay_start_with_windows")throw new InvalidOperationException("Change app defaults in Desktop or Game Mode settings.");
+        var s = ForgeSettings.Load();
         {
             switch (setting)
             {
                 case "overlay_appearance":
                     s.OverlayAppearance = GlassAppearance.Validate(value.AsObject());
-                    GlassAppearance.Import(s.OverlayAppearance);
+
                     break;
                 case "overlay_controls": s.OverlayControls = value.GetValue<bool>() ? "classic" : "unified"; break;
                 case "overlay_theme":
@@ -250,8 +262,12 @@ internal sealed class NativePanelCoordinator : IDisposable
                     s.OptiScalerHotkey = native; break;
                 default: throw new InvalidOperationException("Unsupported overlay setting.");
             }
-        });
-        OverlayHelper.ConfigureStartup(fresh); engine.Settings.CopyOverlayFrom(fresh); preferencesChanged();
+        }
+        var key=setting=="panel_binding"?"panel_hotkey":setting!;
+        var selected=s.GameOverlayOptions()[key]?.DeepClone() ?? throw new InvalidOperationException("Unsupported game setting.");
+        var fresh=ForgeSettings.EditGameOverlay(game,values=>values[key]=selected);
+        OverlayHelper.CacheRenderer(game,fresh);
+        engine.Settings.CopyOverlayFrom(fresh); preferencesChanged();
         ClearReview(); exitRequested = !fresh.OverlayHelper;
     }
     public void Dispose()

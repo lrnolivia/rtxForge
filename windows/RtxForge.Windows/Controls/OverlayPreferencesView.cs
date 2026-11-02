@@ -94,6 +94,9 @@ public sealed class OverlayPreferencesView : StackPanel
             Availability();
             return true;
         }
+        var resetDefaults=new Button { Content="Apply defaults to all overlays" };
+        AddControl(Prefs.Row("Reset game overlays", "Replace saved per-game appearance and shortcuts with these defaults. Close games first.",resetDefaults,glyph:"\uE777"));
+        resetDefaults.Click+=(_,_)=>{try{GlassAppearance.ResetGameProfiles();if(Save(s=>s.GameOverlaySettings.Clear()))feedback.Text="All game overlays now use your defaults.";}catch(Exception error){feedback.Text=error.Message;}};
         renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 1 ? "optiscaler" : "game");
         type.SelectionChanged += (_, _) => EditGlass(() => GlassAppearance.Set("TextSize", type.SelectedIndex == 0 ? 20 : type.SelectedIndex == 2 ? 24 : 22));
         originalLabels.Toggled += (_, _) => EditGlass(() => GlassAppearance.Set("OriginalLabels", originalLabels.IsOn ? 1 : 0));

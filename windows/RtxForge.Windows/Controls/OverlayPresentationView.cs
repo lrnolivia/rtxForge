@@ -13,11 +13,15 @@ sealed class OverlayPresentationView : Grid
     readonly ComboBox bar;
     readonly OverlayThemePicker theme;
     readonly ToggleSwitch tint;
+    readonly ComboBox accentSource;
+    readonly TextBox accentColor;
     readonly OverlayPreviewView? preview;
 
     public OverlayPresentationView(Action<Action> edit, EngineForgeService? engine, Game? game = null)
     {
-        var glass = GlassAppearance.Load();
+        var path=game is null?null:GlassAppearance.GameFilePath(game);
+        var glass = GlassAppearance.Load(path);
+        void Set(string key,object value)=>GlassAppearance.Set(key,value,path:path);
         layout = new(glass.Layout, card: false);
         theme = new(glass.BaseTheme);
         side = new() { ItemsSource = new[] { "Left", "Right" }, SelectedIndex = glass.SidePanelSide == "right" ? 1 : 0, MinWidth = 100 };
@@ -28,9 +32,15 @@ sealed class OverlayPresentationView : Grid
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(tint, "Accent Tint");
         var sideRow = Prefs.Row("Side Panel position", "Choose which edge the Side Panel opens on.", side, glyph: "\uE8A0");
         var barRow = Prefs.Row("Bar position", "Open the Bar at the top or bottom of the screen.", bar, glyph: "\uE8A0");
+        accentSource = new() { ItemsSource = new[] { "Theme", "Custom", "Adaptive" }, SelectedIndex = Array.IndexOf(new[] { "theme", "custom", "adaptive" },glass.AccentMode), MinWidth = 130 };
+        accentColor = new() { Text = glass.AccentColor, PlaceholderText = "Game color", MaxLength = 7, Width = 150 };
+        var customRow = Prefs.Row("Custom color", "Hex color, or leave blank to use the game's rtxForge color.", accentColor, glyph: "\uE790");
+        customRow.Visibility = glass.AccentMode == "custom" ? Visibility.Visible : Visibility.Collapsed;
         var options = new StackPanel { Spacing = 16 };
         options.Children.Add(layout); options.Children.Add(sideRow); options.Children.Add(barRow); options.Children.Add(theme);
-        options.Children.Add(Prefs.Row("Accent Tint", "Use the game's accent on overlay surfaces.", tint, glyph: "\uE790"));
+        options.Children.Add(Prefs.Row("Accent", "Theme is neutral. Custom uses your color. Adaptive follows the scene.", accentSource, glyph: "\uE790"));
+        options.Children.Add(customRow);
+        options.Children.Add(Prefs.Row("Accent Tint", "Use the selected accent on overlay surfaces.", tint, glyph: "\uE790"));
         ColumnSpacing = 24; RowSpacing = 16;
         ColumnDefinitions.Add(new()); ColumnDefinitions.Add(new() { Width = new GridLength(440) });
         RowDefinitions.Add(new() { Height = GridLength.Auto }); RowDefinitions.Add(new() { Height = GridLength.Auto });
@@ -38,7 +48,7 @@ sealed class OverlayPresentationView : Grid
         Grid? previewSection = null;
         if (engine is not null)
         {
-            preview = new(engine, App.Main?.Games ?? [], game);
+            preview = new(engine, App.Main?.Games ?? [], game, path);
             previewSection = new() { RowSpacing = 12 };
             previewSection.RowDefinitions.Add(new() { Height = GridLength.Auto }); previewSection.RowDefinitions.Add(new());
             previewSection.Children.Add(new TextBlock { Text = "Preview" });
@@ -55,14 +65,16 @@ sealed class OverlayPresentationView : Grid
         };
         void SideVisibility() { sideRow.Visibility = layout.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed; barRow.Visibility = layout.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed; }
         void Change(Action action) { edit(action); preview?.RefreshAppearance(); }
-        layout.SelectionChanged += (_, _) => { if (layout.SelectedIndex >= 0) Change(() => GlassAppearance.Set("Layout", GlassAppearance.Layouts[layout.SelectedIndex])); SideVisibility(); };
-        side.SelectionChanged += (_, _) => { if (side.SelectedIndex >= 0) Change(() => GlassAppearance.Set("SidePanelSide", side.SelectedIndex == 1 ? "right" : "left")); };
-        bar.SelectionChanged += (_, _) => { if (bar.SelectedIndex >= 0) Change(() => GlassAppearance.Set("BarPosition", bar.SelectedIndex == 1 ? "top" : "bottom")); };
-        theme.SelectionChanged += (_, _) => { if (theme.SelectedIndex >= 0) Change(() => GlassAppearance.UseAppearance(new[] { "clear", "light", "dark" }[theme.SelectedIndex])); };
-        tint.Toggled += (_, _) => Change(() => GlassAppearance.UseAppearance(tint: tint.IsOn));
+        layout.SelectionChanged += (_, _) => { if (layout.SelectedIndex >= 0) Change(() => Set("Layout", GlassAppearance.Layouts[layout.SelectedIndex])); SideVisibility(); };
+        side.SelectionChanged += (_, _) => { if (side.SelectedIndex >= 0) Change(() => Set("SidePanelSide", side.SelectedIndex == 1 ? "right" : "left")); };
+        bar.SelectionChanged += (_, _) => { if (bar.SelectedIndex >= 0) Change(() => Set("BarPosition", bar.SelectedIndex == 1 ? "top" : "bottom")); };
+        theme.SelectionChanged += (_, _) => { if (theme.SelectedIndex >= 0) Change(() => GlassAppearance.UseAppearance(new[] { "clear", "light", "dark" }[theme.SelectedIndex],path:path)); };
+        tint.Toggled += (_, _) => Change(() => GlassAppearance.UseAppearance(tint: tint.IsOn,path:path));
+        accentSource.SelectionChanged += (_, _) => { if(accentSource.SelectedIndex < 0)return;var mode=new[] { "theme", "custom", "adaptive" }[accentSource.SelectedIndex];Change(() => Set("AccentMode",mode));customRow.Visibility=mode=="custom"?Visibility.Visible:Visibility.Collapsed; };
+        accentColor.TextChanged += (_, _) => { if(GlassAppearance.ValidAccent(accentColor.Text))Change(() => Set("AccentColor",accentColor.Text)); };
         SideVisibility();
     }
 
-    public void SetRendererEnabled(bool enabled) => layout.IsEnabled = side.IsEnabled = bar.IsEnabled = theme.IsEnabled = tint.IsEnabled = enabled;
+    public void SetRendererEnabled(bool enabled) => layout.IsEnabled = side.IsEnabled = bar.IsEnabled = theme.IsEnabled = tint.IsEnabled = accentSource.IsEnabled = accentColor.IsEnabled = enabled;
     public void RefreshAppearance() => preview?.RefreshAppearance();
 }

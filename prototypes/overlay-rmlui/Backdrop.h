@@ -64,6 +64,22 @@ public:
     struct SceneColor {float r{},g{},b{};bool valid{};};
     std::array<SceneColor,64*36> grid;
     SceneColor Background(float x,float y,float w,float h) const {SceneColor c{};int count=0;for(int j=0;j<2;j++)for(int i=0;i<3;i++){const int gx=std::clamp(int((x+w*(i+.5f)/3)/width*64),0,63),gy=std::clamp(int((y+h*(j+.5f)/2)/height*36),0,35);const auto p=grid[gy*64+gx];if(p.valid){c.r+=p.r;c.g+=p.g;c.b+=p.b;++count;}}if(count){c.r/=count;c.g/=count;c.b/=count;c.valid=true;}return c;}
+    SceneColor Accent(float x,float y,float w,float h) const {
+        // Reuse the existing raw-scene thumbnail. No extra GPU readback and no
+        // feedback from our own tinted glass, text, menus or status lights.
+        std::array<SceneColor,12> bins{};std::array<float,12> weights{};
+        const int left=std::clamp(int(x/width*64),0,63),right=std::clamp(int(std::ceil((x+w)/width*64)),left+1,64);
+        const int top=std::clamp(int(y/height*36),0,35),bottom=std::clamp(int(std::ceil((y+h)/height*36)),top+1,36);
+        for(int gy=top;gy<bottom;++gy)for(int gx=left;gx<right;++gx){const auto c=grid[gy*64+gx];if(!c.valid)continue;
+            const float high=std::max({c.r,c.g,c.b}),low=std::min({c.r,c.g,c.b}),chroma=high-low;
+            if(high<.08f||chroma<.06f||chroma/high<.16f)continue;
+            float hue=high==c.r?std::fmod((c.g-c.b)/chroma+6.f,6.f):high==c.g?(c.b-c.r)/chroma+2.f:(c.r-c.g)/chroma+4.f;
+            const int bin=std::clamp(int(hue*2),0,11);const float weight=chroma*chroma/high;
+            weights[bin]+=weight;bins[bin].r+=c.r*weight;bins[bin].g+=c.g*weight;bins[bin].b+=c.b*weight;
+        }
+        const auto best=std::max_element(weights.begin(),weights.end());if(*best<.01f)return {};
+        auto color=bins[size_t(best-weights.begin())];color.r/=*best;color.g/=*best;color.b/=*best;color.valid=true;return color;
+    }
     std::array<SceneColor,4> measured;
     Backdrop(ID3D11Device* d,int w,int h,const unsigned char* image,int imageWidth,int imageHeight,const float uv[4],DXGI_FORMAT sceneFormat=DXGI_FORMAT_R8G8B8A8_UNORM,unsigned colorSpace=0):device(d),width(w),height(h),qwidth((w+3)/4),qheight((h+3)/4)
     {

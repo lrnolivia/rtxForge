@@ -1,63 +1,151 @@
 # Overlay preview
 
+
+
 This local native Windows preview uses the same RmlUi controller as the glass
+
 runtime. It renders over selectable screenshot backgrounds; it never reports
+
 demonstration values as game telemetry or changes a game installation.
 
+
+
 Build with `Build.ps1`, supplying the pinned RmlUi checkout and the existing
+
 OptiScaler FreeType library. `Preview.ps1` opens the result. Delete toggles the
+
 controls; Settings contains layout, Appearance and shortcut preferences. The
+
 preview keeps its preferences separate from the game overlay.
 
+
+
 `--onboarding` previews the two-step first-open setup: appearance and Accent Tint,
+
 then Side Panel, Advanced or Bar. Choices update the live preview. Continue,
+
 Back, Skip and keyboard navigation are supported. The game renderer remembers
+
 completion separately from theme preferences and shows it only on the first
+
 opening of the controls. The welcome toast remains a separate notification.
 
+
+
 Advanced's initial footprint grows with the viewport, while text size and overlay
+
 scale remain user choices. Moving or resizing a window survives page changes.
 
+
+
 `--self-test --output <image.png>` exercises native mouse and keyboard input,
+
 undo/redo, hold-to-preview NR, pass controls, the four theme defaults and Settings.
-Offscreen captures use a 2560 × 1440 canvas. The live window fits the monitor's
+
+Offscreen captures use a 2560 Ã— 1440 canvas. The live window fits the monitor's
+
 work area, including its title bar.
 
+
+
 Appearance offers Clear, Light and Dark with an independent Accent Tint switch.
+
 The approved tint presets keep each base style's character. Experimental character
+
 and saturation sliders remain in God Mode. More holds
+
 Blur and Motion. Experimental font and material tuning lives in the separate,
+
 collapsed God Mode section, available only in this preview.
 
+
+
 Headings use one consistent game-accent treatment per theme, shared by the game
+
 title, section headings and detached windows. Clear uses a stable Screen reference
+
 with stronger chroma, rather than recoloring each heading from its local scene.
+
 Individual headings have no added shadow or outline; the existing subtle
+
 material-wide text depth remains. Ordinary Clear ink stays light, and bright
+
 yellow is kept out of olive or brown variants. Custom preview blend experiments
+
 remain available in God Mode.
 
+
+
 The self-test also checks window containment, Advanced content slots, Bar
+
 footer separation, Settings navigation and toast placement across 54 layout,
+
 viewport, text-size and scale combinations. `--layout-test` runs these bounds
+
 checks alone. Capture specific states with `--layout floating|centered|bar`,
+
 `--page overview|neural|frame|look|passes|hdr`, `--settings`, `--custom-mfg`,
+
 `--text-size 20|22|24` and `--scale 70..150`. These native checks use the same
+
 document and controller as the game renderer; they do not establish gameplay
+
 acceptance.
 
+
+
 `--game-capture --game-title <title> --output <image.png>` exports an SDR8 image
+
 without a native window frame or the scene-selection toolbar. Demonstration
+
 activity remains labeled as sample data. These exports are styling showcases,
+
 not gameplay performance measurements.
 
+
+
 `Get-Scenes.ps1` optionally caches the publisher screenshots listed in
+
 `scenes.json`. Their source URLs, ownership and hashes remain recorded there;
+
 the images are not redistributed in the repository or runtime DLL.
+
 Every styling scene has animated, explicitly labelled sample NR/FG activity,
+
 timings, render dimensions and frame history. These values respond to preview
+
 controls and are generated only by the standalone prototype. They are never
+
 published as measurements or included in the injected runtime.
 
+
+
 The runtime boundary and its acceptance limits are documented in
+
 [`providers/glass-overlay`](../../providers/glass-overlay/README.md).
+
+
+
+### Accent sources
+
+
+
+Appearance offers Theme, Custom, and Adaptive (the default), independently of Accent Tint. Theme uses neutral ink matched to the material. Custom uses the game color from rtxForge unless a valid #RRGGBB override is entered; clearing it restores the game color. Adaptive chooses a chromatic accent from the raw scene behind the main panel, reusing the existing 64 by 36 thumbnail every 250 ms. It holds its last color over neutral scenes and eases toward new colors over roughly a second. Overlay pixels never feed the sampler.
+
+
+
+All headings share the same theme treatment: soft bright Clear, medium Dark, rich Light. Bright yellow in Light uses neutral text with vivid yellow controls, avoiding muddy derived ink. AccentMode and AccentColor round-trip through native preferences and helper snapshots. The inline desktop illustration approximates Adaptive using its screenshot; the full preview and injected overlay sample the actual region behind the panel. Use --accent-mode custom for Library-color showcase captures, or --accent-mode adaptive for scene-driven captures.
+
+
+
+### Settings ownership and notifications
+
+Desktop and Game Mode define defaults. In-game edits are saved in the current game's override, including appearance and keyboard shortcuts; they never change app defaults. The app's Apply defaults to all overlays action clears overrides and cached game appearance profiles. Close games before applying it. Package/menu file updates still use the existing reviewed Update Overlays flow.
+
+The glass renderer queues a single Neural rendering active notification only after telemetry confirms NR is running and the welcome or current toast has finished. Disabling notifications suppresses it. The Feeder quiet add-on suppresses RenoDX 8.5 rc10's duplicate status card only when the initialized glass renderer exports notification ownership. Separate upstream issue notices remain available. This is a window-level integration for the pinned upstream version, not a binary patch.
+
+### Performance fixture
+
+`--benchmark --output <file.png>` measures 600 static-scene frames, discarding the first 120 CPU samples. It reports CPU submission mean/p95 and asynchronous D3D11 timestamp mean/p95 with sample counts. The timestamp interval includes idle time while the CPU submits commands; it is not an isolated shader cost or a gameplay FPS comparison. Use the same viewport, scene, layout, theme, scale, and source for comparisons.
+
+The controller caches unchanged material properties, and the runtime skips composition and blur when all panels are hidden. Adaptive sampling reuses the existing 64 by 36 readback on a 250 ms cadence. Open-window composition still uses full-resolution layers plus quarter-resolution separable blur; real-game CPU/GPU and memory profiling, especially HDR/DX12/Proton, remains necessary before calling it lightweight.

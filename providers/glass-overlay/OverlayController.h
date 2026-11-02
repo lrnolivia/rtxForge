@@ -143,6 +143,9 @@ struct Controller : Rml::EventListener
     int pass=2;
     int appearance=3;
     std::array<float,3> accent{.19f,.46f,.80f};
+    std::string accentMode="adaptive",customAccent;
+    MaterialColor::Color adaptiveAccent{.64f,.64f,.64f},adaptiveTarget{.64f,.64f,.64f};
+    double lastAccentUpdate=-1,nextAccentSample=0;
     std::array<Backdrop::SceneColor,4> filtered;
     std::array<bool,4> panelDark{};
     double lastAdapt=-1;
@@ -309,7 +312,19 @@ struct Controller : Rml::EventListener
     double lastForeground=-1;
     std::array<float,3> clearAccent{};
     bool AccentLight()const {return appearance==4&&accentCharacter>=20&&accentCharacter<72;}
-    std::array<float,3> SurfaceTint()const {return MaterialColor::AccentSurface(accent,accentCharacter,accentSaturation);}
+    MaterialColor::Color ActiveAccent()const {
+        if(accentMode=="theme"){const float tone=BaseAppearance()==1?.32f:BaseAppearance()==2?.64f:.82f;return {tone,tone,tone};}
+        return accentMode=="custom"?MaterialColor::ParseAccent(customAccent,accent):adaptiveAccent;
+    }
+    std::array<float,3> SurfaceTint()const {return MaterialColor::AccentSurface(ActiveAccent(),accentCharacter,accentSaturation);}
+    void UpdateAccent(const Backdrop& backdrop,double now) {
+        const float dt=lastAccentUpdate<0?0.f:float(std::clamp(now-lastAccentUpdate,0.,.1));lastAccentUpdate=now;
+        if(accentMode!="adaptive")return;
+        if(now>=nextAccentSample){nextAccentSample=now+.25;auto* main=Element("main-panel");const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border),size=main->GetBox().GetSize(Rml::BoxArea::Border);const auto sample=backdrop.Accent(at.x,at.y,size.x,size.y);
+            if(sample.valid){const auto candidate=MaterialColor::SceneAccent({sample.r,sample.g,sample.b});float difference=0;for(size_t i=0;i<3;++i)difference+=std::abs(candidate[i]-adaptiveTarget[i]);if(difference>.045f)adaptiveTarget=candidate;}}
+        const float amount=float(1-std::exp(-dt/.9f));for(size_t i=0;i<3;++i)adaptiveAccent[i]+=(adaptiveTarget[i]-adaptiveAccent[i])*amount;
+
+    }
     MaterialColor::Color AccentBackdrop(size_t slot,Backdrop::SceneColor local={}) {
         const auto scene=local.valid?local:filtered[slot];MaterialColor::Color base=scene.valid?MaterialColor::Color{scene.r,scene.g,scene.b}:MaterialColor::Color{.35f,.35f,.35f};
         if(appearance==3)base=MaterialColor::ClearSurface(base,clearOpacity/100.f,MaterialColor::Mode(surfaceBlend),blendStrength/100.f);
@@ -318,36 +333,38 @@ struct Controller : Rml::EventListener
         return base;
     }
     std::string AccentTone(size_t slot,bool heading,Backdrop::SceneColor local={}) {
-        auto source=accent;
+        const auto active=ActiveAccent();auto source=active;
         // Headings share a theme reference, including across detached windows.
         // Scene adaptation belongs to the glass, not each heading's ink.
-        const float headingBase=(appearance==1||AccentLight())?.86f:.12f;
+        const float headingBase=(appearance==1||AccentLight())?.86f:BaseAppearance()==3?.58f:.24f;
         const auto base=heading?MaterialColor::Color{headingBase,headingBase,headingBase}:AccentBackdrop(slot,local);
         const auto& mode=heading?headingAccentBlend:controlAccentBlend;const float strength=(heading?headingAccentStrength:controlAccentStrength)/100.f;
         auto mixed=MaterialColor::Blend(base,source,MaterialColor::Mode(mode));
         if(mode=="screen"&&MaterialColor::LinearLuma(source)>.55f)mixed=source;
         for(size_t i=0;i<3;++i)source[i]+=(mixed[i]-source[i])*strength;
-        if(heading&&BaseAppearance()==3&&!customTheme)source=MaterialColor::ClearHeading(accent);
+        if(heading&&!customTheme){if(BaseAppearance()==3)source=MaterialColor::ClearHeading(active);else if(BaseAppearance()==2)source=MaterialColor::Blend({.24f,.24f,.24f},active,MaterialColor::Mode("screen"));else source=MaterialColor::Blend(base,MaterialColor::Saturation(active,150),MaterialColor::Mode("multiply"));}
         if(appearance==1||AccentLight()){
             const float contrast=(MaterialColor::LinearLuma(base)+.05f)/(MaterialColor::LinearLuma(source)+.05f);
-            if(MaterialColor::YellowFamily(accent)){
+            if(MaterialColor::YellowFamily(active)){
                 if(heading&&(contrast<4.5f||MaterialColor::MuddyShade(source)))return "#3e3b37ff";
-                if(!MaterialColor::MuddyShade(accent)&&MaterialColor::MuddyShade(source))source=accent;
+                if(!MaterialColor::MuddyShade(active)&&MaterialColor::MuddyShade(source))source=active;
             }else {const float target=heading?4.5f:3.f;for(int step=0;step<64&&(MaterialColor::LinearLuma(base)+.05f)/(MaterialColor::LinearLuma(source)+.05f)<target;++step)for(auto& channel:source)channel*=.96f;}
         }
         return Hex(source[0],source[1],source[2]);
     }
     void AdaptiveForeground(const Backdrop& backdrop,double now) {
+        UpdateAccent(backdrop,now);
         const float dt=lastForeground<0?.1f:float(now-lastForeground);lastForeground=now;document->SetClass("clear-foreground",BaseAppearance()==3);
         if(clearAccent!=accent)clearAccent=accent;
-        Rml::ElementList elements;document->QuerySelectorAll(elements,"h1,h2,h3,h1 span,h2 span,h3 span,label,.hint,.brand,.welcome-wordmark,.welcome-message,.preview-note,button,select,selectvalue,.button-label,.field-heading span,.status-note,.glyph,.metadata-line,.mini-stat strong,.mini-stat-detail");
+        Rml::ElementList elements;document->QuerySelectorAll(elements,"h1,h2,h3,h1 span,h2 span,h3 span,label,input,.hint,.brand,.welcome-wordmark,.welcome-message,.preview-note,button,select,selectvalue,.button-label,.field-heading span,.status-note,.glyph,.metadata-line,.mini-stat strong,.mini-stat-detail");
         const std::unordered_set<Rml::Element*> alive(elements.begin(),elements.end());
         std::erase_if(clearForeground,[&](auto* e){return !alive.contains(e);});
         if(BaseAppearance()!=3){for(auto* e:clearForeground){e->RemoveProperty("color");e->RemoveProperty("image-color");e->RemoveProperty("font-effect");}clearForeground.clear();return;}
+        const auto headingInk=AccentTone(0,true);
         for(auto* e:elements){bool panel=false,menu=false;for(auto* p=e;p;p=p->GetParentNode()){if(p->IsClassSet("glass"))panel=true;if(p->GetId()=="settings-menu"||p->GetTagName()=="selectbox")menu=true;}if(!panel||menu)continue;
             Rml::Element* heading=nullptr;for(auto* p=e;p;p=p->GetParentNode())if(p->GetTagName()=="h1"||p->GetTagName()=="h2"||p->GetTagName()=="h3")heading=p;
             clearForeground.insert(e);
-            const auto property=e->IsClassSet("glyph")?"image-color":"color";const auto desired=heading?AccentTone(0,true):"#f5f1eaff";
+            const auto property=e->IsClassSet("glyph")?"image-color":"color";const auto desired=heading?headingInk:"#f5f1eaff";
             const auto packed=std::stoul(desired.substr(1),nullptr,16);const Rml::Colourb color{Rml::byte(packed>>24),Rml::byte(packed>>16),Rml::byte(packed>>8),Rml::byte(packed)};
             const auto* local=e->GetLocalProperty(property);if(!local||local->Get<Rml::Colourb>()!=color)e->SetProperty(property,desired);
             // Keep the existing subtle material-wide text depth. Never add a
@@ -388,6 +405,9 @@ struct Controller : Rml::EventListener
         Visible("appearance-god-mode",preview&&setupStep<0);Visible("appearance-god-details",preview&&godModeOpen&&setupStep<0);Element("appearance-god-mode")->SetClass("expanded",godModeOpen);
         Visible("accent-character-row",preview&&godModeOpen&&appearance==4);dynamic_cast<Rml::ElementFormControl*>(Element("accent-character"))->SetValue(std::to_string(accentCharacter));Element("accent-character-value")->SetInnerRML(accentCharacter<25?"Clear":accentCharacter<72?"Light":"Dark");
         Visible("accent-saturation-row",preview&&godModeOpen&&appearance==4);dynamic_cast<Rml::ElementFormControl*>(Element("accent-saturation"))->SetValue(std::to_string(accentSaturation));Element("accent-saturation-value")->SetInnerRML(std::to_string(int(accentSaturation))+"%");
+        for(const auto* mode:{"theme","custom","adaptive"})Element((std::string("accent-source-")+mode).c_str())->SetClass("selected",accentMode==mode);
+        Visible("accent-custom-row",accentMode=="custom");
+        Element("accent-source-hint")->SetInnerRML(accentMode=="theme"?"Neutral accents, matched to your theme.":accentMode=="custom"?"Your rtxForge color. Leave blank to use the game color.":"Samples the scene behind this panel, with gentle transitions.");
         Element("accent-tint")->SetClass("selected",appearance==4);Element("accent-tint")->QuerySelector(".switch")->SetClass("on",appearance==4);
         if(!preview)Element("font-select")->GetParentNode()->SetProperty("display","none");else Element("font-select")->GetParentNode()->RemoveProperty("display");
         Element("toast-pill")->SetClass("selected",toastPill);Element("toast-rounded")->SetClass("selected",!toastPill);
@@ -395,10 +415,12 @@ struct Controller : Rml::EventListener
         document->SetClass("dark-inverted",appearance==2 && invertDark);Element("welcome")->SetProperty("--corner-radius",toastPill?"28":"14");Element("welcome")->SetProperty("border-radius",toastPill?"28dp":"14dp");
         typographySync=false;prefsDirty=true;Reflow();
     }
-    void LoadPreferences(bool runtime=false) {
+    void LoadPreferences(bool runtime=false,const fs::path& explicitPath={}) {
         wchar_t folder[32768]{};if(!GetEnvironmentVariableW(L"LOCALAPPDATA",folder,32768))return;
         preferences=fs::path(folder)/(runtime?L"rtxForge/overlay-appearance.ini":L"rtxForge/prototypes/overlay-rmlui.ini");
-        setupPreferences=preferences.parent_path()/(runtime?L"overlay-setup.ini":L"overlay-preview-setup.ini");setupComplete=GetPrivateProfileIntW(L"Setup",L"Version",0,setupPreferences.c_str())>=1;
+        if(runtime){wchar_t executable[32768]{};const auto count=GetModuleFileNameW(nullptr,executable,32768);uint64_t identity=14695981039346656037ull;for(DWORD i=0;i<count;++i){identity^=uint64_t(towlower(executable[i]));identity*=1099511628211ull;}const auto defaults=preferences;preferences=defaults.parent_path()/L"overlay-games"/(std::to_wstring(identity)+L".ini");std::error_code error;fs::create_directories(preferences.parent_path(),error);if(!fs::exists(preferences)&&fs::exists(defaults))fs::copy_file(defaults,preferences,fs::copy_options::none,error);}
+        if(!explicitPath.empty())preferences=explicitPath;
+        setupPreferences=(runtime?fs::path(folder)/L"rtxForge":preferences.parent_path())/(runtime?L"overlay-setup.ini":L"overlay-preview-setup.ini");setupComplete=GetPrivateProfileIntW(L"Setup",L"Version",0,setupPreferences.c_str())>=1;
         const auto number=[&](const wchar_t* key,int fallback,int low,int high){return std::clamp(int(GetPrivateProfileIntW(L"Appearance",key,fallback,preferences.c_str())),low,high);};
         copySize=number(L"TextSize",22,16,26);copyWeight=number(L"TextWeight",500,100,900);headingSize=36;headingWeight=400;overlayScale=number(L"ScaleBaseline",0,0,120)==120?number(L"Scale",100,70,150):100;
         const bool current=number(L"ThemeVersion",0,0,ForgeAppearance::Version)==ForgeAppearance::Version;
@@ -413,6 +435,9 @@ struct Controller : Rml::EventListener
         originalLabels=number(L"OriginalLabels",0,0,1)!=0;Labels();showStats=number(L"ShowStats",1,0,1)!=0;showWelcome=number(L"ShowWelcome",1,0,1)!=0;showNotifications=number(L"ShowNotifications",1,0,1)!=0;
         shortcut=number(L"Shortcut",Rml::Input::KI_DELETE,0,255);shortcutModifiers=number(L"ShortcutModifiers",0,0,7);
         for(auto& [key,on]:menuSettings)on=number(fs::path("Menu-"+key).c_str(),on,0,1)!=0;
+        wchar_t source[80]{};GetPrivateProfileStringW(L"Appearance",L"AccentMode",L"adaptive",source,80,preferences.c_str());accentMode=Utf8(source);if(accentMode!="theme"&&accentMode!="custom")accentMode="adaptive";
+        GetPrivateProfileStringW(L"Appearance",L"AccentColor",L"",source,80,preferences.c_str());customAccent=Utf8(source);if(!MaterialColor::ValidAccent(customAccent))customAccent.clear();
+        dynamic_cast<Rml::ElementFormControl*>(Element("accent-color"))->SetValue(customAccent);
         wchar_t text[80]{};GetPrivateProfileStringW(L"Appearance",L"HeadingFont",L"bakbak",text,80,preferences.c_str());const auto heading=Utf8(text);if(heading=="bakbak"||heading=="roboto"||heading=="inter"||heading=="aptos")headingFont=heading;
         GetPrivateProfileStringW(L"Appearance",L"TextFont",L"roboto",text,80,preferences.c_str());const auto copy=Utf8(text);if(copy=="roboto"||copy=="inter"||copy=="aptos")copyFont=copy;
         if(current){GetPrivateProfileStringW(L"Appearance",L"SurfaceBlend",fs::path(theme.blend).c_str(),text,80,preferences.c_str());const auto blend=Utf8(text);if(MaterialColor::Valid(blend))surfaceBlend=blend;}
@@ -431,6 +456,7 @@ struct Controller : Rml::EventListener
     void SavePreferences() {
         if(preferences.empty())return;fs::create_directories(preferences.parent_path());
         const auto put=[&](const wchar_t* key,int value){const auto text=std::to_wstring(value);WritePrivateProfileStringW(L"Appearance",key,text.c_str(),preferences.c_str());};
+        WritePrivateProfileStringW(L"Appearance",L"AccentMode",fs::path(accentMode).c_str(),preferences.c_str());WritePrivateProfileStringW(L"Appearance",L"AccentColor",fs::path(customAccent).c_str(),preferences.c_str());
         put(L"TextSize",copySize);put(L"TextWeight",copyWeight);put(L"HeadingSize",headingSize);put(L"HeadingWeight",headingWeight);put(L"Scale",overlayScale);put(L"Theme",appearance);put(L"LightTint",int(lightOpacity));put(L"DarkTint",int(darkOpacity));
         put(L"ThemeVersion",ForgeAppearance::Version);put(L"ScaleBaseline",120);put(L"Custom",customTheme);put(L"TextDepth",textDepth);put(L"InvertDark",invertDark);put(L"ToastPill",toastPill);put(L"Motion",motionEnabled);put(L"Grain",int(grainAmount*10));put(L"BlendStrength",int(blendStrength));put(L"ClearTint",int(clearOpacity));put(L"AccentCharacter",int(accentCharacter));put(L"AccentTint",int(accentOpacity));put(L"AccentSaturation",int(accentSaturation));put(L"Blur",int(blurRadius));
         put(L"HeadingAccentStrength",int(headingAccentStrength));put(L"ControlAccentStrength",int(controlAccentStrength));WritePrivateProfileStringW(L"Appearance",L"HeadingAccentBlend",fs::path(headingAccentBlend).c_str(),preferences.c_str());WritePrivateProfileStringW(L"Appearance",L"ControlAccentBlend",fs::path(controlAccentBlend).c_str(),preferences.c_str());
@@ -484,6 +510,7 @@ struct Controller : Rml::EventListener
     }
     static std::string Hex(float r,float g,float b,float a=1) {char text[16];std::snprintf(text,sizeof(text),"#%02x%02x%02x%02x",int(std::clamp(r,0.f,1.f)*255),int(std::clamp(g,0.f,1.f)*255),int(std::clamp(b,0.f,1.f)*255),int(std::clamp(a,0.f,1.f)*255));return text;}
     static float Luma(Backdrop::SceneColor c) {const auto linear=[](float x){return x<=.04045f?x/12.92f:std::pow((x+.055f)/1.055f,2.4f);};return .2126f*linear(c.r)+.7152f*linear(c.g)+.0722f*linear(c.b);}
+    std::unordered_map<std::string,std::string> adaptiveProperties;
     void Adapt(const std::array<Backdrop::SceneColor,4>& colors,double now)
     {
         const float amount=lastAdapt<0 ? 1.f:float(1-std::exp(-std::clamp(now-lastAdapt,0.,.1)/.65));lastAdapt=now;
@@ -492,16 +519,17 @@ struct Controller : Rml::EventListener
             if(colors[i].valid) {if(first)c=colors[i];else{c.r+=(colors[i].r-c.r)*amount;c.g+=(colors[i].g-c.g)*amount;c.b+=(colors[i].b-c.b)*amount;}}
             const float light=c.valid?Luma(c):.4f;
             const bool isDark=appearance==2 || (appearance==4&&!AccentLight()) || (appearance==3 && (first?light<.18f:panelDark[i]?light<.20f:light<.16f));
-            panelDark[i]=isDark;auto* e=Element(i==0?"main-panel":i==1?"inspector":i==2?"welcome":"type-panel");e->SetClass("dark",isDark);
+            panelDark[i]=isDark;auto* e=Element(i==0?"main-panel":i==1?"inspector":i==2?"welcome":"type-panel");
+            const auto set=[&](const char* name,const std::string& value){const auto key=e->GetId()+name;auto& previous=adaptiveProperties[key];if(previous!=value){previous=value;e->SetProperty(name,value);}};e->SetClass("dark",isDark);
             // Constrain the neutral base. Scene chroma comes through the blurred
             // layer; the material's tone does not add a blue cast of its own.
-            e->SetProperty("--surface-tone",std::to_string(appearance==3?.96f:isDark?(invertDark?.13f:.07f):.86f));
-            e->SetProperty("--surface-grounding",std::to_string((appearance==4?accentOpacity:appearance==3?clearOpacity:isDark?darkOpacity:lightOpacity)/100.f));
-            e->SetProperty("--material-blur",std::to_string(blurRadius));e->SetClass("clear",appearance==3);e->SetClass("accent-theme",appearance==4);
-            e->SetProperty("--material-blend",surfaceBlend);e->SetProperty("--material-blend-opacity",std::to_string(blendStrength/100.f));e->SetProperty("--material-texture",std::to_string(grainAmount/100.f));
-            e->SetProperty("--accent",AccentTone(i,false));e->SetProperty("--accent-ink",AccentTone(i,true));
-            e->SetProperty("--accent-soft",AccentTone(i,false).substr(0,7)+"55");
-            e->SetProperty("--shadow-opacity",std::to_string(i==2?.10f:.26f));
+            set("--surface-tone",std::to_string(appearance==3?.96f:isDark?(invertDark?.13f:.07f):.86f));
+            set("--surface-grounding",std::to_string((appearance==4?accentOpacity:appearance==3?clearOpacity:isDark?darkOpacity:lightOpacity)/100.f));
+            set("--material-blur",std::to_string(blurRadius));e->SetClass("clear",appearance==3);e->SetClass("accent-theme",appearance==4);
+            set("--material-blend",surfaceBlend);set("--material-blend-opacity",std::to_string(blendStrength/100.f));set("--material-texture",std::to_string(grainAmount/100.f));
+            set("--accent",AccentTone(i,false));set("--accent-ink",AccentTone(i,true));
+            set("--accent-soft",AccentTone(i,false).substr(0,7)+"55");
+            set("--shadow-opacity",std::to_string(i==2?.10f:.26f));
         }
         Select("theme-menu",customTheme?"":BaseAppearance()==1?"theme-light":BaseAppearance()==3?"theme-clear":"theme-dark");
         QuickLayoutTheme();
@@ -591,7 +619,7 @@ struct Controller : Rml::EventListener
         if(syncing || typographySync)return;
         auto* target=event.GetTargetElement();
         if(setupStep>=0&&event.GetType()=="keydown"&&event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_TAB){
-            const std::vector<const char*> choices=setupStep==0?std::vector<const char*>{"theme-light","theme-dark","theme-clear","accent-tint","setup-skip","setup-next"}:std::vector<const char*>{"appearance-back","setup-layout-floating","setup-layout-centered","setup-layout-bar","setup-skip","setup-next"};
+            const std::vector<const char*> choices=setupStep==0?std::vector<const char*>{"theme-light","theme-dark","theme-clear","accent-source-theme","accent-source-custom","accent-source-adaptive","accent-color","accent-tint","setup-skip","setup-next"}:std::vector<const char*>{"appearance-back","setup-layout-floating","setup-layout-centered","setup-layout-bar","setup-skip","setup-next"};
             auto* focused=document->GetContext()->GetFocusElement();int index=-1;for(size_t i=0;i<choices.size();++i)if(Element(choices[i])==focused)index=int(i);const int direction=event.GetParameter<int>("shift_key",0)?-1:1;Element(choices[(index+direction+int(choices.size()))%int(choices.size())])->Focus();event.StopPropagation();return;
         }
         const auto inside=[&](const char* id){for(auto* e=target;e;e=e->GetParentNode())if(e->GetId()==id)return true;return false;};
@@ -666,6 +694,7 @@ struct Controller : Rml::EventListener
         }
         if(event.GetType()=="change") {
             auto* field=dynamic_cast<Rml::ElementFormControl*>(target);if(!field)return;
+            if(id=="accent-color"){auto color=field->GetValue();if(MaterialColor::ValidAccent(color)){customAccent=color;Materials();}return;}
             if(id=="scene-select") {const auto value=field->GetValue();if(!value.empty())sceneRequest=std::stoi(value);return;}
             if(id=="welcome-position"){welcomePosition=field->GetValue();prefsDirty=true;PositionWelcome();return;}
             if(id=="primary-menu"){primaryMenu=field->GetValue();prefsDirty=true;return;}
@@ -691,6 +720,7 @@ struct Controller : Rml::EventListener
                 edits.Record(before,values);edits.saved=values;Message(preview?"Preset loaded into this preview":"Preset selected");Notify(name+std::string(preview?" preset · Preview":" preset"));
             }
         } else if(event.GetType()=="click") {
+            if(id.rfind("accent-source-",0)==0){const auto mode=id.substr(14);if(mode=="theme"||mode=="custom"||mode=="adaptive"){accentMode=mode;Materials();}return;}
             if(id=="preview-close"&&closePreview)closePreview();
             else if(id=="close"){if(closePreview)closePreview();else ToggleOverlay();}
             else if(id=="window-back")Back();

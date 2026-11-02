@@ -12,7 +12,7 @@ public sealed class GameOverlayPreferencesView : StackPanel
     readonly MainWindow shell;
     readonly Game game;
     readonly StackPanel fields = new() { Spacing = 8 };
-    readonly TextBlock status = Prefs.Label("Appearance and layout are shared across games. Menu and welcome choices can differ for this game.");
+    readonly TextBlock status = Prefs.Label("Appearance, layout, menus and shortcuts below apply only to this game.");
     bool loading;
 
     public GameOverlayPreferencesView(MainWindow shell, Game game)
@@ -25,10 +25,10 @@ public sealed class GameOverlayPreferencesView : StackPanel
             try
             {
                 edit();
-                var glass = GlassAppearance.Load();
-                var fresh = ForgeSettings.EditOverlay(s => { s.OverlayAppearance = glass.ToJson(); s.OverlayTheme = glass.Theme; });
+                var glass = GlassAppearance.Load(GlassAppearance.GameFilePath(game));
+                var fresh = ForgeSettings.EditGameOverlay(game, s => { s["overlay_appearance"] = glass.ToJson(); s["overlay_theme"] = glass.Theme; });
                 shell.Settings.CopyOverlayFrom(fresh);
-                status.Text = "Appearance saved for all games. Menu and welcome choices below apply to this game.";
+                status.Text = "Appearance saved for this game.";
             }
             catch (Exception error) { status.Text = error.Message; }
         }, shell.Service as EngineForgeService, game);

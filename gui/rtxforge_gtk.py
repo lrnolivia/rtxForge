@@ -10395,9 +10395,8 @@ class Window(Adw.ApplicationWindow):
         s=overlay_settings.effective(self.settings,game['game'] if game else None)
         def save(key,value):
             s[key]=value
-            if game and key not in ('overlay_appearance','overlay_theme'):
-                overrides=self.settings.setdefault('game_overlay_settings',{})
-                overrides.setdefault(game['game'],{k:v for k,v in s.items() if k not in ('overlay_renderer','overlay_appearance')})[key]=value
+            if game:
+                self.settings['game_overlay_settings']=overlay_settings.game_edit(self.settings,game['game'],key,value)
                 if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
             else:self.save_overlay_preference(key,value)
         def choice(title,subtitle,keys,captions,key,group):
@@ -10412,13 +10411,14 @@ class Window(Adw.ApplicationWindow):
         panel=Adw.PreferencesGroup(title='rtxForge Panel',description='NR and MFG controls drawn inside the game. Saved here, then written to each game on its next reviewed install or repair.')
         if not game:choice('Panel','Where rtxForge\u2019s controls appear while you play.',['game','optiscaler'],['In the game','OptiScaler menu only'],'overlay_renderer',panel)
         import glass_preferences as glass
-        appearance=Adw.PreferencesGroup(title='Appearance',description='Appearance and layout are shared across games. Menu and welcome choices below can differ for this game.' if game else 'The same layouts and materials as the glass overlay.')
+        appearance=Adw.PreferencesGroup(title='Appearance',description='Saved for this game.' if game else 'Defaults for game overlays. In-game changes stay with that game.')
         refreshing=[False];refreshers=[]
         position_rows=[]
         def changed(key,value):
             if refreshing[0]:return
             if not self.options.demo:
-                s['overlay_appearance']=library_media.load_settings(self.service.config).get('overlay_appearance',{})
+                fresh=library_media.load_settings(self.service.config)
+                s['overlay_appearance']=overlay_settings.effective(fresh,game['game'] if game else None)['overlay_appearance']
             glass.edit(s,key,value);save('overlay_appearance',s['overlay_appearance'])
             for row,mode in position_rows:row.set_visible(glass.current(s)['Layout']==mode)
             appearance.set_description('Custom appearance' if glass.current(s)['Custom'] else 'The same layouts and materials as the glass overlay.')
@@ -10452,7 +10452,16 @@ class Window(Adw.ApplicationWindow):
             finally:refreshing[0]=False
             appearance.set_description('The same layouts and materials as the glass overlay.')
         visual_row('Theme',ThemePicker(glass.base_theme(s),select_theme))
-        accent_row=Adw.SwitchRow(title='Accent Tint',subtitle="Tint surfaces with this game's accent color.",active=glass.current(s)['Theme']==4)
+        source_row=material_choice('Accent','AccentMode',['theme','custom','adaptive'],['Theme','Custom','Adaptive'])
+        source_row.set_subtitle('Theme is neutral. Custom uses your color. Adaptive follows the scene.')
+        custom_row=Adw.EntryRow(title='Custom color · #RRGGBB',text=glass.current(s)['AccentColor'])
+        def custom_changed(widget,*_):
+            value=widget.get_text()
+            if not value or __import__('re').fullmatch(r'#[0-9a-fA-F]{6}',value):changed('AccentColor',value)
+        custom_row.connect('changed',custom_changed);appearance.add(custom_row)
+        def custom_visibility(*_):custom_row.set_visible(glass.current(s)['AccentMode']=='custom')
+        source_row.connect('notify::selected',custom_visibility);refreshers.append(custom_visibility);custom_visibility()
+        accent_row=Adw.SwitchRow(title='Accent Tint' ,subtitle="Tint surfaces with this game's accent color.",active=glass.current(s)['Theme']==4)
         def tint_changed(widget,*_):
             if refreshing[0]:return
             glass.appearance(s,tint=widget.get_active());save('overlay_appearance',s['overlay_appearance'])
@@ -10503,6 +10512,14 @@ class Window(Adw.ApplicationWindow):
         switch('ReShade Welcome','Show ReShade\u2019s first-run guide. Its short loading banner can\u2019t be turned off.','reshade_intro',reshade)
         vulkan=Adw.PreferencesGroup(title='Vulkan MFG overlay')
         switch('Native MFG menu and hint','Optional advanced menu; frame generation keeps running when hidden.','vulkan_mfg_native_menu',vulkan)
+        if not game:
+            reset_row=Adw.ActionRow(title='Reset game overlays',subtitle='Apply these defaults to every overlay. Close games first.')
+            def reset_overlays(*_):
+                self.settings['game_overlay_settings']={}
+                if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+                self.toast('All game overlays now use your defaults.')
+            reset_all=button('Apply defaults to all overlays',reset_overlays);reset_all.set_valign(Gtk.Align.CENTER)
+            reset_row.add_suffix(reset_all);appearance.add(reset_row)
         installed=Adw.PreferencesGroup(title='Update Overlays')
         item=row('Update Overlays','Review overlay package updates and the effective menu, welcome and shortcut choices for each installed game.')
         action=button('Update Overlays',lambda *_:self.overlay_packages_review(game));action.set_valign(Gtk.Align.CENTER);action.set_sensitive(self.runtime_api() is not None and not self.options.demo and (not game or game.get('installed',False)))
@@ -10514,7 +10531,7 @@ class Window(Adw.ApplicationWindow):
     def game_overlay_card(self,game):
         card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)
         inherited=game['game'] not in self.settings.get('game_overlay_settings',{})
-        defaults=Adw.SwitchRow(title='Use app overlay settings',subtitle='Turn off to choose menu and welcome settings for this game.',active=inherited)
+        defaults=Adw.SwitchRow(title='Use app overlay settings',subtitle='Turn off to customize this game’s overlay.',active=inherited)
         group=Adw.PreferencesGroup();group.add(defaults);card.append(group)
         options=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16,sensitive=not inherited)
         sections=self.overlay_settings_groups(game)

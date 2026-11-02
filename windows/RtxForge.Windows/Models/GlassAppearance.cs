@@ -8,6 +8,22 @@ namespace RtxForge.Windows.Models;
 public sealed class GlassAppearance
 {
     public static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "overlay-appearance.ini");
+    public static string GameFilePath(Game game)
+    {
+        var key=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(game.Id))).ToLowerInvariant();
+        var path=Path.Combine(Path.GetDirectoryName(FilePath)!,"overlay-games",key+".ini");
+        if(!File.Exists(path)){
+            var values=Load().ToJson();var settings=ForgeSettings.Load();
+            if(settings.GameOverlaySettings.TryGetValue(game.Id,out var local)&&local["overlay_appearance"] is JsonObject appearance)foreach(var (name,value) in Validate(appearance))values[name]=value?.DeepClone();
+            foreach(var (name,value) in values)Set(name,value!.ToString(),path:path);
+        }
+        return path;
+    }
+    public static void ResetGameProfiles()
+    {
+        var directory=Path.Combine(Path.GetDirectoryName(FilePath)!,"overlay-games");
+        if(Directory.Exists(directory))foreach(var file in Directory.EnumerateFiles(directory,"*.ini",SearchOption.TopDirectoryOnly))File.Delete(file);
+    }
     public static readonly string[] Layouts = ["floating", "centered", "bar"];
     public static readonly string[] Themes = ["clear", "light", "dark", "accent"];
     public static readonly string[] Blends = ["normal", "overlay", "soft-light", "multiply", "screen", "hard-light", "darken", "lighten", "color", "luminosity", "difference"];
@@ -27,6 +43,9 @@ public sealed class GlassAppearance
         UseTheme(tint.Value?"accent":baseTheme,path);
         if(tint.Value){Set("AccentCharacter",baseTheme=="clear"?10:baseTheme=="light"?50:100,path:path);Set("AccentSaturation",baseTheme=="dark"?94:200,path:path);}
     }
+    public string AccentMode => Get("AccentMode", "adaptive") is "theme" or "custom" ? Get("AccentMode", "adaptive") : "adaptive";
+    public static bool ValidAccent(string color) => color.Length == 0 || System.Text.RegularExpressions.Regex.IsMatch(color, "^#[0-9a-fA-F]{6}$");
+    public string AccentColor => ValidAccent(Get("AccentColor", "")) ? Get("AccentColor", "") : "";
     public string Layout => Layouts.Contains(Get("Layout", "floating")) ? Get("Layout", "floating") : "floating";
     public string SidePanelSide => Get("SidePanelSide", "left") == "right" ? "right" : "left";
     public string BarPosition => Get("BarPosition", "bottom") == "top" ? "top" : "bottom";
@@ -41,7 +60,7 @@ public sealed class GlassAppearance
         ["Motion"]=(0,1,1), ["ShowNotifications"]=(0,1,1),
     };
     static readonly Dictionary<string, string[]> Options = new()
-    { ["Layout"]=Layouts, ["SidePanelSide"]=["left","right"], ["BarPosition"]=["bottom","top"], ["TextFont"]=["roboto","inter"], ["SurfaceBlend"]=Blends };
+    { ["AccentMode"]=["theme","custom","adaptive"], ["Layout"]=Layouts, ["SidePanelSide"]=["left","right"], ["BarPosition"]=["bottom","top"], ["TextFont"]=["roboto","inter"], ["SurfaceBlend"]=Blends };
     public JsonObject ToJson()
     {
         var result = new JsonObject();
@@ -49,16 +68,18 @@ public sealed class GlassAppearance
         result["Theme"] = Theme == "light" ? 1 : Theme == "dark" ? 2 : Theme == "accent" ? 4 : 3;
         foreach (var (key, options) in Options)
         {
-            var fallback = key == "Layout" ? "floating" : key == "SidePanelSide" ? "left" : key == "BarPosition" ? "bottom" : key == "TextFont" ? "roboto" : "soft-light";
+            var fallback = key == "AccentMode" ? "adaptive" : key == "Layout" ? "floating" : key == "SidePanelSide" ? "left" : key == "BarPosition" ? "bottom" : key == "TextFont" ? "roboto" : "soft-light";
             var value = Get(key, fallback); result[key] = options.Contains(value) ? value : fallback;
         }
+        result["AccentColor"] = AccentColor;
         return result;
     }
     public static JsonObject Validate(JsonObject values)
     {
         foreach (var (key, value) in values)
         {
-            if (Ranges.TryGetValue(key, out var range))
+            if (key == "AccentColor") { if (value is not JsonValue color || !color.TryGetValue<string>(out var hex) || !ValidAccent(hex)) throw new InvalidOperationException("Use a hex color such as #3B8CCF."); }
+            else if (Ranges.TryGetValue(key, out var range))
             {
                 if (value is not JsonValue number || !number.TryGetValue<int>(out var n) || n < range.Low || n > range.High)
                     throw new InvalidOperationException("Overlay " + key + " is outside its supported range.");

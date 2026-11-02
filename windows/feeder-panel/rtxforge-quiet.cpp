@@ -22,6 +22,19 @@ void on_overlay(reshade::api::effect_runtime *)
         quiet = !(reshade::get_config_value(nullptr, "rtxForge.UI", "QuietStartup", text, &size) && text[0] == '0');
         read = true;
     }
+    // RenoDX 8.5 rc10 uses this window for its transient status card. When
+    // the glass renderer owns notifications, suppress that duplicate card.
+    // Its separate ##issue_notice diagnostic window is deliberately untouched.
+    const auto glass=GetModuleHandleW(L"rtxforge-glass.dll");
+    const auto ownsNotifications=glass?reinterpret_cast<bool (__cdecl*)()>(GetProcAddress(glass,"ForgeGlassNotificationsActive")):nullptr;
+    if (ownsNotifications && ownsNotifications())
+    {
+        ImGui::Begin("##nr_status_card", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings);
+        ImDrawList *status = ImGui::GetWindowDrawList();
+        for (int i = 0; i < status->CmdBuffer.Size; ++i) status->CmdBuffer[i].ElemCount = 0;
+        ImGui::End();
+    }
     if (!quiet) return;
     // ReShade creates this window before the add-on overlay event.
     ImGui::Begin("Splash Window", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove |

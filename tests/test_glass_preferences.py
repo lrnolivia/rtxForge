@@ -12,6 +12,21 @@ import transactions as t
 
 
 class GlassPreferencesTest(unittest.TestCase):
+    def test_accent_source_and_color_round_trip(self):
+        settings={}
+        self.assertEqual(glass.current(settings)['AccentMode'],'adaptive')
+        for mode in ('theme','custom','adaptive'):
+            glass.edit(settings,'AccentMode',mode)
+            for color in ('','#3B8CCF','#f6ea11'):
+                glass.edit(settings,'AccentColor',color)
+                for base in ('clear','light','dark'):
+                    glass.appearance(settings,base=base,tint=True)
+                    snapshot=proton_overlay.settings_snapshot(overlay_settings.options(settings))['overlay_appearance']
+                    self.assertEqual((snapshot['AccentMode'],snapshot['AccentColor']),(mode,color))
+        for color in ('red','#123','#12345678','#gggggg','<script>',None,123):
+            with self.assertRaises(t.Refusal):glass.edit({},'AccentColor',color)
+        with self.assertRaises(t.Refusal):glass.edit({},'AccentMode','game')
+
     def test_bar_position_survives_theme_layout_and_helper_snapshot(self):
         settings={}
         self.assertEqual(glass.current(settings)['BarPosition'],'bottom')

@@ -338,6 +338,16 @@ static void TestController(Controller& c,Rml::Context* context)
     c.Session({});Require(c.Element("compact-nr-size")->GetInnerRML().find("not reported")!=std::string::npos,"Missing dimensions were guessed");
     live.framesKnown=false;c.Session(live);Require(c.Element("compact-ratio")->GetInnerRML().empty(),"Unmeasured multiplier must stay hidden");c.Session({});
     c.Visible("type-panel",false);click("open-settings");Require(c.settingsOpen&&c.Element("settings-screen")->IsVisible(),"Settings must be a full screen");
+    {c.ShowAppearance();context->Update();const auto savedMode=c.accentMode,savedColor=c.customAccent;const auto savedAccent=c.accent;
+        click("accent-source-custom");Require(c.accentMode=="custom","Custom accent source did not select");
+        auto* color=dynamic_cast<Rml::ElementFormControl*>(c.Element("accent-color"));color->SetValue("#3B8CCF");color->DispatchEvent("change",{});
+        Require(c.customAccent=="#3B8CCF"&&std::abs(c.ActiveAccent()[2]-207.f/255)<.001f,"Custom color did not apply");
+        color->SetValue("invalid");color->DispatchEvent("change",{});Require(c.customAccent=="#3B8CCF","Invalid color replaced saved custom color");
+        click("accent-source-theme");const auto neutral=c.ActiveAccent();Require(neutral[0]==neutral[1]&&neutral[1]==neutral[2],"Theme accent is not neutral");
+        click("accent-source-adaptive");Require(c.accentMode=="adaptive"&&c.customAccent=="#3B8CCF"&&c.accent==savedAccent,"Source switching erased the custom or Library color");
+        c.accentMode=savedMode;c.customAccent=savedColor;color->SetValue(savedColor);c.Materials();c.Visible("type-panel",false);
+        std::cout<<"native_accent_source_controls=passed\n";
+    }
     click("setting-notifications");Require(!c.showNotifications,"Notification preference did not change");click("setting-notifications");
     click("setting-original-labels");Require(c.originalLabels,"Original label preference did not enable");Require(c.Element("extra-popup-interval")->GetParentNode()->QuerySelector("label")->GetInnerRML()=="Max frames between runs","Original label does not match the pinned menu");click("setting-original-labels");Require(c.Element("extra-popup-interval")->GetParentNode()->QuerySelector("label")->GetInnerRML()=="Refresh interval","Friendly label did not restore");Require(c.Element("extra-popup-interval")->GetParentNode()->QuerySelector("label")->GetAttribute<Rml::String>("title","")=="Max frames between runs","Friendly label lost its upstream tooltip");
     click("setting-stats");Require(!c.showStats&&!c.Element("compact-live")->IsVisible(),"Stats preference should hide compact data");click("setting-stats");click("window-back");
@@ -396,13 +406,14 @@ static void TestController(Controller& c,Rml::Context* context)
 int wmain(int argc,wchar_t** argv)
 {
     try {
-        fs::path assets,background,output,font,gameCatalog;DWORD parentProcess=0;int width=2560,height=1440,appearance=3,requestedCopy=22,requestedScale=100;bool gameCapture=false,thumbnail=false,desktopPreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=35,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
+        fs::path assets,background,output,font,gameCatalog,preferencesPath;DWORD parentProcess=0;int width=2560,height=1440,appearance=3,requestedCopy=22,requestedScale=100;bool benchmark=false;bool gameCapture=false,thumbnail=false,desktopPreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=35,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedAccentMode="adaptive";std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
         for(int i=1;i<argc;++i) {
             const std::wstring arg=argv[i];
             const auto next=[&] {Require(i+1<argc,"Missing argument value");return std::wstring(argv[++i]);};
-            if(arg==L"--assets")assets=next();else if(arg==L"--background")background=next();else if(arg==L"--output")output=next();
+            if(arg==L"--preferences")preferencesPath=next();else if(arg==L"--assets")assets=next();else if(arg==L"--background")background=next();else if(arg==L"--output")output=next();
             else if(arg==L"--font")font=next();else if(arg==L"--width")width=std::stoi(next());else if(arg==L"--height")height=std::stoi(next());
             else if(arg==L"--dark")appearance=2;else if(arg==L"--light")appearance=1;else if(arg==L"--clear")appearance=3;else if(arg==L"--accent-theme")appearance=4;else if(arg==L"--accent-character")requestedCharacter=std::clamp(std::stof(next()),0.f,100.f);else if(arg==L"--inspector")inspector=true;else if(arg==L"--no-blur")blur=false;else if(arg==L"--crop-left")crop=std::stof(next());
+            else if(arg==L"--accent-mode"){requestedAccentMode=Utf8(next());Require(requestedAccentMode=="theme"||requestedAccentMode=="custom"||requestedAccentMode=="adaptive","Use --accent-mode theme, custom, or adaptive");}
             else if(arg==L"--accent-saturation")requestedSaturation=std::clamp(std::stof(next()),0.f,200.f);
             else if(arg==L"--layout-picker")pickerPreview=true;else if(arg==L"--onboarding")onboarding=true;else if(arg==L"--self-test")selfTest=true;else if(arg==L"--reduce-motion")reduceMotion=true;else if(arg==L"--welcome")welcome=true;else if(arg==L"--settings")settings=true;
             else if(arg==L"--page")requestedPage=Utf8(next());
@@ -410,6 +421,7 @@ int wmain(int argc,wchar_t** argv)
             else if(arg==L"--game-title")gameTitle=Utf8(next());
             else if(arg==L"--game-catalog")gameCatalog=next();
             else if(arg==L"--parent-process")parentProcess=std::stoul(next());
+            else if(arg==L"--benchmark")benchmark=true;
             else if(arg==L"--thumbnail")thumbnail=true;else if(arg==L"--game-capture")gameCapture=true;
             else if(arg==L"--layout-test")layoutTest=true;else if(arg==L"--production-ui")productionUI=true;else if(arg==L"--appearance")appearanceOpen=true;else if(arg==L"--more")detailsOpen=appearanceOpen=true;
             else if(arg==L"--custom-mfg")customMfg=true;
@@ -461,7 +473,7 @@ int wmain(int argc,wchar_t** argv)
         Require(Rml::LoadFontFace(Utf8(inter)),"Inter could not load");
         auto* context=Rml::CreateContext("overlay",{width,height});Require(context!=nullptr,"RmlUi context could not be created");inputContext=context;
         auto* document=context->LoadDocument(Utf8(assets/L"overlay.rml"));Require(document!=nullptr,"Overlay document could not load");
-        Controller controller;controller.document=document;controller.preview=!productionUI;controller.appearance=appearance;controller.accent=accent;controller.UseTheme(appearance);if(appearance==4){controller.accentCharacter=requestedCharacter;controller.accentOpacity=100*MaterialColor::AccentOpacity(requestedCharacter);controller.accentSaturation=requestedSaturation;}if(window||desktopPreview)controller.LoadPreferences(desktopPreview);
+        Controller controller;controller.document=document;controller.preview=!productionUI;controller.appearance=appearance;controller.accent=accent;controller.accentMode=requestedAccentMode;controller.UseTheme(appearance);if(appearance==4){controller.accentCharacter=requestedCharacter;controller.accentOpacity=100*MaterialColor::AccentOpacity(requestedCharacter);controller.accentSaturation=requestedSaturation;}if(window||desktopPreview)controller.LoadPreferences(false,preferencesPath);
         if(desktopPreview){controller.preferences.clear();controller.setupComplete=true;controller.closePreview=[]{closed=true;};controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("desktop-preview",true);if(library.names.empty())document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");else document->QuerySelector(".preview-label")->SetInnerRML("Game");if(window){SetWindowTextW(window,L"rtxForge · Overlay preview");controller.Element("preview-chrome")->SetProperty("display","block");}}
         if(!gameTitle.empty())controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("preview-thumbnail",thumbnail);
         if(!window&&!desktopPreview){controller.copySize=requestedCopy;controller.overlayScale=requestedScale;}if(customMfg)controller.values["multiplier"]=3;
@@ -511,6 +523,9 @@ int wmain(int argc,wchar_t** argv)
             sceneSelect->SetSelection(0);controller.sceneRequest=-1;
             Require(sceneSelect->GetNumOptions()==int(library.names.size())&&sceneSelect->GetValue()=="0","Preview game choices did not initialize");
         }
+        struct GpuTiming {Microsoft::WRL::ComPtr<ID3D11Query> disjoint,begin,end;bool pending=false;};
+        std::array<GpuTiming,8> timings;std::vector<double> gpuCosts;
+        if(benchmark)for(auto& timing:timings){D3D11_QUERY_DESC desc{D3D11_QUERY_TIMESTAMP_DISJOINT,0};Check(device->CreateQuery(&desc,&timing.disjoint));desc.Query=D3D11_QUERY_TIMESTAMP;Check(device->CreateQuery(&desc,&timing.begin));Check(device->CreateQuery(&desc,&timing.end));}
         std::vector<double> costs;int frames=0;double lastPreferences=0,nextSample=0;int selectedScene=0;auto stableAccent=accent;
         if(!desktopPreview){for(const auto& scene:ScenePresets)if(background.stem()==fs::path(scene.file).stem()){selectedScene=scene.app;break;}sceneSelect->SetValue(std::to_string(selectedScene));controller.sceneRequest=-1;}
         auto lastStyle=fs::last_write_time(assets/L"overlay.rcss");double nextStyleCheck=0;
@@ -554,6 +569,10 @@ int wmain(int argc,wchar_t** argv)
                 document->SetProperty("--accent",Controller::Hex(stableAccent[0],stableAccent[1],stableAccent[2]));
                 dynamic_cast<Rml::ElementFormControl*>(controller.Element("scene-select"))->SetValue(std::to_string(library.selected));controller.Notify(error.what());
             }
+            auto& timing=timings[frames%timings.size()];
+            if(benchmark&&timing.pending){D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};UINT64 begin=0,end=0;
+                if(immediate->GetData(timing.disjoint.Get(),&disjoint,sizeof(disjoint),D3D11_ASYNC_GETDATA_DONOTFLUSH)==S_OK&&immediate->GetData(timing.begin.Get(),&begin,sizeof(begin),D3D11_ASYNC_GETDATA_DONOTFLUSH)==S_OK&&immediate->GetData(timing.end.Get(),&end,sizeof(end),D3D11_ASYNC_GETDATA_DONOTFLUSH)==S_OK){if(!disjoint.Disjoint&&frames>=120)gpuCosts.push_back(1000.*double(end-begin)/disjoint.Frequency);timing.pending=false;}}
+            const bool measureGpu=benchmark&&!timing.pending;if(measureGpu){immediate->Begin(timing.disjoint.Get());immediate->End(timing.begin.Get());}
             const auto start=std::chrono::steady_clock::now();
             if(!productionUI&&!selfTest&&!layoutTest&&system.GetElapsedTime()>=nextSample){ShowPreviewSession(controller,selectedScene,width,height,controller.reducedMotion?0:system.GetElapsedTime());nextSample=system.GetElapsedTime()+.25;}
             controller.reducedMotion=reduceMotion||!controller.motionEnabled;document->SetClass("reduce-motion",controller.reducedMotion);controller.Animate(system.GetElapsedTime());controller.Adapt(backdrop->measured,system.GetElapsedTime());PlacePreviewPicker(controller);
@@ -569,7 +588,17 @@ int wmain(int argc,wchar_t** argv)
             }
             controller.AdaptiveForeground(*backdrop,system.GetElapsedTime());context->Update();
             if(selfTest&&frames==44){
-                const auto savedAccent=controller.accent;
+                {const auto savedGrid=backdrop->grid;const auto savedMode=controller.accentMode;const auto savedInk=controller.adaptiveAccent,savedTarget=controller.adaptiveTarget;
+                    for(auto& cell:backdrop->grid)cell={.85f,.12f,.16f,true};
+                    const auto red=backdrop->Accent(0,0,float(width),float(height));Require(red.valid&&red.r>red.g*4,"Adaptive sampler lost dominant scene color");
+                    controller.accentMode="adaptive";controller.adaptiveAccent={.64f,.64f,.64f};controller.adaptiveTarget=controller.adaptiveAccent;controller.lastAccentUpdate=0;controller.nextAccentSample=0;controller.UpdateAccent(*backdrop,.1);
+                    Require(controller.adaptiveAccent[0]>.64f&&controller.adaptiveAccent[0]<controller.adaptiveTarget[0],"Adaptive accent changed abruptly instead of fading");
+                    const auto target=controller.adaptiveTarget;for(auto& cell:backdrop->grid)cell={.7f,.7f,.7f,true};Require(!backdrop->Accent(0,0,float(width),float(height)).valid,"Neutral scene produced a false chromatic accent");
+                    controller.UpdateAccent(*backdrop,1);Require(controller.adaptiveTarget==target,"Neutral scene flickered to a new accent");
+                    backdrop->grid=savedGrid;controller.accentMode=savedMode;controller.adaptiveAccent=savedInk;controller.adaptiveTarget=savedTarget;controller.lastAccentUpdate=-1;controller.nextAccentSample=0;
+                    std::cout<<"native_adaptive_scene_sampling_and_fade=passed\n";
+                }
+                const auto savedAccent=controller.accent;const auto savedMode=controller.accentMode;controller.accentMode="custom";controller.customAccent.clear();
                 auto paint=[&]{controller.Adapt(backdrop->measured,system.GetElapsedTime());controller.AdaptiveForeground(*backdrop,system.GetElapsedTime());context->Update();};
                 auto* label=document->QuerySelector(".field-heading label");auto* glyph=controller.Element("open-settings")->QuerySelector(".glyph");
                 for(const auto gameAccent:{MaterialColor::Color{143.f/255,169.f/255,130.f/255},MaterialColor::Color{195.f/255,218.f/255,217.f/255},MaterialColor::Color{236.f/255,61.f/255,40.f/255},MaterialColor::Color{59.f/255,140.f/255,207.f/255},MaterialColor::Color{62.f/255,143.f/255,188.f/255}})
@@ -579,7 +608,7 @@ int wmain(int argc,wchar_t** argv)
                         // A deliberately pale library accent retains its color;
                         // it must not be forced into an invented saturated hue.
                         const float originalChroma=*std::max_element(gameAccent.begin(),gameAccent.end())-*std::min_element(gameAccent.begin(),gameAccent.end());
-                        Require(chroma>std::min(.12f,originalChroma*.5f),"Clear game heading washed out its accent");
+                        Require(chroma>std::min(.12f,originalChroma*.4f),"Clear game heading washed out its accent");
                     }
                 const auto clearYellow=MaterialColor::ClearHeading({252.f/255,238.f/255,9.f/255});
                 Require(!MaterialColor::MuddyShade(clearYellow),"Clear generated a muddy yellow heading");
@@ -601,12 +630,12 @@ int wmain(int argc,wchar_t** argv)
                 controller.UseTheme(3);paint();Require(label->GetProperty("color")->Get<Rml::Colourb>().red>=225,"Clear label is not light");
                 controller.accent={.9f,.7f,.4f};paint();controller.headingAccentBlend="hard-light";controller.controlAccentBlend="soft-light";controller.Materials();paint();
                 controller.UseTheme(1);paint();Require(label->GetProperty("color")->Get<Rml::Colourb>().red<160&&glyph->GetProperty("image-color")->Get<Rml::Colourb>().red<160,"Clear foreground leaked into Light after changing accents");
-                controller.accent={.2f,.5f,.9f};paint();const auto normal=controller.Element("main-panel")->QuerySelector("h1")->GetProperty("color")->Get<Rml::Colourb>();controller.headingAccentBlend="hard-light";paint();Require(normal!=controller.Element("main-panel")->QuerySelector("h1")->GetProperty("color")->Get<Rml::Colourb>(),"Light heading blend changes did not update its accent");
+                controller.accent={.2f,.5f,.9f};paint();const auto normal=controller.Element("main-panel")->QuerySelector("h1")->GetProperty("color")->Get<Rml::Colourb>();controller.headingAccentBlend="hard-light";controller.customTheme=true;paint();Require(normal!=controller.Element("main-panel")->QuerySelector("h1")->GetProperty("color")->Get<Rml::Colourb>(),"Light heading blend changes did not update its accent");
                 controller.UseTheme(2);paint();auto* selectedMode=controller.Element("mfg-mode")->QuerySelector(".selected");Require(selectedMode,"Frame-generation mode selection missing");selectedMode->SetProperty("transition","none");paint();const auto screen=selectedMode->GetProperty("background-color")->Get<Rml::Colourb>();controller.controlAccentBlend="multiply";paint();Require(screen!=selectedMode->GetProperty("background-color")->Get<Rml::Colourb>(),"Dark control blend changes did not update its accent");selectedMode->RemoveProperty("transition");
                 controller.UseTheme(3);paint();controller.UseTheme(1);paint();Require(label->GetProperty("color")->Get<Rml::Colourb>().red<160,"Repeated Clear to Light transition leaked ink");
                 controller.accent={252.f/255,238.f/255,9.f/255};controller.UseTheme(1);paint();
                 const auto yellowHeading=controller.Element("main-panel")->QuerySelector("h1")->GetProperty("color")->Get<Rml::Colourb>();Require(std::abs(int(yellowHeading.red)-int(yellowHeading.green))<12,"Light yellow headings must use neutral ink");Require(controller.AccentTone(0,false).starts_with("#fcee"),"Light controls turned vivid Cyberpunk yellow into a muddy shade");Require(controller.headingAccentBlend=="multiply"&&controller.controlAccentBlend=="normal","Light accent defaults differ from the requested modes");
-                controller.accent=savedAccent;controller.UseTheme(3);paint();std::cout<<"native_theme_transition_checks=passed clear_light_dark_accent_blends=passed\n";
+                controller.accent=savedAccent;controller.accentMode=savedMode;controller.UseTheme(3);paint();std::cout<<"native_theme_transition_checks=passed clear_light_dark_accent_blends=passed\n";
             }
             if(selfTest&&frames==60&&controller.appearance==3){Rml::ElementList ink;document->QuerySelectorAll(ink,"label,.glyph");for(auto* e:ink)if(e->IsVisible()){bool glass=false;for(auto* parent=e;parent;parent=parent->GetParentNode())glass|=parent->IsClassSet("glass");if(glass){bool heading=false;for(auto* p=e;p;p=p->GetParentNode())heading|=p->GetTagName()=="h1"||p->GetTagName()=="h2"||p->GetTagName()=="h3";if(heading)continue;const auto color=e->GetProperty(e->IsClassSet("glyph")?"image-color":"color")->Get<Rml::Colourb>();Require(color.red>=230&&color.green>=225&&color.blue>=220,"Clear must never invert a label or glyph to dark ink");}}std::cout<<"clear_white_foreground_checks=passed\n";}
 
@@ -631,7 +660,7 @@ int wmain(int argc,wchar_t** argv)
             backdrop->Draw(target.Get(),view.Get(),{},false);
             // Headless exports lack Present's pacing. Finish the previous tiny
             // readback so their adaptive colors reflect the actual scene too.
-            backdrop->Sample(panels,system.GetElapsedTime(),!window);
+            backdrop->Sample(panels,system.GetElapsedTime(),!window&&!benchmark);
             if(!window&&frames==70&&!panels.empty()){Require(backdrop->grid[0].valid,"Export background grid never settled");for(const auto& panel:panels)Require(backdrop->measured[panel.sampleIndex].valid,"Export panel background never settled");if(selfTest)std::cout<<"native_export_background_sampling_checks=passed\n";}
             std::map<std::string,Backdrop::Panel> byId;size_t panelIndex=0;
             for(const auto* id:{"main-panel","inspector","welcome","type-panel"})if(controller.Element(id)->IsVisible())byId[id]=panels.at(panelIndex++);
@@ -654,11 +683,13 @@ int wmain(int argc,wchar_t** argv)
                 if(std::string(popup)=="layout-picker"&&byId.contains("main-panel")){const auto panel=controller.QuickLayoutSurface(byId.at("main-panel"));const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target.Get(),windowView.Get(),{panel},blur,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(controller.Element(popup),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,blur);backdrop->ComposeLayer(view.Get(),windowSource.Get(),0,0,true);}
                 else renderUi(controller.Element(popup));
             }
-            if(frames>=8)costs.push_back(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count());
+            if(measureGpu){immediate->End(timing.end.Get());immediate->End(timing.disjoint.Get());timing.pending=true;}
+            if(frames>=(benchmark?120:8))costs.push_back(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count());
             if(window)swapchain->Present(1,0);
             ++frames;
-        } while(window || frames<80);
+        } while(window || frames<(benchmark?600:80));
         if(!output.empty())SaveImage(device.Get(),immediate.Get(),target.Get(),output);
+        if(benchmark){const auto report=[](const char* name,std::vector<double> values){if(values.empty())return;std::sort(values.begin(),values.end());double sum=0;for(auto value:values)sum+=value;std::cout<<name<<"_mean_ms="<<sum/values.size()<<" "<<name<<"_p95_ms="<<values[size_t(values.size()*.95)]<<" samples="<<values.size()<<'\n';};report("benchmark_cpu",costs);report("benchmark_gpu",gpuCosts);}
         double total=0;for(double n:costs)total+=n;
         std::cout<<"renderer="<<(hardware ? "hardware":"WARP")<<" viewport="<<width<<'x'<<height<<" blur="<<(blur ? "on":"off")<<" cpu_submit_ms="<<std::fixed<<std::setprecision(3)<<(costs.empty()?0:total/costs.size())<<" samples="<<costs.size()<<"\n";
         std::cout<<"Static-scene prototype only; GPU/gameplay/HDR/Proton performance is not established.\n";

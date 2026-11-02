@@ -78,10 +78,10 @@
             <label>OptiScaler shortcut</label><select id="opti-shortcut"><option value="Insert">Insert</option><option value="F8">F8</option><option value="Disabled">Disabled</option></select>
             <div class="inherit-row"><label>ReShade menu</label><button id="setting-reshade-menu" class="switch on"><span class="thumb" /></button></div>
             <div class="inherit-row"><label>ReShade welcome</label><button id="setting-reshade-intro" class="switch"><span class="thumb" /></button></div>
-            <button id="menus-review" class="quiet"><img class="glyph" src="icons/sliders-light.png" /><span class="button-label">Review installed game menus</span></button>
-            <p class="hint" id="menus-note">Review the installed games to apply menu changes.</p>
+            <button style="display: none" id="menus-review" class="quiet"><img class="glyph" src="icons/sliders-light.png" /><span class="button-label">Review installed game menus</span></button>
+            <p style="display: none" class="hint" id="menus-note">Review the installed games to apply menu changes.</p>
           </div>
-          <div class="settings-group"><h3>BACKGROUND CONTROLS</h3>
+          <div class="settings-group" style="display: none"><h3>BACKGROUND CONTROLS</h3>
             <div class="inherit-row"><label>Background helper</label><button id="setting-helper" class="switch on"><span class="thumb" /></button></div>
             <div id="startup-row" class="inherit-row"><label>Start with Windows</label><button id="setting-startup" class="switch"><span class="thumb" /></button></div>
           </div>
@@ -485,6 +485,12 @@
             </button>
           </div>
           <p id="theme-description" class="hint">Frosted glass, tuned to the scene.</p>
+          <label>Accent</label>
+          <div class="segments" id="accent-sources">
+            <button id="accent-source-theme"><span class="button-label">Theme</span></button><button id="accent-source-custom"><span class="button-label">Custom</span></button><button id="accent-source-adaptive" class="selected"><span class="button-label">Adaptive</span></button>
+          </div>
+          <p class="hint" id="accent-source-hint">Samples the scene behind this panel, with gentle transitions.</p>
+          <div id="accent-custom-row"><label for="accent-color">Custom color</label><input id="accent-color" type="text" maxlength="7" placeholder="#RRGGBB" /></div>
           <button id="accent-tint" class="accent-tint-row" aria-label="Accent tint"><span class="accent-tint-swatch"/><span>Accent Tint</span><span class="switch"><span class="thumb"/></span></button>
 
         </div>

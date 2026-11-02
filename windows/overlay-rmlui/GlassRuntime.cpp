@@ -1,3 +1,4 @@
+#include <atomic>
 #include <windows.h>
 #include <psapi.h>
 #include <d3d11_1.h>
@@ -91,23 +92,27 @@ struct Runtime {
     double nextTelemetry=0,nextPreferences=0;std::string lastHelper,lastEffects;ULONGLONG nextEffects{};
     unsigned outputSpace=0;
     bool receivedSnapshot=false,messageInitialized=false,dx12Interop=false,systemReducedMotion=false;
+    bool nrActivationPending=false,nrActivationAnnounced=false;
     int helperRevision=-1;bool helperReady=false;std::set<std::string> supportedKeys;
     std::map<std::string,nlohmann::json> pendingSettings;
     nlohmann::json lastAppearance;
     nlohmann::json lastPreferences;
     nlohmann::json AppearanceValues()const {
         const auto& c=*controls;
-        return {{"ThemeVersion",4},{"Theme",c.appearance},{"Custom",int(c.customTheme)},{"Layout",c.layout},{"SidePanelSide",c.sidePanelSide},{"BarPosition",c.barPosition},
+        return {{"AccentMode",c.accentMode},{"AccentColor",c.customAccent},{"ThemeVersion",4},{"Theme",c.appearance},{"Custom",int(c.customTheme)},{"Layout",c.layout},{"SidePanelSide",c.sidePanelSide},{"BarPosition",c.barPosition},
             {"TextFont",c.copyFont},{"TextSize",c.copySize},{"Scale",c.overlayScale},{"ScaleBaseline",120},
             {"LightTint",int(c.lightOpacity)},{"DarkTint",int(c.darkOpacity)},{"ClearTint",int(c.clearOpacity)},{"AccentCharacter",int(c.accentCharacter)},{"AccentTint",int(c.accentOpacity)},{"AccentSaturation",int(c.accentSaturation)},
             {"Blur",int(c.blurRadius)},{"Grain",int(std::lround(c.grainAmount*10))},{"BlendStrength",int(c.blendStrength)},
             {"SurfaceBlend",c.surfaceBlend},{"TextDepth",int(c.textDepth)},{"InvertDark",int(c.invertDark)},
             {"ToastPill",int(c.toastPill)},{"Motion",int(c.motionEnabled)},{"ShowNotifications",int(c.showNotifications)},{"OriginalLabels",int(c.originalLabels)}};
     }
-    nlohmann::json SettingsValues()const {const auto& c=*controls;return {{"overlay_appearance",AppearanceValues()},{"overlay_helper",c.helperEnabled},{"overlay_start_with_windows",c.startWithWindows},{"overlay_live_stats",c.showStats},{"overlay_welcome",c.showWelcome},{"overlay_welcome_position",c.welcomePosition},{"overlay_renderer",c.primaryMenu},{"optiscaler_hotkey",c.optiShortcut},{"optiscaler_ui",c.menuSettings.at("opti-menu")},{"optiscaler_intro",c.menuSettings.at("opti-intro")},{"reshade_ui",c.menuSettings.at("reshade-menu")},{"reshade_intro",c.menuSettings.at("reshade-intro")}};}
+    nlohmann::json SettingsValues()const {const auto& c=*controls;return {{"overlay_appearance",AppearanceValues()},{"overlay_live_stats",c.showStats},{"overlay_welcome",c.showWelcome},{"overlay_welcome_position",c.welcomePosition},{"optiscaler_hotkey",c.optiShortcut},{"optiscaler_ui",c.menuSettings.at("opti-menu")},{"optiscaler_intro",c.menuSettings.at("opti-intro")},{"reshade_ui",c.menuSettings.at("reshade-menu")},{"reshade_intro",c.menuSettings.at("reshade-intro")}};}
     void Appearance(const nlohmann::json& a) {
         if(!a.is_object()||a.empty()||a==lastAppearance)return;lastAppearance=a;auto& c=*controls;
         const auto previous=c.layout;c.UseTheme(std::clamp(a.value("Theme",3),1,4));
+        c.accentMode=a.value("AccentMode",std::string("adaptive"));if(c.accentMode!="theme"&&c.accentMode!="custom")c.accentMode="adaptive";
+        c.customAccent=a.value("AccentColor",std::string());if(!MaterialColor::ValidAccent(c.customAccent))c.customAccent.clear();
+        dynamic_cast<Rml::ElementFormControl*>(c.Element("accent-color"))->SetValue(c.customAccent);
         c.copyFont=a.value("TextFont",std::string("roboto"));if(c.copyFont!="roboto"&&c.copyFont!="inter")c.copyFont="roboto";
         c.copySize=std::clamp(a.value("TextSize",22),16,26);c.overlayScale=std::clamp(a.value("Scale",100),70,150);
         c.lightOpacity=float(std::clamp(a.value("LightTint",100),0,100));c.darkOpacity=float(std::clamp(a.value("DarkTint",80),0,100));c.clearOpacity=float(std::clamp(a.value("ClearTint",20),0,100));
@@ -232,6 +237,7 @@ struct Runtime {
             for(const auto* id:{"overview-metadata","popup-metadata"}){auto* metadata=c.Element(id);metadata->QuerySelector(".preview-badge")->SetProperty("display","none");metadata->QuerySelector(".session-heading")->GetChild(1)->SetInnerRML("Live session");}
             c.Element("status-sr")->SetProperty("display","none");c.Element("status-rr")->SetProperty("display","none");
             c.Element("status-nr")->SetClass("active",snapshot.nrKnown&&snapshot.nrRunning);c.Element("status-nr")->SetClass("unavailable",!snapshot.nrAvailable);c.Element("status-fg")->SetClass("active",snapshot.fgKnown&&snapshot.fgRunning);c.Element("status-fg")->SetClass("waiting",snapshot.fgAvailable&&!snapshot.fgKnown);
+            if(!nrActivationAnnounced)nrActivationPending=snapshot.nrKnown&&snapshot.nrRunning;
             history.Add(now,snapshot.nrRunning?snapshot.nrGpuMs:-1,snapshot.gameFps,snapshot.framesKnown?snapshot.displayedFps:-1);
             if(now-historyPaint>=.5){historyPaint=now;double ceiling=1;for(const auto& sample:history.samples)ceiling=std::max(ceiling,sample.nr);std::string graph;for(size_t i=1;i<history.samples.size();i++){const auto& a=history.samples[i-1];const auto& b=history.samples[i];if(a.nr<0||b.nr<0||b.time-a.time>1)continue;const float x1=float((a.time-now+30)/30*100),x2=float((b.time-now+30)/30*100),y1=float(128-112*a.nr/ceiling),y2=float(128-112*b.nr/ceiling);const float dx=(x2-x1)*5,dy=y2-y1;graph+="<div style=\"position: absolute; left: "+std::to_string(x1)+"%; top: "+std::to_string(y1)+"dp; width: "+std::to_string(std::sqrt(dx*dx+dy*dy))+"dp; height: 2dp; background-color: var(--accent); transform-origin: 0% 50%; transform: rotate("+std::to_string(std::atan2(dy,dx)*180/3.14159265)+"deg);\"/>";}
                 for(const auto* id:{"overview-metadata","popup-metadata"}){auto* chart=c.Element(id)->QuerySelector(".history-empty");chart->SetInnerRML(graph.empty()?"<p>No NR timing samples available.</p>":graph);}
@@ -248,7 +254,7 @@ struct Runtime {
         if(GetTickCount64()>=nextEffects){nextEffects=GetTickCount64()+250;std::string text="{}";WithEffects([&](EffectRead read,EffectWrite){const auto size=read(nullptr,0);if(size<2||size>1024*1024)return false;std::vector<char> buffer(size);if(read(buffer.data(),size)!=size||buffer.back()!=0)return false;text.assign(buffer.data(),size-1);return true;});if(text!=lastEffects){const auto data=nlohmann::json::parse(text,nullptr,false);if(data.is_object())c.effects.Set(data);lastEffects=text;}}
         c.effects.send=[](const std::string& text){return WithEffects([&](EffectRead,EffectWrite write){return write(text.c_str());});};
         c.CheckPreviewFocus();const auto afterSettings=SettingsValues();for(const auto& [key,value]:afterSettings.items())if(beforeSettings.at(key)!=value)pendingSettings[key]=value;
-        if(oldShortcut!=c.shortcut||oldModifiers!=c.shortcutModifiers){const auto key=c.shortcut;const int vk=key==Rml::Input::KI_DELETE?VK_DELETE:key>=Rml::Input::KI_A&&key<=Rml::Input::KI_Z?'A'+key-Rml::Input::KI_A:key>=Rml::Input::KI_F1&&key<=Rml::Input::KI_F12?VK_F1+key-Rml::Input::KI_F1:0;if(vk)pendingSettings["panel_binding"]={{"key",vk},{"modifiers",(c.shortcutModifiers&Rml::Input::KM_ALT?1:0)|(c.shortcutModifiers&Rml::Input::KM_CTRL?2:0)|(c.shortcutModifiers&Rml::Input::KM_SHIFT?4:0)}};}
+        if(oldShortcut!=c.shortcut||oldModifiers!=c.shortcutModifiers){const auto key=c.shortcut;int vk=0;if(key!=Rml::Input::KI_UNKNOWN)for(int candidate=1;candidate<256;++candidate)if(Key(candidate)==key){vk=candidate;break;}if(vk||key==Rml::Input::KI_UNKNOWN)pendingSettings["panel_binding"]={{"key",vk},{"modifiers",(c.shortcutModifiers&Rml::Input::KM_ALT?1:0)|(c.shortcutModifiers&Rml::Input::KM_CTRL?2:0)|(c.shortcutModifiers&Rml::Input::KM_SHIFT?4:0)}};}
         if(helperReady)c.hdr.Flush(c.requestJson);
         if(helperReady&&host.request&&!pendingSettings.empty()){auto it=pendingSettings.begin();const auto request=nlohmann::json{{"op","set-setting"},{"key",it->first},{"value",it->second}}.dump();if(host.request(host.user,request.c_str()))pendingSettings.erase(it);}
         ForgeWorkbench::Values changed;for(const auto& [key,value]:c.values)if(lastValues.contains(key)&&lastValues.at(key)!=value&&key!="mfg_enabled")changed[key]=value;
@@ -259,6 +265,7 @@ struct Runtime {
         // visibility would immediately close a panel reopened by the host.
         frame.visible=c.Element("main-panel")->IsVisible()||(c.setupStep>=0&&c.Element("type-panel")->IsVisible());hostVisible=frame.visible;
         if(c.toastUntil>0&&now>c.toastUntil){c.Visible("welcome",false);c.toastUntil=0;}
+        if(nrActivationPending&&!nrActivationAnnounced&&c.toastUntil==0&&!c.Element("welcome")->IsVisible()){nrActivationAnnounced=true;nrActivationPending=false;c.Notify("Neural rendering active");}
         if(c.prefsDirty&&now>=nextPreferences){c.SavePreferences();nextPreferences=now+.5;}c.savePreset={};c.deletePreset={};c.requestJson={};
             std::vector<Backdrop::Panel> panels;
             for(const auto* id : {"main-panel","inspector","welcome","type-panel"}) {
@@ -277,6 +284,7 @@ struct Runtime {
             }
             // Compose each window and its UI as a unit. A front window must
             // frost the already composited lower windows, not leave their text on top.
+            if(panels.empty())return true; // Hidden overlays submit no composition or blur passes.
             backdrop->Draw(target,frame.target,{},false,false);
             backdrop->Sample(panels,now);
             std::map<std::string,Backdrop::Panel> byId;size_t panelIndex=0;
@@ -295,8 +303,9 @@ struct Runtime {
         return true;
     }
 };
-std::unique_ptr<Runtime> runtime;std::mutex mutex;bool logged=false;
+std::unique_ptr<Runtime> runtime;std::mutex mutex;bool logged=false;std::atomic_bool notificationsActive{false};
 }
+extern "C" __declspec(dllexport) bool __cdecl ForgeGlassNotificationsActive(){return notificationsActive.load(std::memory_order_relaxed);}
 extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::Host* host,ForgeGlass::Frame* frame) {
     if(!host||!frame||host->size!=sizeof(*host)||host->abi!=ForgeGlass::Abi||frame->size!=sizeof(*frame)||frame->abi!=ForgeGlass::Abi||!frame->device||!frame->target||frame->colorSpace>2)return false;
     std::unique_lock guard(mutex,std::try_to_lock);if(!guard.owns_lock())return true;
@@ -308,10 +317,10 @@ extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::H
         const bool sdr=desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM||desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB||desc.Format==DXGI_FORMAT_R8G8B8A8_TYPELESS||desc.Format==DXGI_FORMAT_B8G8R8A8_UNORM||desc.Format==DXGI_FORMAT_B8G8R8A8_UNORM_SRGB||desc.Format==DXGI_FORMAT_B8G8R8A8_TYPELESS;
         const bool supported=frame->colorSpace==0?sdr:frame->colorSpace==1?desc.Format==DXGI_FORMAT_R16G16B16A16_FLOAT:desc.Format==DXGI_FORMAT_R10G10B10A2_UNORM;
         if(!supported)throw std::runtime_error("Unsupported glass format and transfer-function pair");
-        if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format||runtime->outputSpace!=frame->colorSpace))runtime.reset();
-        if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*host,*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());
-    }catch(const std::exception& error){runtime.reset();if(!logged&&host->log){host->log(host->user,error.what());logged=true;}}
+        if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format||runtime->outputSpace!=frame->colorSpace)){notificationsActive.store(false,std::memory_order_relaxed);runtime.reset();}
+        if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*host,*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());notificationsActive.store(drawn,std::memory_order_relaxed);
+    }catch(const std::exception& error){notificationsActive.store(false,std::memory_order_relaxed);runtime.reset();if(!logged&&host->log){host->log(host->user,error.what());logged=true;}}
     if(uninitialize)CoUninitialize();return drawn;
 }
 void ReleaseGlassBridge12();
-extern "C" __declspec(dllexport) void __cdecl ForgeGlassRelease(){std::lock_guard guard(mutex);runtime.reset();ReleaseGlassBridge12();logged=false;}
+extern "C" __declspec(dllexport) void __cdecl ForgeGlassRelease(){std::lock_guard guard(mutex);notificationsActive.store(false,std::memory_order_relaxed);runtime.reset();ReleaseGlassBridge12();logged=false;}

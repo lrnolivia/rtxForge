@@ -17,7 +17,7 @@ internal sealed class NativePanelCoordinator : IDisposable
     IReadOnlyList<Game> targets = [];
     NativePanelChannel? channel;
     Game? game;
-    int pid, reviewId;
+    int pid;
     EngineReview? review;
     bool busy, disposed, exitRequested;
     string? targetProblem, pollProblem;
@@ -107,6 +107,7 @@ internal sealed class NativePanelCoordinator : IDisposable
     {
         var s = ForgeSettings.Load();
         var values = s.GameOverlayOptions(game);
+        if(game is not null && s.GameOverlaySettings.TryGetValue(game.Id,out var local) && local["overlay_appearance"] is JsonObject appearance)values["overlay_appearance"]=appearance.DeepClone();
         OverlayShortcut.TryParse(values["panel_hotkey"]?.ToString(), out _, out var binding, out _);
         values["panel_key"] = (int)binding.Key;
         values["panel_modifiers"] = (int)binding.Modifiers;
@@ -121,17 +122,9 @@ internal sealed class NativePanelCoordinator : IDisposable
 
     async Task<JsonObject> HandleAsync(JsonObject message, int request)
     {
-        bool progressOpen = true;
         var action = message["op"]?.GetValue<string>() ?? "";
         JsonObject Done(string text) => new() { ["op"] = action, ["message"] = text, ["settings"] = SettingsSnapshot() };
-        void Progress(PrepareProgress progress)
-        {
-            if (!progressOpen || disposed || channel is null) return;
-            try { channel.Reply(request, new JsonObject { ["op"] = action, ["busy"] = true,
-                ["message"] = progress.Total > 0 ? $"{progress.Label} · {progress.Checked} of {progress.Total}" : progress.Label }); }
-            catch (Exception) { }
-        }
-        try { switch (action)
+        switch (action)
         {
             case "hello":
             case "status":
@@ -182,36 +175,23 @@ internal sealed class NativePanelCoordinator : IDisposable
                 ClearReview(); return Done("");
             case "global-review":
             case "menus-review":
-                ClearReview();
-                review = action == "global-review"
-                    ? await engine.ReviewGlobalControlsAsync(message["changes"] as JsonObject ?? new(), new Progress<PrepareProgress>(Progress))
-                    : await engine.ReviewOverlayUiAsync(ForgeSettings.Load().GameUiOptions(), new Progress<PrepareProgress>(Progress));
-                if (disposed || channel?.Visible != true) { ClearReview(); return Done("Review closed"); }
-                reviewId++;
-                return new JsonObject { ["op"] = action, ["review_id"] = reviewId, ["ready"] = review.Ready,
-                    ["message"] = review.Summary, ["items"] = Entries(review.Items), ["blocked"] = Entries(review.Blocked), ["skipped"] = Entries(review.Skipped) };
             case "apply-review":
-                if (review is null || message["review_id"]?.GetValue<int>() != reviewId)
-                    throw new InvalidOperationException("Review the games again before applying.");
-                var pending = review; review = null; Applying = true;
-                var result = await engine.RunReviewAsync(pending, new Progress<PrepareProgress>(Progress));
-                await engine.ReloadCompanionPresetsAsync();
-                return Done(result.Message + (result.Errors.Count > 0 ? "\n" + string.Join("\n", result.Errors) : ""));
+                throw new InvalidOperationException("Review library-wide changes in Desktop or Game Mode settings.");
             default: throw new InvalidOperationException("Unsupported panel request.");
-        } }
-        finally { progressOpen = false; }
+        }
     }
     void SetPreference(JsonObject message)
     {
         var setting = message["key"]?.GetValue<string>();
         var value = message["value"] ?? throw new InvalidOperationException("Choose a setting value.");
-        var fresh = ForgeSettings.EditOverlay(s =>
+        if(game is null || setting is "overlay_helper" or "overlay_start_with_windows" or "overlay_renderer")throw new InvalidOperationException("Change app defaults in Desktop or Game Mode settings.");
+        var s = ForgeSettings.Load();
         {
             switch (setting)
             {
                 case "overlay_appearance":
                     s.OverlayAppearance = GlassAppearance.Validate(value.AsObject());
-                    GlassAppearance.Import(s.OverlayAppearance);
+
                     break;
                 case "overlay_controls": s.OverlayControls = value.GetValue<bool>() ? "classic" : "unified"; break;
                 case "overlay_theme":
@@ -250,8 +230,11 @@ internal sealed class NativePanelCoordinator : IDisposable
                     s.OptiScalerHotkey = native; break;
                 default: throw new InvalidOperationException("Unsupported overlay setting.");
             }
-        });
-        OverlayHelper.ConfigureStartup(fresh); engine.Settings.CopyOverlayFrom(fresh); preferencesChanged();
+        }
+        var key=setting=="panel_binding"?"panel_hotkey":setting!;
+        var selected=s.GameOverlayOptions()[key]?.DeepClone() ?? throw new InvalidOperationException("Unsupported game setting.");
+        var fresh=ForgeSettings.EditGameOverlay(game,values=>values[key]=selected);
+        engine.Settings.CopyOverlayFrom(fresh); preferencesChanged();
         ClearReview(); exitRequested = !fresh.OverlayHelper;
     }
     public void Dispose()

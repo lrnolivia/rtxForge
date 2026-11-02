@@ -928,3 +928,7 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .layout-bar .side-panel-position, .layout-centered .side-panel-position { display: none; }
 .layout-bar.bar-top .resize-top { display: none; }
 .layout-bar.bar-top .resize-bottom { display: block; }
+
+#accent-sources { margin-top: 12dp; margin-bottom: 12dp; }
+#accent-custom-row { margin-bottom: 18dp; }
+#accent-color { display: block; width: 100%; height: 48dp; padding: 10dp 16dp; box-sizing: border-box; border-radius: 12dp; background: var(--nested-fill); font-size: var(--copy-size); margin-top: 10dp; }

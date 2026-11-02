@@ -17,6 +17,22 @@ class OverlaySettingsTest(unittest.TestCase):
         self.assertTrue(overlay.effective(settings, str(Path('game-b').resolve()))['overlay_welcome'])
         self.assertEqual(settings['overlay_welcome'], True)
 
+    def test_game_appearance_does_not_replace_defaults(self):
+        settings={'overlay_appearance':{'Theme':3},'panel_hotkey':'Delete'}
+        game=str(Path('one').resolve())
+        settings['game_overlay_settings']=overlay.game_edit(settings,game,'overlay_appearance',{'Theme':1,'AccentMode':'custom','AccentColor':'#3B8CCF'})
+        settings['game_overlay_settings']=overlay.game_edit(settings,game,'panel_hotkey','F8')
+        self.assertEqual(overlay.effective(settings,game)['overlay_appearance']['Theme'],1)
+        self.assertEqual(overlay.effective(settings,'two')['overlay_appearance'],{'Theme':3})
+        self.assertEqual(settings['panel_hotkey'],'Delete')
+        with self.assertRaises(t.Refusal):overlay.game_edit(settings,game,'overlay_helper',False)
+
+    def test_runtime_binding_stays_validated(self):
+        self.assertEqual(overlay.shortcut_binding({'key':119,'modifiers':2}),('panel_hotkey','Ctrl+F8'))
+        self.assertEqual(overlay.shortcut_binding({'key':0,'modifiers':0}),('panel_hotkey','Disabled'))
+        for value in ({'key':46,'modifiers':3},{'key':-1,'modifiers':0},{'key':119,'modifiers':8}):
+            with self.assertRaises((t.Refusal,ValueError)):overlay.shortcut_binding(value)
+
     def test_invalid_choices_refuse(self):
         for changes in ({'overlay_welcome': 1}, {'overlay_renderer': 'unknown'},
                         {'overlay_welcome_position': 'outside'}, {'overlay_theme': 'unknown'}, {'panel_hotkey': 'Ctrl+Alt+Delete'}):

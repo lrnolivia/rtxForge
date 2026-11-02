@@ -70,7 +70,7 @@ static class OverlayPreview
         while ((read = await input.ReadAsync(buffer, cancel)) != 0) { if (output.Length + read > limit) throw new IOException("Screenshot exceeds the supported size."); output.Write(buffer, 0, read); }
         return output.ToArray();
     }
-    public static async Task<Process> StartAsync(string engineRoot, Game game, Screenshot shot, IReadOnlyList<Game>? library=null, global::Windows.UI.Color? initialAccent=null)
+    public static async Task<Process> StartAsync(string engineRoot, Game game, Screenshot shot, IReadOnlyList<Game>? library=null, global::Windows.UI.Color? initialAccent=null, string? preferencesPath=null)
     {
         var executable = new[] { Path.Combine(AppContext.BaseDirectory, "OverlayPreview", "OverlayPreview.exe"), Path.Combine(engineRoot, "windows", "out", "glass-overlay", "OverlayPreview.exe") }.FirstOrDefault(File.Exists)
             ?? throw new IOException("The native overlay preview is missing from this build.");
@@ -85,6 +85,7 @@ static class OverlayPreview
             RedirectStandardInput=true,RedirectStandardOutput=true,StandardInputEncoding=new UTF8Encoding(false),StandardOutputEncoding=new UTF8Encoding(false) };
         foreach (var arg in new[] { "--desktop-preview", "--assets", assets, "--font", Path.Combine(assets, "RobotoVariable.ttf"), "--background", shot.Path, "--game-title", game.Name,
             "--accent", $"#{color.R:X2}{color.G:X2}{color.B:X2}", "--width", "2560", "--height", "1440", "--parent-process", Environment.ProcessId.ToString(),"--game-catalog",catalog }) start.ArgumentList.Add(arg);
+        start.ArgumentList.Add("--preferences");start.ArgumentList.Add(preferencesPath ?? GlassAppearance.FilePath);
         if(shot.Crop>0){start.ArgumentList.Add("--crop-left");start.ArgumentList.Add(shot.Crop.ToString(System.Globalization.CultureInfo.InvariantCulture));}
         try {
             var process=Process.Start(start) ?? throw new IOException("The overlay preview could not start.");

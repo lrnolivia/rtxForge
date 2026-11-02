@@ -938,7 +938,8 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .color-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 12dp; margin-bottom: 14dp; font-size: 17dp; font-weight: 600; }
 .color-poster { width: 76dp; height: auto; max-height: 114dp; border-radius: 8dp; }
 .color-editor .color-poster { display: block; width: 120dp; max-height: 180dp; margin: 0 auto; cursor: crosshair; }
-.color-screen, .color-reset { display: flex; align-items: center; justify-content: center; width: 100%; height: 36dp; padding: 0 10dp; line-height: 1.2; margin-top: 8dp; font-size: 14dp; white-space: nowrap; }
+.color-editor .color-screen, .color-editor .color-reset { display: flex; align-items: center; justify-content: center; width: 100%; height: 36dp; padding: 0 10dp; line-height: 1.2; margin-top: 8dp; font-size: 16dp; white-space: nowrap; }
+.color-editor .button-label { font-size: inherit; line-height: 1.2; white-space: nowrap; }
 .color-screen { background: var(--nested-fill); border-radius: 9dp; }
 .color-reset { margin-top: 4dp; background: transparent; }
 #color-pick-stage { display: none; }

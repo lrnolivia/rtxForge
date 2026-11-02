@@ -344,6 +344,8 @@ static void TestController(Controller& c,Rml::Context* context)
         Require(c.customAccent=="#3B8CCF"&&std::abs(c.ActiveAccent()[2]-207.f/255)<.001f,"Custom color did not apply");
         click("accent-swatch");context->Update();Require(c.colorEditorOpen&&c.Element("accent-editor")->IsVisible(),"Custom color swatch did not open the picker");
         Require(c.document->GetElementById("color-red")==nullptr,"RGB sliders remain in the compact picker");
+        for(const auto* id:{"accent-eyedropper","accent-use-game"}){auto* action=c.Element(id);auto* label=action->QuerySelector(".button-label");const auto available=action->GetBox().GetSize(Rml::BoxArea::Content);Require(Rml::ElementUtilities::GetStringWidth(label,label->GetInnerRML())<=available.x&&label->GetBox().GetSize(Rml::BoxArea::Border).y<=available.y,"Picker action text wrapped or exceeded its button");}
+
         const auto popupSize=c.Element("accent-editor")->GetBox().GetSize(Rml::BoxArea::Border),popupAt=c.Element("accent-editor")->GetAbsoluteOffset(Rml::BoxArea::Border);const auto viewport=context->GetDimensions();
         Require(popupSize.x<=240*context->GetDensityIndependentPixelRatio()&&popupAt.x>=0&&popupAt.y>=0&&popupAt.x+popupSize.x<=viewport.x&&popupAt.y+popupSize.y<=viewport.y,"Color popover overflowed its compact viewport bounds");
         c.Element("accent-color")->Focus();context->ProcessKeyDown(Rml::Input::KI_ESCAPE,0);context->ProcessKeyUp(Rml::Input::KI_ESCAPE,0);context->Update();Require(!c.colorEditorOpen&&!c.Element("accent-editor")->IsVisible()&&c.Element("type-panel")->IsVisible(),"Escape did not dismiss just the color picker");click("accent-swatch");context->Update();

@@ -8,7 +8,7 @@ import { installInput } from './input';
 import { setupLibraryLayout } from './library-layout';
 import { setupShellLayout } from './shell-layout';
 import { heroCrop, analyzeHeroFocus } from './hero-focus';
-import { applyStoreBackground, prepareStoreBackground, screenshotGallery, selectedScreenshots, chooseScreenshots, type StoreScreenshot } from './store-background';
+import { applyStoreBackground, prepareStoreBackground, screenshotGallery, selectedScreenshots, chooseScreenshots, updateBackgroundContrast, type StoreScreenshot } from './store-background';
 import { webviewZoom } from './display-scale';
 import { controllerGlyph, type ControllerFamily } from './controller-glyphs';
 import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero, sectionHeadingColor } from './art-accent';
@@ -84,6 +84,7 @@ function applyAppearance() {
   root.dataset.customBackground=String(Boolean(appearance.background));
   if(appearance.background)root.style.setProperty('--custom-background',`url("${appearance.background}")`);else root.style.removeProperty('--custom-background');
   applyDetailsAccent();
+  void updateBackgroundContrast();
   if ('__TAURI_INTERNALS__' in window) {
     if(nativeSystemScale===undefined){
       nativeDisplay??=import('@tauri-apps/api/window').then(async({getCurrentWindow})=>{
@@ -330,6 +331,7 @@ function applyDetailsAccent() {
   content.style.setProperty('--title-veil',String(colors.titleVeil));
   content.style.setProperty('--hero-card-color',colors.card);
   content.style.setProperty('--hero-card-ink',colors.ink);
+  if(appearance.theme==='light')content.style.setProperty('--soft-accent',colors.ink);else content.style.removeProperty('--soft-accent');
   content.style.setProperty('--hero-badge-surface',badgeColors.surface);
   content.style.setProperty('--hero-badge-ink',badgeColors.ink);
   if(page)page.dataset.heroCard=colors.light?'light':'dark';

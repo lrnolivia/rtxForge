@@ -87,6 +87,22 @@ export function accentHarmony(accent:string,color:string|null):number {
   const hue=(1-Math.cos(Math.atan2(b,a)-Math.atan2(y,x)))/2;
   return hue*.8+Math.abs(chroma-otherChroma)*.5+Math.abs(light-otherLight)*.1;
 }
+export function backdropInk(pixels:ArrayLike<number>,width:number,height:number,viewWidth:number,viewHeight:number,area:{x:number;y:number;width:number;height:number},accent:string|null,light:boolean):string {
+  const scale=Math.max(viewWidth/width,viewHeight/height),offsetX=(width*scale-viewWidth)/2,offsetY=(height*scale-viewHeight)/2;
+  const tint=accent&&/^#[0-9a-f]{6}$/i.test(accent)?parse(accent).map(v=>v/255):null;
+  const soft=(base:number,color:number)=>color<=.5?base-(1-2*color)*base*(1-base):base+(2*color-1)*((base<=.25?((16*base-12)*base+4)*base:Math.sqrt(base))-base);
+  const sum=[0,0,0];
+  for(let y=0;y<4;y++)for(let x=0;x<8;x++){
+    const px=Math.max(0,Math.min(width-1,Math.floor((area.x+(x+.5)*area.width/8+offsetX)/scale))),py=Math.max(0,Math.min(height-1,Math.floor((area.y+(y+.5)*area.height/4+offsetY)/scale))),index=(py*width+px)*4;
+    let color=[0,1,2].map(c=>pixels[index+c]/255);if(tint)color=color.map((v,c)=>soft(v,tint[c]));
+    if(light)color=color.map(v=>v*.84+.16);
+    const gray=color[0]*.2126+color[1]*.7152+color[2]*.0722;
+    color=color.map(v=>(gray+(v-gray)*.8)*(light?.85:.58));
+    for(let c=0;c<3;c++)sum[c]+=color[c]*255/32;
+  }
+  const background=luminance(sum);
+  return (background+.05)/.05>1.05/(background+.05)?'#000000':'#ffffff';
+}
 export function lightAccentInk(accent:string):string {
   const rgb=parse(/^#[0-9a-f]{6}$/i.test(accent)?accent:'#d8d5ce');
   const [,a,b]=lab(...rgb as [number,number,number]);

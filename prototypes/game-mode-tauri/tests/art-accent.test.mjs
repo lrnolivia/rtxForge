@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import ts from 'typescript';
 const source=readFileSync(new URL('../src/art-accent.ts',import.meta.url),'utf8');
 const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
-const {signatureColor,selectionInk,heroColors,heroBadge,sectionHeadingColor,accentHarmony}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const {signatureColor,selectionInk,heroColors,heroBadge,sectionHeadingColor,accentHarmony,backdropInk}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 test('artwork signature matches the real shared library algorithm',()=>{
  const solid=color=>Array.from({length:100},()=>[...color,255]);
  const fixtures=[solid([225,40,30]),solid([32,106,235]),solid([230,199,60]),solid([165,63,186]),solid([128,128,128]),[...solid([70,170,70]),...solid([220,45,30]).slice(0,30)],[...solid([250,250,250]),...solid([10,10,10])],Array.from({length:250},(_,i)=>[(i*37)%256,(i*73)%256,(i*113)%256,i%3?255:0])];
@@ -26,6 +26,13 @@ test('default screenshot harmony follows the configured hue, with neutral accent
  assert.ok(accentHarmony('#25a4df','#267cbe')<accentHarmony('#25a4df','#d14a32'));
  assert.ok(accentHarmony('#ed4035','#d14a32')<accentHarmony('#ed4035','#267cbe'));
  assert.ok(accentHarmony('#b4b4b4',null)<accentHarmony('#b4b4b4','#ff0000'));
+});
+
+test('unboxed wordmark ink follows the screenshot under it, including Light wash and tint',()=>{
+ const rect={x:0,y:0,width:100,height:40},solid=value=>new Uint8ClampedArray(Array.from({length:64},()=>[value,value,value,255]).flat());
+ assert.equal(backdropInk(solid(0),8,8,800,800,rect,null,true),'#ffffff','A dark photo still needs a light logo in Light mode');
+ assert.equal(backdropInk(solid(255),8,8,800,800,rect,null,true),'#000000','A bright Light photo needs dark logo ink');
+ assert.equal(backdropInk(solid(0),8,8,800,800,rect,'#fffb00',false),'#ffffff','Tint must not force a dark wordmark on dark art');
 });
 
 const luminance=rgb=>rgb.reduce((sum,v,i)=>{v/=255;return sum+[.2126,.7152,.0722][i]*(v<=.04045?v/12.92:((v+.055)/1.055)**2.4);},0);

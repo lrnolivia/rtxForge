@@ -1,7 +1,7 @@
-import {signatureColor,accentHarmony} from './art-accent';
+import {signatureColor,accentHarmony,backdropInk} from './art-accent';
 export interface StoreScreenshot {id:string;full:string;thumbnail:string}
 interface StoreBackground {image:string|null}
-interface CachedBackground {url:string;width:number;height:number}
+interface CachedBackground {url:string;width:number;height:number;sample?:ImageData}
 interface BackgroundSelection {appid:string;game:string;accent?:string|null;scene:HTMLElement;ids:string[];current?:string}
 const cache=new Map<string,Promise<CachedBackground|null>>(),catalogs=new Map<string,Promise<StoreScreenshot[]>>();
 const urls=new Set<string>(),choices=new Map<string,string[]>();
@@ -78,7 +78,9 @@ async function load(appid:string,id?:string):Promise<CachedBackground|null>{
       const image=new Image();image.src=url;
       try{await image.decode();}catch{URL.revokeObjectURL(url);urls.delete(url);return null;}
       if(disposed){URL.revokeObjectURL(url);urls.delete(url);return null;}
-      return {url,width:image.naturalWidth,height:image.naturalHeight};
+      const canvas=document.createElement('canvas');canvas.width=96;canvas.height=Math.max(3,Math.round(96*image.naturalHeight/image.naturalWidth));
+      const context=canvas.getContext('2d',{willReadFrequently:true});context?.drawImage(image,0,0,canvas.width,canvas.height);
+      return {url,width:image.naturalWidth,height:image.naturalHeight,sample:context?.getImageData(0,0,canvas.width,canvas.height)};
     }catch{return null;}
   })();cache.set(key,pending);
   if(cache.size>6){const oldest=[...cache.keys()].find(candidate=>candidate!==active?.current)!;const previous=cache.get(oldest);cache.delete(oldest);void previous?.then(image=>{if(image){URL.revokeObjectURL(image.url);urls.delete(image.url);}});}
@@ -86,6 +88,18 @@ async function load(appid:string,id?:string):Promise<CachedBackground|null>{
 }
 function clearFade(){clearTimeout(fade);fade=undefined;active?.scene.querySelector('.scene-next')?.remove();}
 function canFade(){return !document.hidden&&!reduced.matches&&document.documentElement.dataset.motion!=='false';}
+export async function updateBackgroundContrast(){
+  const key=active?.current,root=document.documentElement;
+  if(!key){for(const name of ['brand','more','footer'])root.style.removeProperty('--'+name+'-ink');return;}
+  const image=await cache.get(key);if(active?.current!==key||!image?.sample)return;
+  const {data,width,height}=image.sample,tint=root.dataset.tint==='true'?active.accent||null:null,light=root.dataset.theme==='light';
+  for(const [name,selector] of [['brand','.brand'],['more','.shell-more>.menu-button'],['footer','.app-footer']] as const){
+    const target=document.querySelector(selector);if(!target)continue;
+    root.style.setProperty('--'+name+'-ink',backdropInk(data,width,height,innerWidth,innerHeight,target.getBoundingClientRect(),tint,light));
+  }
+}
+let contrastFrame=0;
+window.addEventListener('resize',()=>{if(!contrastFrame)contrastFrame=requestAnimationFrame(()=>{contrastFrame=0;void updateBackgroundContrast();});},{passive:true});
 async function display(state:BackgroundSelection){
   const id=state.ids[0],image=await load(state.appid,id);
   if(disposed||active!==state||state.ids[0]!==id)return;
@@ -97,6 +111,7 @@ async function display(state:BackgroundSelection){
       scene.style.backgroundImage=source;scene.dataset.hero='true';scene.dataset.storeQuality=quality;
       scene.dataset.backgroundWidth=String(image.width);scene.dataset.backgroundHeight=String(image.height);
       scene.dataset.screenshotId=id||'default';scene.querySelector('.scene-next')?.remove();state.current=state.appid+':'+(id||'default');
+      void updateBackgroundContrast();
     };
     clearTimeout(fade);scene.querySelector('.scene-next')?.remove();
     if(scene.style.backgroundImage!==source&&canFade()){
@@ -110,6 +125,7 @@ export function applyStoreBackground(appid:string|null|undefined,scene:HTMLEleme
   const key=appid&&/^[1-9][0-9]{0,9}$/.test(appid)?appid:'';
   if(active?.appid===key&&active.game===game&&active.scene===scene&&active.accent===accent)return;
   clearFade();active=undefined;
+  void updateBackgroundContrast();
   scene.style.backgroundImage='';scene.dataset.hero='false';delete scene.dataset.storeQuality;
   scene.dataset.backgroundGame=key;scene.dataset.backgroundState=key?'loading':'none';
   if(!key)return;

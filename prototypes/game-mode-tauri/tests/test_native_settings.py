@@ -15,7 +15,7 @@ HOST = Path(__file__).resolve().parents[1] / 'bridge/engine_host.py'
 class NativeSettingsTests(unittest.TestCase):
     def test_native_path_unknown_keys_and_exact_review(self):
         with tempfile.TemporaryDirectory() as raw:
-            folder = Path(raw)
+            folder = Path(raw).resolve()
             local = folder / 'rtxForge'
             local.mkdir()
             native = local / 'settings.json'
@@ -52,6 +52,8 @@ class NativeSettingsTests(unittest.TestCase):
                 process.stdin.close()
                 process.wait(timeout=10)
             finally:
+                if not process.stdin.closed:
+                    process.stdin.close()
                 if process.poll() is None:
                     process.kill()
                     process.wait(timeout=5)

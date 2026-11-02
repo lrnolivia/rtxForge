@@ -15,7 +15,9 @@ spec.loader.exec_module(reader)
 class ReaderTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        # Hosted Windows TEMP can use an 8.3 alias. Fixtures use canonical paths,
+        # like normal discovery, without relaxing the engine's alias guards.
+        self.root = Path(self.temp.name).resolve()
         (self.root / 'scripts').mkdir()
         shutil.copyfile(ROOT / 'scripts/discovery.py', self.root / 'scripts/discovery.py')
         (self.root / 'providers').mkdir()

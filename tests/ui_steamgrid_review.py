@@ -57,6 +57,16 @@ def verify_filter():
     assert any(x[0]=='artwork' and x[2].get('style')=='white_logo' for x in calls),calls
     capture('steamgrid-desktop-filtered.png');app.window.dialog.close()
 
+# Mock only the native chooser boundary; exercise real GTK panel ownership.
+picker_calls=[]
+class FixtureFileDialog:
+    def __init__(self,**kwargs):self.modal=False
+    def set_modal(self,value):self.modal=value
+    def set_filters(self,filters):pass
+    def open(self,parent,cancellable,callback):
+        self.parent=parent;self.callback=callback;picker_calls.append(self)
+    def open_finish(self,result):raise GLib.Error('User dismissed the file chooser')
+
 def details_for_picker():
     global game
     game=app.window.games[0]

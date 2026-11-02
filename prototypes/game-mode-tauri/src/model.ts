@@ -14,8 +14,8 @@ export interface Snapshot {
   controlSchema?: { groups: {name: string}[]; controls: {key: string; label: string; advanced?: string; group: string; kind: string; min: number; max: number; default: number; values?: number[]; choices?: string[]; step?: number; unit?: string}[] };
   catalog?: (Record<string, unknown> & {id: string; name: string; version: string})[];
 }
-export interface Appearance { theme: Theme; tint: boolean; accent: string; motion: boolean; text: 'standard' | 'large'; navigation: 'top' | 'bottom'; detailsNavigation: 'tabs' | 'sidebar'; scale: 'auto' | number; background?:string }
-export const appearanceDefaults: Appearance = { theme: 'clear', tint: true, accent: '#d8d5ce', motion: true, text: 'standard', navigation: 'top', detailsNavigation: 'sidebar', scale: 'auto' };
+export interface Appearance { theme: Theme; tint: boolean; accent: string; motion: boolean; text: 'standard' | 'large'; navigation: 'top' | 'bottom'; detailsNavigation: 'tabs' | 'sidebar'; scale: 'auto' | number; libraryScale:number; background?:string }
+export const appearanceDefaults: Appearance = { theme: 'clear', tint: true, accent: '#d8d5ce', motion: true, text: 'standard', navigation: 'top', detailsNavigation: 'sidebar', scale: 'auto', libraryScale:100 };
 export function readGameAccents(): Map<string,string> {
   try {
     const saved = JSON.parse(localStorage.getItem('rtxforge-game-mode-accents') || '{}');
@@ -25,7 +25,7 @@ export function readGameAccents(): Map<string,string> {
 export function readAppearance(): Appearance {
   try {
     const value = JSON.parse(localStorage.getItem('rtxforge-game-mode-prototype') || '{}');
-    return { theme: ['clear', 'light', 'dark'].includes(value.theme) ? value.theme : 'clear',
+    return { libraryScale:typeof value.libraryScale==='number'&&value.libraryScale>=70&&value.libraryScale<=140?value.libraryScale:100, theme: ['clear', 'light', 'dark'].includes(value.theme) ? value.theme : 'clear',
       ...(typeof value.background==='string'&&value.background.length<1600000&&/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(value.background)?{background:value.background}:{}),
       tint: value.appearanceDefaultsVersion===2 ? value.tint === true : true, accent: /^#[0-9a-f]{6}$/i.test(value.accent) && !(value.appearanceDefaultsVersion!==2&&value.accent.toLowerCase()==='#f2cf5a') ? value.accent : appearanceDefaults.accent,
       motion: value.motion !== false, text: value.text === 'large' ? 'large' : 'standard', navigation: value.navigation === 'bottom' ? 'bottom' : 'top', detailsNavigation: value.detailsNavigationVersion===1&&value.detailsNavigation==='tabs'?'tabs':'sidebar', scale: [100, 125, 130, 150, 175, 200].includes(value.scale) ? value.scale : 'auto' };

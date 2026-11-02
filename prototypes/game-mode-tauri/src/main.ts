@@ -6,6 +6,8 @@ import { appearanceDefaults, escape as e, readAppearance, readGameAccents, readS
 import { operationFlow,operationStep,flowGame } from './operation-ui';
 import { installInput } from './input';
 import { setupLibraryLayout } from './library-layout';
+import { setupShellLayout } from './shell-layout';
+import { webviewZoom } from './display-scale';
 import { controllerGlyph, type ControllerFamily } from './controller-glyphs';
 import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero } from './art-accent';
 import { enhanceSelects, closeSelectMenu, selectMenuOpen } from './select-menu';
@@ -37,11 +39,13 @@ const noteDrafts = new Map<string, string>();
 let hintsTimeout: ReturnType<typeof setTimeout> | undefined;
 let toastTimeout: ReturnType<typeof setTimeout> | undefined;
 let appliedZoom: number | undefined;
+let nativeSystemScale: number | undefined, nativeDisplay: Promise<void> | undefined;
 const notesLoaded = new Set<string>();
 const reportEdits: Record<string, Record<string, string>> = {};
 const gameOverlayDrafts = new Map<string, Record<string, unknown>>();
 let artworkRole = 'poster', artworkPath = '', artworkQuery = '', artworkMatches: {id: number; name: string}[] = [];
 let artworkAssets: Record<string, unknown>[] = [], artworkMessage = '', gridConnected: boolean | null = null;
+let librarySizeOpen = false;
 let shellMenuOpen = false, detailsMenuOpen=false, presetSelection = false;
 const presetId = '__library-presets__';
 const gameAccentDrafts = readGameAccents();
@@ -66,6 +70,7 @@ function showHints() { document.documentElement.dataset.hints = 'visible'; if (h
 function applyAppearance() {
   const root = document.documentElement;
   root.dataset.theme = appearance.theme;
+  root.dataset.libraryScale=String(appearance.libraryScale);
   root.dataset.tint = String(appearance.tint);
   root.dataset.motion = String(appearance.motion);
   root.dataset.text = appearance.text;
@@ -78,8 +83,18 @@ function applyAppearance() {
   root.dataset.customBackground=String(Boolean(appearance.background));
   if(appearance.background)root.style.setProperty('--custom-background',`url("${appearance.background}")`);else root.style.removeProperty('--custom-background');
   applyDetailsAccent();
-  const zoom = appearance.scale === 'auto' ? 1 : appearance.scale / 100;
-  if ('__TAURI_INTERNALS__' in window && appliedZoom !== zoom) { appliedZoom = zoom; void import('@tauri-apps/api/webview').then(({ getCurrentWebview }) => getCurrentWebview().setZoom(zoom)).catch(() => { appliedZoom = undefined; announce('The interface scale could not be applied.'); }); }
+  if ('__TAURI_INTERNALS__' in window) {
+    if(nativeSystemScale===undefined){
+      nativeDisplay??=import('@tauri-apps/api/window').then(async({getCurrentWindow})=>{
+        const windowHandle=getCurrentWindow();nativeSystemScale=await windowHandle.scaleFactor();
+        const stop=await windowHandle.onScaleChanged(({payload})=>{nativeSystemScale=payload.scaleFactor;appliedZoom=undefined;applyAppearance();});
+        window.addEventListener('pagehide',stop,{once:true});applyAppearance();
+      }).catch(()=>{nativeDisplay=undefined;announce('The display scale could not be read.');});
+    }else{
+      const zoom=webviewZoom(appearance.scale,nativeSystemScale);
+      if(appliedZoom!==zoom){appliedZoom=zoom;void import('@tauri-apps/api/webview').then(({getCurrentWebview})=>getCurrentWebview().setZoom(zoom)).catch(()=>{appliedZoom=undefined;announce('The interface scale could not be applied.');});}
+    }
+  }
   try { localStorage.setItem('rtxforge-game-mode-prototype', JSON.stringify({...appearance,detailsNavigationVersion:1,appearanceDefaultsVersion:2})); } catch { /* Session preferences still work when storage is unavailable. */ }
 }
 function selectedGame(): Game | undefined { return snapshot?.games.find(game => game.id === selectedId) || snapshot?.games[0]; }
@@ -88,7 +103,7 @@ function setView(next: View, focus = true) {
   if (view === 'operation' && next !== 'operation' && operation?.stage === 'checking') operation.dismissed = true;
   const previousView = view;
   if (view === 'library') libraryScroll=app.querySelector<HTMLElement>('#game-results')?.scrollTop||app.querySelector<HTMLElement>('#content')?.scrollTop||0;
-  shellMenuOpen = false; detailsMenuOpen=false; view = next; render();
+  librarySizeOpen = false; shellMenuOpen = false; detailsMenuOpen=false; view = next; render();
   if (focus) document.querySelector<HTMLElement>('#page-title')?.focus();
   const content=app.querySelector<HTMLElement>('#content');if(content)content.scrollTop=next==='library'?libraryScroll:0;
   if(next==='library'){const results=app.querySelector<HTMLElement>('#game-results');if(results)results.scrollTop=libraryScroll;}
@@ -134,7 +149,7 @@ function library() {
     `<button class="quiet" data-action="refresh" ${loading ? 'disabled' : ''}>${icon('refresh')}<span>${loading ? 'Refreshing…' : 'Refresh library'}</span></button>`) + libraryOperations() +
     (error ? notice('Library reader unavailable', e(error), 'warning') : '') +
     (snapshot?.warnings.length ? notice('Some library data is unavailable', snapshot.warnings.map(e).join(' '), 'warning') : '') +
-    `<div class="library-tools"><label class="search">${icon('search')}<input id="library-search" type="search" placeholder="Search your library" aria-label="Search your library" value="${e(query)}" /></label><label class="library-filter"><span>Show</span><select id="library-filter" aria-label="Filter library" ${!backend.enabled||libraryChecking?'disabled':''}>${[['all','All games'],['available','Available'],['installed','Installed']].map(([key,label])=>`<option value="${key}" ${libraryFilter===key?'selected':''}>${label}</option>`).join('')}</select></label><div class="view-switch" role="group" aria-label="Library layout"><button data-layout="grid" aria-label="Poster grid" aria-pressed="${libraryView === 'grid'}">${icon('posters')}</button><button data-layout="capsules" aria-label="Wide capsules" aria-pressed="${libraryView === 'capsules'}">${icon('capsules')}</button><button data-layout="list" aria-label="Game list" aria-pressed="${libraryView === 'list'}">${icon('list')}</button></div></div>` +
+    `<div class="library-tools"><label class="search">${icon('search')}<input id="library-search" type="search" placeholder="Search your library" aria-label="Search your library" value="${e(query)}" /></label><label class="library-filter"><span>Show</span><select id="library-filter" aria-label="Filter library" ${!backend.enabled||libraryChecking?'disabled':''}>${[['all','All games'],['available','Available'],['installed','Installed']].map(([key,label])=>`<option value="${key}" ${libraryFilter===key?'selected':''}>${label}</option>`).join('')}</select></label><div class="library-size-control" data-open="${librarySizeOpen}"><button id="library-size-button" class="library-size-button" data-action="library-size-menu" aria-label="Card size" aria-expanded="${librarySizeOpen}" aria-controls="library-size-panel" ${libraryView==='list'?'disabled':''}>${icon('sliders')}</button><div id="library-size-panel" class="library-size-panel"><label class="library-size"><span>Card size</span><input id="library-size" type="range" min="70" max="140" step="5" value="${appearance.libraryScale}" aria-label="Library item size" aria-valuetext="${appearance.libraryScale}%" ${libraryView==='list'?'disabled':''}/><output for="library-size">${appearance.libraryScale}%</output></label></div></div><div class="view-switch" role="group" aria-label="Library layout"><button data-layout="grid" aria-label="Poster grid" aria-pressed="${libraryView === 'grid'}">${icon('posters')}</button><button data-layout="capsules" aria-label="Wide capsules" aria-pressed="${libraryView === 'capsules'}">${icon('capsules')}</button><button data-layout="list" aria-label="Game list" aria-pressed="${libraryView === 'list'}">${icon('list')}</button></div></div>` +
     (batchSelection.size ? `<div class="selection-bar inner-card"><span>${batchSelection.size} selected</span>${presetSelection ? `<button class="primary" data-action="apply-selected-presets" ${!backend.enabled?'disabled':''}>Apply presets to selected</button><button class="quiet" data-action="end-preset-selection">End preset selection</button>` : ''}<button class="primary" data-operation="install" data-batch="true" ${!backend.enabled ? 'disabled' : ''}>Review selected install</button><button class="quiet" data-operation="uninstall" data-batch="true" ${!backend.enabled ? 'disabled' : ''}>Review selected restore</button><button class="quiet" data-action="remove-selected-entries" ${!backend.enabled?'disabled':''}>Remove entries</button><button class="quiet" data-action="clear-selection">Clear selection</button></div>` : '') +
     `<div id="game-results" aria-live="polite">${gameResults(filtered, games.length)}</div>`;
 }
@@ -231,6 +246,7 @@ function gameCredits(game:Game) {
 }
 async function resolveLibraryAccents(data:Snapshot,games:Game[]=data.games) {
   await Promise.all(games.map(async game=>{
+    if(game.accent)return;
     const source=game.art||game.capsule||game.hero;if(!source)return;
     if(!game.accent&&!game.artworkAccentReady&&game.localArtwork?.includes('poster'))return;
     const accent=game.artworkAccentReady?game.artworkAccent:await artworkAccent(game.id,source);
@@ -638,6 +654,7 @@ function setupScrollFades() {
 }
 let arrivalKey = '';
 let disposeLibraryLayout = () => {};
+let disposeShellLayout = () => {};
 function render() {
   const priorFocus = document.activeElement instanceof HTMLElement && app.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = priorFocus ? (priorFocus.id ? `#${CSS.escape(priorFocus.id)}` : [...priorFocus.attributes].filter(a=>a.name.startsWith('data-')).map(a=>`[${a.name}="${CSS.escape(a.value)}"]`).join('')) : null;
@@ -645,6 +662,7 @@ function render() {
   const arrival = nextArrival !== arrivalKey ? captureArrival(app) : null;
   closeSelectMenu(false);
   disposeLibraryLayout();
+  disposeShellLayout();
   const sameSurface = renderedView === view && (view !== 'details' || renderedGame === selectedGame()?.id);
   const contentScroll = sameSurface ? app.querySelector<HTMLElement>('#content')?.scrollTop || 0 : 0;
   const detailsScroll = sameSurface ? app.querySelector<HTMLElement>('.details-scroll')?.scrollTop || 0 : 0;
@@ -652,7 +670,7 @@ function render() {
   applyAppearance();
   document.documentElement.dataset.surface = view;
   const content = view === 'library' ? library() : view === 'presets' ? presets() : view === 'details' ? details() : view === 'packages' ? packages() : view === 'extras' ? extras() : view === 'operation' ? operationView() : settings();
-  app.innerHTML = `<div class="shell"><header class="app-header"><a href="#library" class="brand" data-route="library" aria-label="rtxForge library"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></a><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><span>${icon('eye')}<span>${backend.enabled?'Game Mode':'Read-only demo'}</span></span><div id="input-hints">${hints()}</div><span class="reader-state"><i class="${snapshot ? 'connected' : ''}"></i>${loading ? 'Reading library' : snapshot ? 'Local library loaded' : 'Reader unavailable'}</span></footer></div>`;
+  app.innerHTML = `<div class="shell"><header class="app-header" data-tauri-drag-region><a href="#library" class="brand" data-route="library" aria-label="rtxForge library"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></a><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><span>${icon('eye')}<span>${backend.enabled?'Game Mode':'Read-only demo'}</span></span><div id="input-hints">${hints()}</div><span class="reader-state"><i class="${snapshot ? 'connected' : ''}"></i>${loading ? 'Reading library' : snapshot ? 'Local library loaded' : 'Reader unavailable'}</span></footer></div>`;
   const game = selectedGame(), scene = document.querySelector<HTMLElement>('#scene')!;
   scene.style.backgroundImage = '';
   scene.dataset.hero = 'false';
@@ -668,6 +686,7 @@ function render() {
   const main = app.querySelector<HTMLElement>('#content'); if(main)main.scrollTop=contentScroll;
   const results = app.querySelector<HTMLElement>('#game-results'); if(results)results.scrollTop=resultsScroll;
   const scrollingDetails=app.querySelector<HTMLElement>('.details-scroll'); if(scrollingDetails) { scrollingDetails.scrollTop=detailsScroll; scrollingDetails.dispatchEvent(new Event('scroll')); }
+  disposeShellLayout = setupShellLayout(app);
   renderedView=view;renderedGame=selectedGame()?.id||'';
   if (arrival) arrive(app, arrival, view);
   if (sameSurface && focusKey) app.querySelector<HTMLElement>(focusKey)?.focus({preventScroll:true});
@@ -712,6 +731,7 @@ function bind() {
   app.querySelectorAll<HTMLButtonElement>('[data-layout]').forEach(node => node.addEventListener('click', () => { libraryView = node.dataset.layout!; render(); app.querySelector<HTMLElement>(`[data-layout="${libraryView}"]`)?.focus(); }));
   app.querySelectorAll<HTMLElement>('[data-library-mode]').forEach(node=>node.addEventListener('click',()=>{libraryMode=node.dataset.libraryMode;const group=node.closest<HTMLElement>('.feature-mode-segments')!;group.style.setProperty('--selected-mode',String(['nr-only','mfg-only','nr-mfg'].indexOf(libraryMode!)));group.querySelectorAll<HTMLElement>('button').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.libraryMode===libraryMode)));}));
   app.querySelector<HTMLSelectElement>('#library-filter')?.addEventListener('change',event=>void filterLibrary((event.target as HTMLSelectElement).value));
+  app.querySelector<HTMLInputElement>('#library-size')?.addEventListener('input',event=>{const input=event.target as HTMLInputElement;appearance.libraryScale=Number(input.value);const results=app.querySelector<HTMLElement>('#game-results');if(results)results.scrollTop=0;input.setAttribute('aria-valuetext',input.value+'%');const output=app.querySelector<HTMLOutputElement>('.library-size output');if(output)output.value=input.value+'%';applyAppearance();disposeLibraryLayout();disposeLibraryLayout=setupLibraryLayout(app);requestAnimationFrame(()=>{if(results?.isConnected)results.scrollTop=0;});});
   app.querySelector<HTMLInputElement>('#library-search')?.addEventListener('input', event => { query = (event.target as HTMLInputElement).value; disposeLibraryLayout(); app.querySelector('#game-results')!.innerHTML = gameResults(filteredLibrary(), snapshot?.games.length || 0); bindResults(); disposeLibraryLayout = setupLibraryLayout(app); });
   app.querySelectorAll<HTMLElement>('[data-number-step]').forEach(node=>node.addEventListener('click',()=>{const field=node.parentElement?.querySelector<HTMLInputElement>('input[type=number]');if(!field||field.disabled)return; if(node.dataset.numberStep==='1')field.stepUp();else field.stepDown();field.dispatchEvent(new Event('change',{bubbles:true}));}));
   app.querySelectorAll<HTMLElement>('[data-action]').forEach(node => node.addEventListener('click', () => action(node.dataset.action!)));
@@ -794,6 +814,8 @@ function bindSelections() {
   app.querySelectorAll<HTMLElement>('[data-select-game]').forEach(node => node.addEventListener('click', () => { const id = node.dataset.selectGame!; if (batchSelection.has(id)) batchSelection.delete(id); else batchSelection.add(id); render(); app.querySelector<HTMLElement>(`[data-select-game="${CSS.escape(id)}"]`)?.focus(); }));
 }
 function action(name: string) {
+  if(name==='toggle-window-mode'&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke<boolean>('toggle_fullscreen')).then(fullscreen=>{backend.fullscreen=fullscreen;render();}).catch(problem=>announce(String(problem)));return;}
+  if(name==='minimize-app'&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke('minimize_app')).catch(problem=>announce(String(problem)));return;}
   if (name === 'reset-game-accent') { const game=selectedGame(); if(game)gameAccentDrafts.delete(game.id); persistGameAccents();render(); return; }
   if (name === 'reset-presets') { drafts.delete(presetId); render(); return; }
   if (name === 'select-preset-games') { presetSelection=true; batchSelection.clear(); setView('library'); announce('Select configured games, then review their preset changes.'); return; }
@@ -806,6 +828,7 @@ function action(name: string) {
     if('__TAURI_INTERNALS__' in window)void import('@tauri-apps/api/core').then(({invoke})=>invoke(name==='desktop-mode'?'desktop_mode':'exit_app')).catch(problem=>announce(String(problem)));
     return;
   }
+  if (name === 'library-size-menu') { librarySizeOpen=!librarySizeOpen; const control=app.querySelector<HTMLElement>('.library-size-control'); if(control)control.dataset.open=String(librarySizeOpen); app.querySelector('#library-size-button')?.setAttribute('aria-expanded',String(librarySizeOpen)); if(librarySizeOpen)app.querySelector<HTMLElement>('#library-size')?.focus(); return; }
   if (name === 'shell-menu') { shellMenuOpen = !shellMenuOpen; const menu = app.querySelector<HTMLElement>('#shell-menu'); if (menu) menu.hidden = !shellMenuOpen; app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded', String(shellMenuOpen)); if (shellMenuOpen) menu?.querySelector<HTMLElement>('button')?.focus(); return; }
   if (name === 'menu-appearance' || name === 'menu-controls' || name === 'menu-library') { shellMenuOpen=false; settingsCategory=name==='menu-appearance'?'appearance':name==='menu-library'?'library':'gaming'; setView('settings'); return; }
   if (name === 'extras-hdr') { detailsSection='tools'; setView('details'); return; }
@@ -963,11 +986,12 @@ async function chooseArtworkAsset(index: number) {
   } catch (problem) { artworkMessage = problem instanceof Error ? problem.message : 'Artwork could not be saved.'; render(); }
 }
 async function refresh() {
-  clearArtworkCache();
   document.documentElement.dataset.artworkReady='false';
   loading = true; error = ''; render();
   try {
-    const firstRead=!snapshot;snapshot = await readSnapshot();
+    const previous=snapshot,firstRead=!snapshot;snapshot = await readSnapshot();
+    if(previous)clearArtworkCache(previous);
+    performance.mark('library-ready');
     if(firstRead)libraryView=snapshot.preferences?.library_view==='list'?'list':snapshot.preferences?.library_view==='capsules'?'capsules':'grid';
     if (!selectedId) selectedId = snapshot.games[0]?.id || '';
     void resolveLibraryAccents(snapshot);
@@ -983,7 +1007,7 @@ async function refresh() {
         item?.querySelectorAll<HTMLImageElement>('.poster>img,.artwork-glow').forEach(image=>{image.src=source;image.style.visibility='';image.hidden=false;image.parentElement?.classList.remove('art-unavailable');});
         item?.querySelector('.artwork-unavailable')?.remove();
       }
-    }).then(async()=>{if(snapshot===captured){await resolveLibraryAccents(captured);document.documentElement.dataset.artworkReady='true';}});
+    }).then(async()=>{if(snapshot===captured){await resolveLibraryAccents(captured);document.documentElement.dataset.artworkReady='true';performance.mark('artwork-ready');}});
     announce(`Library refreshed. ${snapshot.games.length} games found.`);
   } catch (problem) { error = problem instanceof Error ? problem.message : 'The local reader is unavailable. Refresh to try again.'; announce(error); }
   finally { loading = false; render(); }
@@ -991,11 +1015,14 @@ async function refresh() {
 applyAppearance();
 document.addEventListener('pointerdown',event=>{
   const target=event.target as HTMLElement;
+  if(librarySizeOpen&&!target.closest('.library-size-control'))closeLibrarySize(false);
   if(shellMenuOpen&&!target.closest('.shell-more')){shellMenuOpen=false;const menu=app.querySelector<HTMLElement>('#shell-menu');if(menu)menu.hidden=true;app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false');}
   if(detailsMenuOpen&&!target.closest('.hero-more')){detailsMenuOpen=false;const menu=app.querySelector<HTMLElement>('.game-menu');if(menu)menu.hidden=true;app.querySelector('[data-action="game-menu"]')?.setAttribute('aria-expanded','false');}
 });
-installInput(() => { if(selectMenuOpen()){closeSelectMenu();return;} if(detailsMenuOpen){detailsMenuOpen=false;render();app.querySelector<HTMLElement>('[data-action="game-menu"]')?.focus();return;} if (shellMenuOpen) { shellMenuOpen=false; const menu=app.querySelector<HTMLElement>('#shell-menu'); if(menu)menu.hidden=true; app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false'); app.querySelector<HTMLElement>('#shell-menu-button')?.focus(); return; } if (view === 'operation' && operation?.stage === 'running') { announce('The operation is running. Use Request cancellation to stop safely.'); return; } if (view === 'operation' && (operation?.stage === 'review'||operation?.stage==='startup'||operation?.stage==='checking')) { void discardReview(); return; } if (view !== 'library') setView('library'); else app.querySelector<HTMLElement>('[data-route="library"]')?.focus(); }, delta => {
-  if(selectMenuOpen()||shellMenuOpen||detailsMenuOpen||view==='operation')return;
+document.addEventListener('keydown',event=>{if(event.key==='F11'&&'__TAURI_INTERNALS__' in window){event.preventDefault();action('toggle-window-mode');}});
+function closeLibrarySize(restoreFocus=true){librarySizeOpen=false;const control=app.querySelector<HTMLElement>('.library-size-control');if(control)control.dataset.open='false';app.querySelector('#library-size-button')?.setAttribute('aria-expanded','false');if(restoreFocus)app.querySelector<HTMLElement>('#library-size-button')?.focus();}
+installInput(() => { if(librarySizeOpen){closeLibrarySize();return;} if(selectMenuOpen()){closeSelectMenu();return;} if(detailsMenuOpen){detailsMenuOpen=false;render();app.querySelector<HTMLElement>('[data-action="game-menu"]')?.focus();return;} if (shellMenuOpen) { shellMenuOpen=false; const menu=app.querySelector<HTMLElement>('#shell-menu'); if(menu)menu.hidden=true; app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false'); app.querySelector<HTMLElement>('#shell-menu-button')?.focus(); return; } if (view === 'operation' && operation?.stage === 'running') { announce('The operation is running. Use Request cancellation to stop safely.'); return; } if (view === 'operation' && (operation?.stage === 'review'||operation?.stage==='startup'||operation?.stage==='checking')) { void discardReview(); return; } if (view !== 'library') setView('library'); else app.querySelector<HTMLElement>('[data-route="library"]')?.focus(); }, delta => {
+  if(librarySizeOpen||selectMenuOpen()||shellMenuOpen||detailsMenuOpen||view==='operation')return;
   const index = tabs.findIndex(tab => tab.id === (view === 'details' ? 'library' : view));
   setView(tabs[(index + delta + tabs.length) % tabs.length].id);
 }, (state, id) => { document.documentElement.dataset.controller=String(state); controller = state; controllerId = id || ''; const hint = app.querySelector('#input-hints'); if (hint) hint.innerHTML = hints(); }, showHints);

@@ -138,7 +138,7 @@ button:not(:disabled):focus-visible{transform:translateY(-2px) scale(1.015);box-
   .details-page[data-hero-compact=true] .details-hero-bottom{flex:0 0 auto}
   .details-page[data-hero-compact=true] .details-hero-meta{display:none}
 }
-.library-filter{display:flex;align-items:center;gap:10px;margin-left:auto;color:var(--muted);font-size:.85rem}.library-filter select{min-height:44px;max-width:180px}.library-tools{flex-wrap:wrap}
+.library-filter{display:flex;align-items:center;gap:10px;margin-left:auto;color:var(--muted);font-size:.85rem}.library-filter select{min-height:44px;max-width:180px}.library-tools{}
 @media(max-width:760px){.library-filter{margin-left:0}.library-filter select{max-width:170px}.page-heading>.operation-actions{flex-wrap:wrap}.page-heading>.operation-actions button{font-size:.8rem;padding:9px 12px}}
 
 /* ArtworkGlowRenderer's saturated, brightened pixels, tight core and 2.35x
@@ -189,8 +189,8 @@ button:not(:disabled):focus-visible{transform:translateY(-2px) scale(1.015);box-
 :root[data-details-navigation=sidebar] .details-layout:before{left:0}
 /* Desktop poster/capsule frames, with the same reserved title and status
    footer. The list keeps the current Game Mode's wide thumbnail and columns. */
-.games:not(.game-list){grid-template-columns:repeat(var(--library-columns,auto-fill),minmax(140px,1fr));gap:24px;padding:8px 2px 12px}
-.games.game-capsules{grid-template-columns:repeat(var(--library-columns,auto-fill),minmax(260px,1fr))}
+.games:not(.game-list){grid-template-columns:repeat(var(--library-columns,auto-fill),minmax(0,1fr));gap:24px;padding:8px 2px 12px}
+.games.game-capsules{grid-template-columns:repeat(var(--library-columns,auto-fill),minmax(0,1fr))}
 #game-results:has(.games:not(.game-list)){overflow-y:auto;scrollbar-gutter:stable;scroll-padding:16px}
 @media(max-width:1100px){.games:not(.game-list){gap:20px}}
 @media(max-width:760px){.games:not(.game-list){gap:18px}}
@@ -249,7 +249,7 @@ button:not(:disabled):focus-visible{transform:translateY(-2px) scale(1.015);box-
 .game-list .game-item:has(.game-card:is(:hover,:focus-visible)),.game-list .game-item[data-selected=true]{background:var(--nested);box-shadow:inset 0 0 0 1px var(--game-accent)}
 .game-list .game-item[data-selected=true] .game-card{background:transparent;box-shadow:none}
 :root[data-surface=library] .content{padding-top:28px}
-:root[data-surface=library] .page-heading{margin-bottom:22px}
+:root:not([data-surface=details]) .page-heading{margin-bottom:22px}
 .library-operation-bar{padding:10px 14px;margin-bottom:18px;gap:14px}
 .library-feature-mode{gap:14px}.library-feature-mode>strong{font-size:.9rem}
 .library-operation-actions button{min-height:40px;font-size:.8rem;padding:8px 11px}
@@ -532,3 +532,68 @@ button.ui-control:not(:disabled):not(.game-card):not(.primary):is(:hover,:focus-
 .details-hero-meta{flex:1 1 28rem;min-width:0}
 .hero-actions{flex:0 1 auto;max-width:100%;flex-wrap:wrap}
 @media(max-width:1190px){.hero-actions{justify-content:flex-start;margin-top:0}}
+
+/* Library density leaves the height to games, with independent artwork sizing. */
+.library-size{display:flex;align-items:center;gap:10px;font-size:.8rem;color:var(--muted);white-space:nowrap}
+.library-size input[type=range]{width:110px;min-height:38px;padding:0;border:0;background:transparent;cursor:pointer}
+.library-size output{min-width:36px;font-variant-numeric:tabular-nums;text-align:right}
+.library-tools{gap:12px 18px}.library-filter{margin-left:auto}
+@media(min-width:761px){.shell{padding:16px 24px 0;grid-template-rows:76px minmax(0,1fr) 40px;gap:12px}:root[data-navigation=bottom] .shell{grid-template-rows:minmax(0,1fr) 76px 40px}:root:not([data-surface=details]) .content{padding-top:20px;padding-bottom:24px}:root:not([data-surface=details]) .page-heading{margin-bottom:14px}:root:not([data-surface=details]) .page-heading h1{font-size:2rem}:root:not([data-surface=details]) .page-heading p{margin-top:6px;font-size:.88rem}:root[data-surface=library] .library-operation-bar{margin-bottom:12px}:root[data-surface=library] .library-tools{margin-bottom:12px}:root[data-surface=library] .search{height:44px}.app-footer{padding-bottom:8px}}
+@media(max-width:760px){.library-size{flex:1}.library-size input[type=range]{flex:1;min-width:60px;max-width:120px}.library-tools .search{max-width:none}.library-filter{margin-left:0}.library-size>span{font-size:.73rem}.library-tools .view-switch{margin-left:auto}}
+/* Search yields width before any library control group wraps. */
+@media(min-width:761px){.library-tools{display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(160px,210px) auto;gap:12px}.library-tools .search{max-width:none;min-width:0}.library-tools .search input{min-width:0}.library-filter,.library-size{margin:0;min-width:0}.library-size input[type=range]{flex:1;width:80px;min-width:48px;max-width:110px}.library-filter>.select-shell{max-width:150px}.library-size{gap:8px}.library-size>span{font-size:.76rem}}
+@media(max-width:760px) and (min-width:541px){.library-tools{display:grid;grid-template-columns:auto minmax(160px,1fr) auto;gap:10px}.library-tools .search{grid-column:1/-1}.library-filter,.library-size,.library-tools .view-switch{margin:0}}
+@media(max-width:540px){.library-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}.library-tools .search{grid-column:1/-1;min-width:0}.library-filter{grid-column:1;grid-row:2;min-width:0}.library-filter>span:not(.select-shell){display:none}.library-filter>.select-shell{max-width:100%;width:100%}.library-tools .view-switch{grid-column:2;grid-row:2;margin:0}.library-size{grid-column:1/-1;grid-row:3;margin:0}.library-size input[type=range]{max-width:none}.library-size output{margin-left:auto}}
+
+/* One shell rhythm prevents the frame from jumping when changing pages. */
+.content{scrollbar-gutter:auto}
+@media(min-width:761px){:root:not([data-surface=details]) .content{padding-inline:24px}}
+/* The results pane uses the entire remaining surface, with one scrollbar. */
+:root[data-surface=library] .content{display:flex;flex-direction:column;overflow:hidden}
+:root[data-surface=library] .content>:not(#game-results){flex-shrink:0}
+#game-results{flex:1;min-height:0;overflow:auto;overflow-anchor:none;scrollbar-gutter:auto;padding-inline:24px;margin-inline:-24px}
+#game-results:has(.games:not(.game-list)){scrollbar-gutter:auto}
+#game-results::-webkit-scrollbar{width:12px;height:12px}
+#game-results::-webkit-scrollbar-thumb{border:4px solid transparent;background-clip:padding-box;border-radius:12px}
+.games{overflow-anchor:none;min-width:0}
+.library-size-control{position:relative;min-width:0}
+.library-size-button{display:none}
+.library-size-panel{min-width:0}
+.library-size{grid-column:auto;grid-row:auto}
+@media(max-width:760px){
+  :root[data-surface=library] .content{overflow:auto}
+  #game-results{flex:1 0 200px;padding-inline:16px;margin-inline:-16px}
+  .library-tools{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 44px auto;gap:8px}
+  .library-tools .search{grid-column:1/-1;min-width:0}
+  .library-filter{grid-column:1;grid-row:2;margin:0;min-width:0}
+  .library-filter>span:not(.select-shell){display:none}
+  .library-filter>.select-shell{max-width:100%;width:100%}
+  .library-size-control{position:static;grid-column:2;grid-row:2}
+  .library-size-button{display:flex;width:44px;min-height:44px;padding:10px}
+  .library-size-panel{display:none;position:absolute;z-index:30;top:calc(100% + 8px);right:0;width:min(260px,calc(100vw - 64px));padding:14px;border-radius:14px;background:var(--glass);backdrop-filter:blur(32px);box-shadow:inset 0 0 0 1px var(--rim),var(--shadow)}
+  .library-size-control[data-open=true] .library-size-panel{display:block}
+  .library-size{gap:8px;margin:0}
+  .library-size input[type=range]{flex:1;min-width:40px;max-width:none}
+  .library-tools .view-switch{grid-column:3;grid-row:2;margin:0}
+  .library-tools .view-switch button{min-width:36px;min-height:44px;padding:8px}
+}
+/* Focus stays inside the navigation pills, including controller focus. */
+.app-header nav.main-nav button.ui-control:not(:disabled):is(:hover,:focus-visible),
+:root[data-controller=true] .app-header nav.main-nav button.ui-control:not(:disabled):focus{outline-offset:-3px;scale:1}
+/* Keep navigation available while freeing height after scrolling. */
+@media(min-width:761px){
+  .shell[data-header-collapsed=true]{grid-template-rows:56px minmax(0,1fr) 40px}
+  :root[data-navigation=bottom] .shell[data-header-collapsed=true]{grid-template-rows:minmax(0,1fr) 56px 40px}
+  .shell[data-header-collapsed=true] .app-header nav.main-nav{min-height:52px;padding:5px}
+  .shell[data-header-collapsed=true] .app-header nav.main-nav button{min-height:42px;padding-block:6px}
+  .shell[data-header-collapsed=true] .brand img{width:34px;height:34px}
+  .shell[data-header-collapsed=true] .brand{font-size:1.3rem}
+}
+@media(max-width:760px){
+  .shell[data-header-collapsed=true]{grid-template-rows:64px minmax(0,1fr) 46px}
+  :root[data-navigation=bottom] .shell[data-header-collapsed=true]{grid-template-rows:minmax(0,1fr) 64px 46px}
+  .shell[data-header-collapsed=true] .app-header{grid-template-columns:minmax(0,1fr) 40px;grid-template-rows:64px;gap:6px}
+  .shell[data-header-collapsed=true] .app-header .brand{display:none}
+  .shell[data-header-collapsed=true] .app-header nav.main-nav{grid-column:1;grid-row:1;min-width:0}
+  .shell[data-header-collapsed=true] .shell-more{grid-column:2;grid-row:1}
+}

@@ -1,12 +1,17 @@
 /** Fit complete rows without changing artwork ratios, type size or native zoom. */
-export function libraryColumns(width: number, height: number, footer: number, ratio: number, gap: number) {
-  const rows = Math.max(1, Math.min(3, Math.floor((height + gap) / (360 + gap))));
+export function libraryColumns(width: number, height: number, footer: number, ratio: number, gap: number, size=100) {
+  const minimum = ratio > 1 ? 120 : 240;
+  const minimumRow=(minimum-10)*ratio+footer;
+  const preferredRow=ratio>1?360:300;
+  const rows=height>=3*preferredRow+2*gap?3:height>=2*minimumRow+gap?2:1;
   const rowHeight = (height - (rows - 1) * gap) / rows;
-  const minimum = ratio > 1 ? 140 : 260;
   const maximum = ratio > 1 ? 280 : 560;
   const artworkWidth = (rowHeight - footer) / ratio + 10;
-  const target = Math.max(minimum, Math.min(maximum, artworkWidth));
-  return { columns: Math.max(1, Math.ceil((width + gap) / (target + gap))), rows };
+  const target = Math.max(minimum*.7, Math.min(maximum*1.4, artworkWidth*size/100));
+  const columns=Math.max(1,Math.ceil((width+gap)/(target+gap)));
+  const actualWidth=(width-(columns-1)*gap)/columns;
+  const actualHeight=(actualWidth-10)*ratio+footer;
+  return {columns,rows:Math.max(1,Math.min(4,Math.floor((height+gap)/(actualHeight+gap))))};
 }
 
 export function setupLibraryLayout(root: HTMLElement): () => void {
@@ -28,19 +33,9 @@ export function setupLibraryLayout(root: HTMLElement): () => void {
     const footer = (copy?.offsetHeight || 94) + 5;
     const gap = parseFloat(style.columnGap) || 24;
     const wide = grid.classList.contains('game-capsules');
-    const result = libraryColumns(grid.clientWidth - 4, height, footer, wide ? 43 / 92 : 1.5, gap);
+    const result = libraryColumns(grid.clientWidth - 4, height, footer, wide ? 43 / 92 : 1.5, gap,Number(document.documentElement.dataset.libraryScale)||100);
     grid.style.setProperty('--library-columns', String(result.columns));
     grid.dataset.visibleRows = String(result.rows);
-    if (results && grid.closest('#game-results')) {
-      const card = grid.querySelector<HTMLElement>('.game-item');
-      if (card) {
-        const gridPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-        const completeRows = card.offsetHeight * result.rows + (result.rows - 1) * (parseFloat(style.rowGap) || gap) + gridPadding;
-        // A real scrolling results pane ends after complete rows. Toolbar and
-        // shadow padding stay visible; the rest of the library remains scrollable.
-        results.style.maxHeight = Math.min(height + gridPadding, completeRows) + 'px';
-      }
-    }
   };
   const schedule = () => { if (!disposed && !frame) frame = requestAnimationFrame(arrange); };
   const observer = new ResizeObserver(schedule);

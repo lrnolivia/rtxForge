@@ -9,8 +9,8 @@ pub struct EngineState { session: Mutex<Option<Arc<Session>>> }
 
 pub fn enabled() -> bool { std::env::var("RTXFORGE_PREVIEW_READ_ONLY").as_deref() != Ok("1") && std::env::var("RTXFORGE_ENGINE_BRIDGE").as_deref() == Ok("1") }
 #[tauri::command]
-pub fn engine_status() -> serde_json::Value {
-    serde_json::json!({"enabled": enabled(), "reason": if enabled() { "Reviewed operations are available." } else { "Read-only preview. Game, Steam and shared settings actions are disabled." }})
+pub fn engine_status(window: tauri::Window) -> serde_json::Value {
+    serde_json::json!({"enabled": enabled(), "fullscreen":window.is_fullscreen().unwrap_or(false), "reason": if enabled() { "Reviewed operations are available." } else { "Read-only preview. Game, Steam and shared settings actions are disabled." }})
 }
 
 fn session(app: &tauri::AppHandle, state: &EngineState) -> Result<Arc<Session>, String> {

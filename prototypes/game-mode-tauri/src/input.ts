@@ -1,6 +1,6 @@
 type Direction = 'left' | 'right' | 'up' | 'down';
 export function moveFocus(direction: Direction): void {
-  const scope=(document.querySelector('.select-menu') || document.querySelector('.shell-menu:not([hidden])') || document.querySelector('.game-menu:not([hidden])') || document.querySelector('.operation-flow'))||document;
+  const scope=(document.querySelector('.select-menu') || document.querySelector('.library-size-control[data-open=true]') || document.querySelector('.shell-menu:not([hidden])') || document.querySelector('.game-menu:not([hidden])') || document.querySelector('.operation-flow'))||document;
   const targets = [...scope.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],summary')]
     .filter(node => node.getClientRects().length && !node.closest('[hidden]'));
   const active = document.activeElement as HTMLElement;
@@ -49,6 +49,8 @@ export function installInput(back: () => void, switchTab: (delta: number) => voi
           if (field instanceof HTMLSelectElement && (index === 14 || index === 15)) {
             field.selectedIndex = Math.max(0, Math.min(field.options.length - 1, field.selectedIndex + (index === 14 ? -1 : 1)));
             field.dispatchEvent(new Event('change', { bubbles: true }));
+          } else if(field instanceof HTMLInputElement&&field.type==='range'&&(index===14||index===15)){
+            if(index===14)field.stepDown();else field.stepUp();field.dispatchEvent(new Event('input',{bubbles:true}));
           } else moveFocus(({ 12: 'up', 13: 'down', 14: 'left', 15: 'right' } as const)[index as 12]);
         }
         lastTime = time;

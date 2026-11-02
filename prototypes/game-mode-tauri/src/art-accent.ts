@@ -46,14 +46,17 @@ export function signatureColor(pixels:ArrayLike<number>):string|null {
 const cache=new Map<string,{source:string;color:string|null}>();
 export async function artworkAccent(id:string,source:string):Promise<string|null> {
   const prior=cache.get(id);if(prior?.source===source)return prior.color;
-  if(!source.startsWith('data:image/')&&!source.startsWith('https://shared.akamai.steamstatic.com/'))return null;
+  if(!source.startsWith('data:image/')&&!source.startsWith('blob:')&&!source.startsWith('https://shared.akamai.steamstatic.com/'))return null;
+  let timer:ReturnType<typeof setTimeout>|undefined;
   try {
-    const image=new Image();if(source.startsWith('https:'))image.crossOrigin='anonymous';image.src=source;await image.decode();
+    const image=new Image();if(source.startsWith('https:'))image.crossOrigin='anonymous';image.src=source;
+    await Promise.race([image.decode(),new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>{image.src='';reject(new Error('Artwork sampling timed out.'));},8000);})]);
     const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;
     const context=canvas.getContext('2d',{willReadFrequently:true});if(!context)return null;
     context.drawImage(image,0,0,64,64);
     const color=signatureColor(context.getImageData(0,0,64,64).data);cache.set(id,{source,color});return color;
-  }catch{return null;}
+  }catch{cache.set(id,{source,color:null});return null;}
+  finally{clearTimeout(timer);}
 }
 
 // Selected Library cards and rows use the native library's solid accent and

@@ -9,6 +9,16 @@ mod runtime;
 fn exit_app(app: tauri::AppHandle) { app.exit(0); }
 
 #[tauri::command]
+fn toggle_fullscreen(window: tauri::Window) -> Result<bool,String> {
+    let fullscreen=!window.is_fullscreen().map_err(|e|e.to_string())?;
+    window.set_fullscreen(fullscreen).map_err(|e|e.to_string())?;
+    Ok(fullscreen)
+}
+
+#[tauri::command]
+fn minimize_app(window: tauri::Window) -> Result<(),String> { window.minimize().map_err(|e|e.to_string()) }
+
+#[tauri::command]
 fn desktop_mode(app: tauri::AppHandle) -> Result<(), String> {
     let mut candidates = Vec::new();
     #[cfg(windows)] {
@@ -82,6 +92,6 @@ async fn artwork(app: tauri::AppHandle, id: String, role: String) -> Result<serd
 }
 
 fn main() {
-    tauri::Builder::default().plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![snapshot, artwork, choose_path, desktop_mode, exit_app, engine::engine_status, engine::engine_request])
+    tauri::Builder::default().plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![snapshot, artwork, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
         .run(tauri::generate_context!()).expect("Could not run Game Mode");
 }

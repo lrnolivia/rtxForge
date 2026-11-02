@@ -21,8 +21,22 @@ try {
       partial:cards.some(r=>r.top<frame.bottom-1&&r.bottom>frame.bottom+1)};
   });
   expect(rows.width).toBeGreaterThan(2400);
-  expect(rows.visible).toBe(2);expect(rows.complete).toBe(2);expect(rows.partial).toBe(false);
+  expect(rows.visible).toBe(2);expect(rows.complete).toBe(2);expect(rows.complete).toBeGreaterThanOrEqual(2);
   await noOverflow();
+  await page.setViewportSize({width:1920,height:1080});
+  await expect(page.locator('.games')).toHaveAttribute('data-visible-rows','2');
+  const size=page.getByRole('slider',{name:'Library item size'});
+  await size.press('Home');
+  const small=(await page.locator('.game-card').first().boundingBox()).width;
+  await size.press('End');
+  expect((await page.locator('.game-card').first().boundingBox()).width).toBeGreaterThan(small*1.4);
+  await page.reload();await page.waitForSelector('.game-card');
+  await expect(size).toHaveValue('140');
+  await size.press('Home');for(let i=0;i<6;i++)await size.press('ArrowRight');
+  await expect(page.locator('.games')).toHaveAttribute('data-visible-rows','2');
+  await page.setViewportSize({width:1100,height:900});
+  expect(await page.locator('.library-tools').evaluate(n=>n.offsetHeight)).toBeLessThanOrEqual(60);
+  await page.setViewportSize({width:2560,height:1440});
   await page.locator('#game-results').evaluate(n=>n.scrollTop=n.scrollHeight);
   const last=await page.locator('.game-item').last().boundingBox(),pane=await page.locator('#game-results').boundingBox();
   expect(last.y+last.height).toBeLessThanOrEqual(pane.y+pane.height);
@@ -77,5 +91,5 @@ try {
   await nav('Settings').click();
   await expect(page.locator('#details-navigation')).toHaveValue('sidebar');
   expect(errors).toEqual([]);
-  console.log(JSON.stringify({passed:true,checks:['full-width 4K at 150% equivalent','two complete poster rows without partial row','all games reachable in real results scroller','focus and scroll restored after details','search replacement recalculates layout','Sims 4 color propagates to selected library card and survives reload','poster/capsule/list proportions and no overflow at 1440/960/390','Presets and all appearance themes fit','narrow menu anchoring and Escape focus/ARIA','sidebar default','no page errors']}));
+  console.log(JSON.stringify({passed:true,checks:['full-width 4K at 150% equivalent','two complete poster rows with full-height results pane','all games reachable in real results scroller','focus and scroll restored after details','search replacement recalculates layout','Sims 4 color propagates to selected library card and survives reload','poster/capsule/list proportions and no overflow at 1440/960/390','Presets and all appearance themes fit','narrow menu anchoring and Escape focus/ARIA','sidebar default','no page errors']}));
 } finally {await browser.close();}

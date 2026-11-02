@@ -14,12 +14,12 @@ sealed class OverlayPresentationView : Grid
     readonly OverlayThemePicker theme;
     readonly ToggleSwitch tint;
     readonly ComboBox accentSource;
-    readonly TextBox accentColor;
+    readonly Button accentColor;
     readonly OverlayPreviewView? preview;
 
     public OverlayPresentationView(Action<Action> edit, EngineForgeService? engine, Game? game = null)
     {
-        var path=game is null?null:GlassAppearance.GameFilePath(game);
+        var path=game is null?null:GlassAppearance.GameFilePath(game,refresh:true);
         var glass = GlassAppearance.Load(path);
         void Set(string key,object value)=>GlassAppearance.Set(key,value,path:path);
         layout = new(glass.Layout, card: false);
@@ -33,8 +33,10 @@ sealed class OverlayPresentationView : Grid
         var sideRow = Prefs.Row("Side Panel position", "Choose which edge the Side Panel opens on.", side, glyph: "\uE8A0");
         var barRow = Prefs.Row("Bar position", "Open the Bar at the top or bottom of the screen.", bar, glyph: "\uE8A0");
         accentSource = new() { ItemsSource = new[] { "Theme", "Custom", "Adaptive" }, SelectedIndex = Array.IndexOf(new[] { "theme", "custom", "adaptive" },glass.AccentMode), MinWidth = 130 };
-        accentColor = new() { Text = glass.AccentColor, PlaceholderText = "Game color", MaxLength = 7, Width = 150 };
-        var customRow = Prefs.Row("Custom color", "Hex color, or leave blank to use the game's rtxForge color.", accentColor, glyph: "\uE790");
+        var colorDot=new Microsoft.UI.Xaml.Shapes.Ellipse {Width=28,Height=28};
+        accentColor=new() {Content=colorDot,Width=40,Height=40,Padding=new Thickness(4),CornerRadius=new CornerRadius(20),HorizontalAlignment=HorizontalAlignment.Right};
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(accentColor,"Choose custom accent color");
+        var customRow = Prefs.Row("Custom color", "Choose a color or sample your game’s poster or screen.", accentColor, glyph: "\uE790");
         customRow.Visibility = glass.AccentMode == "custom" ? Visibility.Visible : Visibility.Collapsed;
         var options = new StackPanel { Spacing = 16 };
         options.Children.Add(layout); options.Children.Add(sideRow); options.Children.Add(barRow); options.Children.Add(theme);
@@ -64,14 +66,20 @@ sealed class OverlayPresentationView : Grid
             if (previewSection is not null) { Grid.SetColumn(previewSection, wide ? 1 : 0); Grid.SetRow(previewSection, wide ? 0 : 1); }
         };
         void SideVisibility() { sideRow.Visibility = layout.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed; barRow.Visibility = layout.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed; }
-        void Change(Action action) { edit(action); preview?.RefreshAppearance(); }
+        void Change(Action action) { edit(()=>{if(game is not null)GlassAppearance.GameFilePath(game,refresh:true);action();}); preview?.RefreshAppearance(); }
         layout.SelectionChanged += (_, _) => { if (layout.SelectedIndex >= 0) Change(() => Set("Layout", GlassAppearance.Layouts[layout.SelectedIndex])); SideVisibility(); };
         side.SelectionChanged += (_, _) => { if (side.SelectedIndex >= 0) Change(() => Set("SidePanelSide", side.SelectedIndex == 1 ? "right" : "left")); };
         bar.SelectionChanged += (_, _) => { if (bar.SelectedIndex >= 0) Change(() => Set("BarPosition", bar.SelectedIndex == 1 ? "top" : "bottom")); };
         theme.SelectionChanged += (_, _) => { if (theme.SelectedIndex >= 0) Change(() => GlassAppearance.UseAppearance(new[] { "clear", "light", "dark" }[theme.SelectedIndex],path:path)); };
         tint.Toggled += (_, _) => Change(() => GlassAppearance.UseAppearance(tint: tint.IsOn,path:path));
         accentSource.SelectionChanged += (_, _) => { if(accentSource.SelectedIndex < 0)return;var mode=new[] { "theme", "custom", "adaptive" }[accentSource.SelectedIndex];Change(() => Set("AccentMode",mode));customRow.Visibility=mode=="custom"?Visibility.Visible:Visibility.Collapsed; };
-        accentColor.TextChanged += (_, _) => { if(GlassAppearance.ValidAccent(accentColor.Text))Change(() => Set("AccentColor",accentColor.Text)); };
+        async Task UpdateSwatch(){var current=GlassAppearance.Load(path);var target=game??preview?.SelectedGame;
+            var color=current.AccentColor.Length==7&&ArtAccent.TryParse(current.AccentColor,out var parsed)?parsed:target is not null?(await OverlayAccent.ForGameAsync(target)).Color:global::Windows.UI.Color.FromArgb(255,160,160,160);
+            colorDot.Fill=new Microsoft.UI.Xaml.Media.SolidColorBrush(color);ToolTipService.SetToolTip(accentColor,"Choose custom color · "+ArtAccent.Hex(color));}
+        accentColor.Click+=async(_,_)=>{accentColor.IsEnabled=false;try{await UpdateSwatch();var initial=((Microsoft.UI.Xaml.Media.SolidColorBrush)colorDot.Fill).Color;
+            var selected=await OverlayAccentPicker.ShowAsync(this,game??preview?.SelectedGame,initial);if(selected is not null){Change(()=>Set("AccentColor",selected));await UpdateSwatch();}}
+            catch(Exception error){App.Main?.ShowToast(error.Message);}finally{accentColor.IsEnabled=true;}};
+        _=UpdateSwatch();
         SideVisibility();
     }
 

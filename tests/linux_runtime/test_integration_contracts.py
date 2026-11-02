@@ -27,7 +27,7 @@ class IntegrationContracts(unittest.TestCase):
             self.assertEqual(saved['theme'],'light');self.assertEqual(saved['panel_hotkey'],'F8')
             self.assertEqual(saved['overlay_appearance'],{})
             self.assertEqual(next(iter(saved['game_overlay_settings'].values()))['overlay_appearance'],appearance)
-            self.assertEqual(result['settings']['overlay_appearance'],appearance)
+            self.assertEqual(result['settings']['overlay_appearance'],__import__('glass_preferences').DEFAULTS | appearance)
             for key,value in [('overlay_appearance',{'Scale':999}),('unknown',True),('overlay_helper','true')]:
                 before=path.read_bytes()
                 self.assertTrue(h.handle({'op':'set-setting','key':key,'value':value},row,8)['error'])

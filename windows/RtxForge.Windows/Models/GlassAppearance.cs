@@ -8,16 +8,25 @@ namespace RtxForge.Windows.Models;
 public sealed class GlassAppearance
 {
     public static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "overlay-appearance.ini");
-    public static string GameFilePath(Game game)
+    public static string GameFilePath(Game game, bool refresh=false)
     {
         var key=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(game.Id))).ToLowerInvariant();
         var path=Path.Combine(Path.GetDirectoryName(FilePath)!,"overlay-games",key+".ini");
-        if(!File.Exists(path)){
-            var values=Load().ToJson();var settings=ForgeSettings.Load();
-            if(settings.GameOverlaySettings.TryGetValue(game.Id,out var local)&&local["overlay_appearance"] is JsonObject appearance)foreach(var (name,value) in Validate(appearance))values[name]=value?.DeepClone();
+        if(refresh||!File.Exists(path)){
+            var values=Resolve(ForgeSettings.Load(),game);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path,"[Appearance]\n");
             foreach(var (name,value) in values)Set(name,value!.ToString(),path:path);
         }
         return path;
+    }
+    public static JsonObject Resolve(ForgeSettings settings,Game? game=null,string? defaultsPath=null)
+    {
+        var values=Load(defaultsPath).ToJson();
+        foreach(var (name,value) in Validate(settings.OverlayAppearance))values[name]=value?.DeepClone();
+        if(game is not null&&settings.GameOverlaySettings.TryGetValue(game.Id,out var local)&&local["overlay_appearance"] is JsonObject appearance)
+            foreach(var (name,value) in Validate(appearance))values[name]=value?.DeepClone();
+        return values;
     }
     public static void ResetGameProfiles()
     {

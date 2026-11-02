@@ -10387,7 +10387,7 @@ class Window(Adw.ApplicationWindow):
         except (OSError,ValueError,t.Refusal):pass
         return True
 
-    def overlay_settings_groups(self,game=None):
+    def overlay_settings_groups(self,game=None,on_game_saved=None):
         """Overlay preferences shared with Windows; games pick them up on their next reviewed install or repair."""
         import overlay_settings
         if not self.options.demo:
@@ -10398,6 +10398,7 @@ class Window(Adw.ApplicationWindow):
             if game:
                 self.settings['game_overlay_settings']=overlay_settings.game_edit(self.settings,game['game'],key,value)
                 if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+                if on_game_saved:on_game_saved()
             else:self.save_overlay_preference(key,value)
         def choice(title,subtitle,keys,captions,key,group):
             current=s.get(key,keys[0])
@@ -10454,11 +10455,43 @@ class Window(Adw.ApplicationWindow):
         visual_row('Theme',ThemePicker(glass.base_theme(s),select_theme))
         source_row=material_choice('Accent','AccentMode',['theme','custom','adaptive'],['Theme','Custom','Adaptive'])
         source_row.set_subtitle('Theme is neutral. Custom uses your color. Adaptive follows the scene.')
-        custom_row=Adw.EntryRow(title='Custom color · #RRGGBB',text=glass.current(s)['AccentColor'])
-        def custom_changed(widget,*_):
-            value=widget.get_text()
-            if not value or __import__('re').fullmatch(r'#[0-9a-fA-F]{6}',value):changed('AccentColor',value)
-        custom_row.connect('changed',custom_changed);appearance.add(custom_row)
+        sample_game=game or (self.games[0] if self.games else {})
+        def custom_hex():return glass.current(s)['AccentColor'] or self.settings.get('game_accents',{}).get(sample_game.get('game')) or ('#'+sample_game.get('accent_class','art-a0a0a0').removeprefix('art-'))
+        dot=Gtk.DrawingArea(content_width=28,content_height=28)
+        def draw_custom(_area,cr,width,height):
+            color=Gdk.RGBA()
+            if not color.parse(custom_hex()):color.parse('#a0a0a0')
+            cr.set_source_rgba(color.red,color.green,color.blue,1);cr.arc(width/2,height/2,min(width,height)/2-1,0,6.283185);cr.fill()
+        dot.set_draw_func(draw_custom)
+        swatch_button=Gtk.Button(child=dot,valign=Gtk.Align.CENTER,tooltip_text='Choose custom color');swatch_button.add_css_class('circular')
+        custom_row=Adw.ActionRow(title='Custom color',subtitle='Choose a color or sample the poster or screen.');custom_row.add_suffix(swatch_button);appearance.add(custom_row)
+        def open_custom(*_):
+            initial=Gdk.RGBA();initial.parse(custom_hex())
+            chooser=Gtk.ColorChooserWidget(rgba=initial,use_alpha=False,show_editor=False)
+            picker=Adw.Dialog(title='Custom color',content_width=520,content_height=440)
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,margin_top=12,margin_bottom=12,margin_start=16,margin_end=16)
+            stage=Gtk.Box(spacing=16);stage.append(chooser);body.append(stage)
+            source=sample_game.get('poster') or sample_game.get('capsule') or sample_game.get('hero')
+            if source:
+                try:
+                    pix=GdkPixbuf.Pixbuf.new_from_file(str(source));poster=Gtk.Picture.new_for_filename(str(source));poster.set_size_request(88,132);poster.set_content_fit(Gtk.ContentFit.CONTAIN);poster.set_valign(Gtk.Align.START);stage.append(poster)
+                    def poster_pick(_gesture,_press,x,y):
+                        width,height=pix.get_width(),pix.get_height();scale=min(poster.get_width()/width,poster.get_height()/height)
+                        px=int((x-(poster.get_width()-width*scale)/2)/scale);py=int((y-(poster.get_height()-height*scale)/2)/scale)
+                        if 0<=px<width and 0<=py<height:
+                            pixels=pix.get_pixels();at=py*pix.get_rowstride()+px*pix.get_n_channels();color=Gdk.RGBA();color.parse('#%02x%02x%02x'%tuple(pixels[at:at+3]));chooser.set_rgba(color)
+                    gesture=Gtk.GestureClick();gesture.connect('released',poster_pick);poster.add_controller(gesture)
+                except Exception:pass
+            body.append(Gtk.Label(label='Use the eyedropper to choose any color on screen.',wrap=True,xalign=0))
+            actions=Gtk.Box(spacing=8,halign=Gtk.Align.END);body.append(actions)
+            def apply_color(value):changed('AccentColor',value);dot.queue_draw();picker.close()
+            actions.append(button('Use game color',lambda *_:apply_color('')))
+            actions.append(button('Cancel',lambda *_:picker.close()))
+            def accept(*_):
+                c=chooser.get_rgba();apply_color('#%02x%02x%02x'%(round(c.red*255),round(c.green*255),round(c.blue*255)))
+            actions.append(button('Done',accept))
+            view=Adw.ToolbarView();view.add_top_bar(Adw.HeaderBar());view.set_content(body);picker.set_child(view);picker.present(self)
+        swatch_button.connect('clicked',open_custom)
         def custom_visibility(*_):custom_row.set_visible(glass.current(s)['AccentMode']=='custom')
         source_row.connect('notify::selected',custom_visibility);refreshers.append(custom_visibility);custom_visibility()
         accent_row=Adw.SwitchRow(title='Accent Tint' ,subtitle="Tint surfaces with this game's accent color.",active=glass.current(s)['Theme']==4)
@@ -10530,24 +10563,31 @@ class Window(Adw.ApplicationWindow):
 
     def game_overlay_card(self,game):
         card=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,hexpand=True)
-        inherited=game['game'] not in self.settings.get('game_overlay_settings',{})
-        defaults=Adw.SwitchRow(title='Use app overlay settings',subtitle='Turn off to customize this game’s overlay.',active=inherited)
-        group=Adw.PreferencesGroup();group.add(defaults);card.append(group)
-        options=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16,sensitive=not inherited)
-        sections=self.overlay_settings_groups(game)
-        card.append(sections[1])
-        for section in (sections[0],*sections[2:-1]):options.append(section)
-        card.append(options)
-        card.append(sections[-1])
-        def inherit(widget,*_):
-            import overlay_settings
-            values=self.settings.setdefault('game_overlay_settings',{})
-            if widget.get_active():values.pop(game['game'],None)
-            else:values[game['game']]={k:v for k,v in overlay_settings.effective(self.settings).items() if k!='overlay_renderer'}
-            options.set_sensitive(not widget.get_active())
-            if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
-        defaults.connect('notify::active',inherit)
-        return card
+        def build():
+            child=card.get_first_child()
+            while child:
+                following=child.get_next_sibling();card.remove(child);child=following
+            inherited=game['game'] not in self.settings.get('game_overlay_settings',{})
+            defaults=Adw.SwitchRow(title='Use app overlay settings',subtitle='Turn off to customize this game’s overlay.',active=inherited)
+            group=Adw.PreferencesGroup();group.add(defaults);card.append(group)
+            options=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16,sensitive=not inherited)
+            syncing=[False]
+            def custom_saved():
+                syncing[0]=True;defaults.set_active(False);syncing[0]=False;options.set_sensitive(True)
+            sections=self.overlay_settings_groups(game,custom_saved)
+            card.append(sections[1])
+            for section in (sections[0],*sections[2:-1]):options.append(section)
+            card.append(options);card.append(sections[-1])
+            def inherit(widget,*_):
+                if syncing[0]:return
+                import overlay_settings
+                values=self.settings.setdefault('game_overlay_settings',{})
+                if widget.get_active():values.pop(game['game'],None)
+                else:values[game['game']]={k:v for k,v in overlay_settings.effective(self.settings).items() if k!='overlay_renderer'}
+                if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+                build()
+            defaults.connect('notify::active',inherit)
+        build();return card
 
     def global_settings_groups(self):
         """One-time NR/MFG change for every installed game, reviewed first (Windows Global)."""

@@ -70,6 +70,12 @@ static class OverlayPreview
         while ((read = await input.ReadAsync(buffer, cancel)) != 0) { if (output.Length + read > limit) throw new IOException("Screenshot exceeds the supported size."); output.Write(buffer, 0, read); }
         return output.ToArray();
     }
+    public static string? Poster(Game game,ForgeSettings? settings=null)
+    {
+        settings??=ForgeSettings.Load();
+        var media=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"rtxForge","state","desktop","media");
+        return OverlayArtwork.Find(game,settings,media)??OverlayArtwork.Local(new SteamArtwork(false).Poster(game.AppId??OverlayArtwork.SteamIdentity(game)?.Id));
+    }
     public static async Task<Process> StartAsync(string engineRoot, Game game, Screenshot shot, IReadOnlyList<Game>? library=null, global::Windows.UI.Color? initialAccent=null, string? preferencesPath=null)
     {
         var executable = new[] { Path.Combine(AppContext.BaseDirectory, "OverlayPreview", "OverlayPreview.exe"), Path.Combine(engineRoot, "windows", "out", "glass-overlay", "OverlayPreview.exe") }.FirstOrDefault(File.Exists)
@@ -85,6 +91,7 @@ static class OverlayPreview
             RedirectStandardInput=true,RedirectStandardOutput=true,StandardInputEncoding=new UTF8Encoding(false),StandardOutputEncoding=new UTF8Encoding(false) };
         foreach (var arg in new[] { "--desktop-preview", "--assets", assets, "--font", Path.Combine(assets, "RobotoVariable.ttf"), "--background", shot.Path, "--game-title", game.Name,
             "--accent", $"#{color.R:X2}{color.G:X2}{color.B:X2}", "--width", "2560", "--height", "1440", "--parent-process", Environment.ProcessId.ToString(),"--game-catalog",catalog }) start.ArgumentList.Add(arg);
+        if(Poster(game) is { } poster){start.ArgumentList.Add("--poster");start.ArgumentList.Add(poster);}
         start.ArgumentList.Add("--preferences");start.ArgumentList.Add(preferencesPath ?? GlassAppearance.FilePath);
         if(shot.Crop>0){start.ArgumentList.Add("--crop-left");start.ArgumentList.Add(shot.Crop.ToString(System.Globalization.CultureInfo.InvariantCulture));}
         try {
@@ -108,7 +115,7 @@ static class OverlayPreview
                 await SendAsync(new{request,index,accent});
                 var shot=game.Id==initial.Id?initialShot:(await ScreenshotsAsync(game,ForgeSettings.Load().OnlineArt,cancel.Token)).FirstOrDefault();
                 if(shot is null){await SendAsync(new{request,index,error="No screenshot available for this game."});return;}
-                await SendAsync(new{request,index,accent,title=game.Name,path=shot.Path,crop=shot.Crop});
+                await SendAsync(new{request,index,accent,title=game.Name,path=shot.Path,crop=shot.Crop,poster=Poster(game)??""});
             }catch(OperationCanceledException){}
             catch(Exception error)when(error is IOException or HttpRequestException or JsonException or UnauthorizedAccessException or InvalidOperationException or ObjectDisposedException){
                 try{await SendAsync(new{request,index,error="Could not load this game. Try another."});}catch(Exception sendError)when(sendError is IOException or InvalidOperationException or ObjectDisposedException or OperationCanceledException){}

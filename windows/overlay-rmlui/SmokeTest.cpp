@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <filesystem>
+#include <chrono>
 using Microsoft::WRL::ComPtr;
 static void Need(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
 struct TestProfile {
@@ -40,6 +41,15 @@ static void TestAppearance(ForgeGlass::Draw draw,ForgeGlass::Release release,con
     GetPrivateProfileStringW(L"Appearance",L"BarPosition",L"",value,64,ini.c_str());Need(std::wstring(value)==L"top","Bar edge update was lost");
     GetPrivateProfileStringW(L"Appearance",L"TextFont",L"",value,64,ini.c_str());Need(std::wstring(value)==L"inter","Font update was lost");
     std::cout<<"helper_appearance_checks=passed unchanged_preset_revision=passed isolated_profile=passed\n";
+}
+static void TestIdle(ForgeGlass::Draw draw,ForgeGlass::Release release){
+    ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;Need(SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,0,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context)),"Idle device failed");
+    D3D11_TEXTURE2D_DESC desc{};desc.Width=1280;desc.Height=720;desc.MipLevels=desc.ArraySize=1;desc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;desc.SampleDesc.Count=1;desc.BindFlags=D3D11_BIND_RENDER_TARGET;
+    ComPtr<ID3D11Texture2D> target;ComPtr<ID3D11RenderTargetView> view;Need(SUCCEEDED(device->CreateTexture2D(&desc,nullptr,&target))&&SUCCEEDED(device->CreateRenderTargetView(target.Get(),nullptr,&view)),"Idle target failed");
+    unsigned reads=0;ForgeGlass::Host host{sizeof(host),ForgeGlass::Abi};host.user=&reads;host.read=[](void* state,ForgeGlass::Snapshot* value){++*static_cast<unsigned*>(state);*value={};return true;};
+    ForgeGlass::Frame frame{};frame.size=sizeof(frame);frame.abi=ForgeGlass::Abi;frame.device=device.Get();frame.target=view.Get();Need(draw(&host,&frame),"Idle initialization failed");reads=0;
+    const auto start=std::chrono::steady_clock::now();for(unsigned i=0;i<600;++i)Need(draw(&host,&frame),"Idle frame failed");const auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
+    Need(reads<=2+unsigned(ms/250),"Hidden overlay polled its host every frame");release();std::cout<<"hidden_overlay_checks=passed frames=600 host_reads="<<reads<<" cpu_mean_ms="<<ms/600<<"\n";
 }
 static void Test12(HMODULE dll,ForgeGlass::Release release,bool hdr=false){
     const auto draw=reinterpret_cast<ForgeGlass::Draw12>(GetProcAddress(dll,"ForgeGlassDraw12"));Need(draw,"DX12 export missing");
@@ -118,5 +128,5 @@ int wmain(int argc,wchar_t** argv){try{
     const auto setup=profile.path/L"rtxForge"/L"overlay-setup.ini";std::filesystem::create_directories(setup.parent_path());Need(WritePrivateProfileStringW(L"Setup",L"Version",L"1",setup.c_str()),"Setup fixture state failed");
     TestHdr11(draw,release,device.Get(),context.Get());if(flags)TestHdr11(draw,release,device.Get(),context.Get(),3840,2160);
     }
-    Test12(dll,release);Test12(dll,release,true);TestAppearance(draw,release,profile.path);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
+    Test12(dll,release);Test12(dll,release,true);TestAppearance(draw,release,profile.path);TestIdle(draw,release);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

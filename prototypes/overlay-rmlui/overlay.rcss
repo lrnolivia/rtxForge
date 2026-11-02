@@ -931,4 +931,19 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 
 #accent-sources { margin-top: 12dp; margin-bottom: 12dp; }
 #accent-custom-row { margin-bottom: 18dp; }
-#accent-color { display: block; width: 100%; height: 48dp; padding: 10dp 16dp; box-sizing: border-box; border-radius: 12dp; background: var(--nested-fill); font-size: var(--copy-size); margin-top: 10dp; }
+#accent-color { display: block; width: 100%; height: 40dp; padding: 8dp 12dp; box-sizing: border-box; border-radius: 9dp; background: var(--nested-fill); font-size: 16dp; margin-top: 16dp; }
+.color-swatch { width: 42dp; height: 42dp; min-width: 42dp; padding: 5dp; border-radius: 21dp; }
+.color-dot { display: block; width: 30dp; height: 30dp; border-radius: 15dp; background-color: var(--accent); pointer-events: none; }
+.color-editor { position: absolute; z-index: 145; width: 232dp; padding: 16dp; border-radius: 16dp; }
+.color-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 12dp; margin-bottom: 14dp; font-size: 17dp; font-weight: 600; }
+.color-poster { width: 76dp; height: auto; max-height: 114dp; border-radius: 8dp; }
+.color-editor .color-poster { display: block; width: 120dp; max-height: 180dp; margin: 0 auto; cursor: crosshair; }
+.color-screen, .color-reset { display: flex; align-items: center; justify-content: center; width: 100%; height: 36dp; padding: 0 10dp; line-height: 1.2; margin-top: 8dp; font-size: 14dp; white-space: nowrap; }
+.color-screen { background: var(--nested-fill); border-radius: 9dp; }
+.color-reset { margin-top: 4dp; background: transparent; }
+#color-pick-stage { display: none; }
+.color-picking #type-panel { width: 200dp; padding: 20dp; }
+.color-picking #type-panel > .settings-heading, .color-picking #setup-intro, .color-picking .appearance-body, .color-picking .setup-footer { display: none; }
+.color-picking #color-pick-stage { display: block; }
+.color-picking #main-panel, .color-picking #inspector, .color-picking #welcome { opacity: 0; }
+.color-picking #accent-editor { display: none; }

@@ -107,7 +107,8 @@ internal sealed class NativePanelCoordinator : IDisposable
     {
         var s = ForgeSettings.Load();
         var values = s.GameOverlayOptions(game);
-        if(game is not null && s.GameOverlaySettings.TryGetValue(game.Id,out var local) && local["overlay_appearance"] is JsonObject appearance)values["overlay_appearance"]=appearance.DeepClone();
+        values["overlay_appearance"]=GlassAppearance.Resolve(s,game);
+        if(game is not null)values["game_poster"]=OverlayPreview.Poster(game,s)??"";
         OverlayShortcut.TryParse(values["panel_hotkey"]?.ToString(), out _, out var binding, out _);
         values["panel_key"] = (int)binding.Key;
         values["panel_modifiers"] = (int)binding.Modifiers;

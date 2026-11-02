@@ -233,6 +233,32 @@ class LinuxControls(controls.Controls):
         return super().save(params)
 
 
+def game_poster(settings,row,state):
+    """Read cached artwork only; overlay requests never trigger artwork downloads."""
+    import hashlib
+    candidates=[]
+    game=Path(row['game']).resolve()
+    for root,art in (settings.get('game_artwork') if isinstance(settings.get('game_artwork'),dict) else {}).items():
+        if isinstance(art,dict) and game.is_relative_to(Path(root).resolve()):
+            poster=art.get('poster',{})
+            if isinstance(poster,dict):candidates.insert(0,poster.get('path'))
+    candidates.append(row.get('poster'))
+    identity=hashlib.sha256((str(row.get('appid') or '')+str(row.get('name') or '')).encode()).hexdigest()[:24]
+    record=Path(state)/'desktop/media'/(identity+'.json')
+    try:
+        if record.is_file() and record.stat().st_size<1024*1024:
+            metadata=t.read_json(record)
+            data=metadata.get('data',{}) if isinstance(metadata,dict) else {}
+            if isinstance(data,dict):candidates.append(data.get('poster'))
+    except (OSError,ValueError,t.Refusal):pass
+    for candidate in candidates:
+        try:
+            if isinstance(candidate,str) and Path(candidate).is_file() and Path(candidate).stat().st_size<=20*1024*1024:
+                return 'Z:'+str(Path(candidate).resolve()).replace('/','\\')
+        except OSError:pass
+    return ''
+
+
 class Host:
     def __init__(self,state,settings,engine_state,engine=None,save_settings=None):
         self.controls=LinuxControls(state)
@@ -256,6 +282,7 @@ class Host:
         try:
             params={'row':row,'pid':pid}
             if op in ('hello','status'):
+                response['settings']['game_poster']=game_poster(settings,row,self.state)
                 response['status']=self.controls.status(params)
                 import renodx_hdr_settings
                 response['hdr']=renodx_hdr_settings.snapshot({'storage':{'root':str(self.state)}},row)

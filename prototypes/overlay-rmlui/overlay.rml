@@ -72,7 +72,7 @@
             <button id="welcome-test" class="quiet"><img class="glyph" src="icons/info-light.png" /><span class="button-label">Preview welcome</span></button>
           </div>
           <div class="settings-group"><h3>GAME MENUS</h3><p class="hint">Menu access is separate from rendering features. Changes apply after restarting the game.</p>
-            <label>Primary menu</label><select id="primary-menu"><option value="game">rtxForge</option><option value="optiscaler">OptiScaler</option></select>
+            <div style="display: none"><label>Primary menu</label><select id="primary-menu"><option value="game">rtxForge</option><option value="optiscaler">OptiScaler</option></select></div>
             <div class="inherit-row"><label>OptiScaler menu</label><button id="setting-opti-menu" class="switch on"><span class="thumb" /></button></div>
             <div class="inherit-row"><label>OptiScaler intro</label><button id="setting-opti-intro" class="switch"><span class="thumb" /></button></div>
             <label>OptiScaler shortcut</label><select id="opti-shortcut"><option value="Insert">Insert</option><option value="F8">F8</option><option value="Disabled">Disabled</option></select>
@@ -455,6 +455,7 @@
       </button>
     </paint-root>
     <paint-root id="type-panel" class="glass type-panel appearance-panel" style="display: none">
+      <div id="color-pick-stage"><img id="screen-pick-poster" class="color-poster" style="display: none"/><p>Click any color on screen.</p><p class="hint">Escape cancels.</p></div>
       <div class="settings-heading">
         <button id="appearance-back" class="back-button" title="Back" aria-label="Back"><img class="glyph" src="icons/arrow-left-light.png" /></button>
         <h2 id="settings-title"><img class="glyph" src="icons/palette-light.png" /><span>APPEARANCE</span></h2>
@@ -490,7 +491,9 @@
             <button id="accent-source-theme"><span class="button-label">Theme</span></button><button id="accent-source-custom"><span class="button-label">Custom</span></button><button id="accent-source-adaptive" class="selected"><span class="button-label">Adaptive</span></button>
           </div>
           <p class="hint" id="accent-source-hint">Samples the scene behind this panel, with gentle transitions.</p>
-          <div id="accent-custom-row"><label for="accent-color">Custom color</label><input id="accent-color" type="text" maxlength="7" placeholder="#RRGGBB" /></div>
+          <div id="accent-custom-row">
+            <div class="inherit-row"><label>Custom color</label><button id="accent-swatch" class="color-swatch" title="Choose custom color" aria-label="Choose custom color"><span class="color-dot"/></button></div>
+          </div>
           <button id="accent-tint" class="accent-tint-row" aria-label="Accent tint"><span class="accent-tint-swatch"/><span>Accent Tint</span><span class="switch"><span class="thumb"/></span></button>
 
         </div>
@@ -625,6 +628,13 @@
       </div>
       <div id="setup-layout-host" class="setup-layout-host"><div id="setup-layouts" class="settings-layouts"/></div>
       <div class="setup-footer"><span id="setup-progress"/><button id="setup-skip" class="quiet"><span class="button-label">Skip</span></button><button id="setup-next" class="quiet setup-next"><span id="setup-next-label" class="button-label">Continue</span><img class="glyph" src="icons/arrow-left-light.png"/></button></div>
+    </paint-root>
+    <paint-root id="accent-editor" class="glass color-editor" style="display: none" role="dialog" aria-label="Custom color">
+      <div class="color-editor-heading"><span>Custom color</span></div>
+      <img id="accent-poster" class="color-poster" style="display: none" title="Click the poster to sample a color"/>
+      <input id="accent-color" type="text" maxlength="7" placeholder="#RRGGBB" aria-label="Hex color"/>
+      <button id="accent-eyedropper" class="color-screen"><span class="button-label">Pick from screen</span></button>
+      <button id="accent-use-game" class="color-reset"><span class="button-label">Use game color</span></button>
     </paint-root>
     <paint-root id="layout-picker" class="layout-picker" style="display: none" role="group" aria-label="Overlay layout">
       <button id="quick-floating"><img class="glyph" src="icons/sidebar-light.png" /><span>Side Panel</span></button>

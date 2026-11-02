@@ -59,14 +59,27 @@ struct System : Rml::SystemInterface {
 struct Root : Rml::Element {explicit Root(const Rml::String& tag):Rml::Element(tag){ForceLocalStackingContext();}void Paint(){Render();}};
 struct Renderer : RenderInterface_DX11 {
     using RenderInterface_DX11::RenderInterface_DX11;
+    std::filesystem::path posterPath;std::vector<Rml::byte> posterPixels;UINT posterWidth=0,posterHeight=0;
+    std::string PosterColor(float x,float y)const{if(posterPixels.empty())return {};const auto px=std::clamp(int(x*posterWidth),0,int(posterWidth)-1),py=std::clamp(int(y*posterHeight),0,int(posterHeight)-1);const auto i=(size_t(py)*posterWidth+px)*4;return ForgeGlass::Controller::Hex(posterPixels[i]/255.f,posterPixels[i+1]/255.f,posterPixels[i+2]/255.f).substr(0,7);}
+
     Rml::TextureHandle LoadTexture(Rml::Vector2i& dimensions,const Rml::String& name) override {
-        const auto asset=Find(name);if(!asset.data||asset.size>10*1024*1024)return 0;
+        try {
+        const bool poster=std::filesystem::path(name).filename().generic_string().rfind("game-poster-",0)==0;
+        const auto asset=poster?Asset{}:Find(name);if(!poster&&(!asset.data||asset.size>10*1024*1024))return 0;
+        if(poster){std::error_code error;if(posterPath.empty()||!std::filesystem::is_regular_file(posterPath,error)||std::filesystem::file_size(posterPath,error)>20*1024*1024||error)return 0;}
         ComPtr<IWICImagingFactory> factory;Check(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory)));
-        ComPtr<IWICStream> stream;Check(factory->CreateStream(&stream));Check(stream->InitializeFromMemory(const_cast<BYTE*>(asset.data),DWORD(asset.size)));
-        ComPtr<IWICBitmapDecoder> decoder;Check(factory->CreateDecoderFromStream(stream.Get(),nullptr,WICDecodeMetadataCacheOnLoad,&decoder));ComPtr<IWICBitmapFrameDecode> frame;Check(decoder->GetFrame(0,&frame));
-        UINT w,h;Check(frame->GetSize(&w,&h));if(w>2048||h>2048)return 0;
-        ComPtr<IWICFormatConverter> converter;Check(factory->CreateFormatConverter(&converter));Check(converter->Initialize(frame.Get(),GUID_WICPixelFormat32bppPRGBA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom));
-        std::vector<Rml::byte> rgba(size_t(w)*h*4);Check(converter->CopyPixels(nullptr,w*4,UINT(rgba.size()),rgba.data()));dimensions={int(w),int(h)};return GenerateTexture(rgba,dimensions);
+        ComPtr<IWICBitmapDecoder> decoder;
+        if(poster)Check(factory->CreateDecoderFromFilename(posterPath.c_str(),nullptr,GENERIC_READ,WICDecodeMetadataCacheOnLoad,&decoder));
+        else {ComPtr<IWICStream> stream;Check(factory->CreateStream(&stream));Check(stream->InitializeFromMemory(const_cast<BYTE*>(asset.data),DWORD(asset.size)));Check(factory->CreateDecoderFromStream(stream.Get(),nullptr,WICDecodeMetadataCacheOnLoad,&decoder));}
+        ComPtr<IWICBitmapFrameDecode> frame;Check(decoder->GetFrame(0,&frame));UINT w,h;Check(frame->GetSize(&w,&h));if(!w||!h||w>8192||h>8192)return 0;
+        ComPtr<IWICBitmapSource> source;Check(frame.As(&source));ComPtr<IWICBitmapScaler> scaler;
+        if(poster){const float scale=std::min({1.f,256.f/w,384.f/h});const UINT scaledW=std::max(1u,UINT(w*scale)),scaledH=std::max(1u,UINT(h*scale));Check(factory->CreateBitmapScaler(&scaler));Check(scaler->Initialize(source.Get(),scaledW,scaledH,WICBitmapInterpolationModeFant));Check(scaler.As(&source));w=scaledW;h=scaledH;}
+        else if(w>2048||h>2048)return 0;
+        ComPtr<IWICFormatConverter> converter;Check(factory->CreateFormatConverter(&converter));Check(converter->Initialize(source.Get(),GUID_WICPixelFormat32bppPRGBA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom));
+        std::vector<Rml::byte> rgba(size_t(w)*h*4);Check(converter->CopyPixels(nullptr,w*4,UINT(rgba.size()),rgba.data()));dimensions={int(w),int(h)};
+        if(poster){posterPixels=rgba;posterWidth=w;posterHeight=h;}return GenerateTexture(rgba,dimensions);
+        }catch(const std::exception&){return 0;}
+
     }
 };
 // A complete context-state swap isolates initialization, compositor passes and
@@ -89,7 +102,7 @@ struct Runtime {
     Rml::Context* context{};Rml::ElementDocument* document{};bool initialized=false,mouse[3]{},keys[256]{},hostVisible=false;int width{},height{};DXGI_FORMAT format{};
     ForgeWorkbench::Values lastValues;
     ForgeWorkbench::History history;double historyPaint=-1;
-    double nextTelemetry=0,nextPreferences=0;std::string lastHelper,lastEffects;ULONGLONG nextEffects{};
+    double nextTelemetry=0,nextPreferences=0,nextIdlePoll=0;std::string lastHelper,lastEffects;ULONGLONG nextEffects{};
     unsigned outputSpace=0;
     bool receivedSnapshot=false,messageInitialized=false,dx12Interop=false,systemReducedMotion=false;
     bool nrActivationPending=false,nrActivationAnnounced=false;
@@ -161,6 +174,8 @@ struct Runtime {
         const int revision=data.value("revision",0);
         if(data.contains("settings")&&data["settings"].is_object()&&data["settings"]!=lastPreferences){const auto& prefs=data["settings"];lastPreferences=prefs;
             if(prefs.contains("overlay_appearance"))Appearance(prefs["overlay_appearance"]);
+            if(prefs.contains("game_poster")&&prefs["game_poster"].is_string()){const auto path=std::filesystem::u8path(prefs["game_poster"].get<std::string>());if(path!=renderer->posterPath){renderer->posterPath=path;renderer->posterPixels.clear();c.Poster(path.empty()?"":"game-poster-"+std::to_string(std::hash<std::wstring>{}(path.wstring())));}}
+
             c.helperEnabled=prefs.value("overlay_helper",c.helperEnabled);c.startWithWindows=prefs.value("overlay_start_with_windows",c.startWithWindows);
             if(prefs.contains("panel_key")){c.shortcut=Key(prefs.value("panel_key",VK_DELETE));const int mods=prefs.value("panel_modifiers",0);c.shortcutModifiers=(mods&1?Rml::Input::KM_ALT:0)|(mods&2?Rml::Input::KM_CTRL:0)|(mods&4?Rml::Input::KM_SHIFT:0);c.shortcutLabel=prefs.value("panel_hotkey",std::string("Del"));if(auto* keycap=c.Element("toast-message")->QuerySelector(".keycap"))keycap->SetInnerRML(Rml::StringUtilities::EncodeRml(c.shortcutLabel));}
             c.showStats=prefs.value("overlay_live_stats",c.showStats);c.showWelcome=prefs.value("overlay_welcome",c.showWelcome);c.welcomePosition=prefs.value("overlay_welcome_position",c.welcomePosition);c.primaryMenu=prefs.value("overlay_renderer",c.primaryMenu);c.optiShortcut=prefs.value("optiscaler_hotkey",c.optiShortcut);if(!c.showWelcome)c.Visible("welcome",false);
@@ -185,7 +200,7 @@ struct Runtime {
         const auto message=data.value("message",std::string());if(!message.empty()){c.Message(message);if(data.value("op",std::string())=="preset-save"&&!data.value("error",false)){c.edits.saved=c.values;c.Notify("Preset saved");}}
     }
 
-    ~Runtime(){if(controls)controls->RestorePreviewForTeardown();if(controls&&controls->prefsDirty)controls->SavePreferences();if(document&&controls)for(const auto* event:{"click","change","keydown","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,controls.get());if(initialized)Rml::Shutdown();controls.reset();}
+    ~Runtime(){if(controls)controls->RestorePreviewForTeardown();if(controls&&controls->prefsDirty)controls->SavePreferences();if(document&&controls)for(const auto* event:{"click","change","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,controls.get());if(initialized)Rml::Shutdown();controls.reset();}
     void Init(const ForgeGlass::Host& host,const ForgeGlass::Frame& frame,const D3D11_TEXTURE2D_DESC& desc) {
         device=frame.device;device->GetImmediateContext(&immediate);width=int(desc.Width);height=int(desc.Height);format=desc.Format;outputSpace=frame.colorSpace;
         ComPtr<ID3D11On12Device> interop;dx12Interop=SUCCEEDED(device.As(&interop));
@@ -195,8 +210,9 @@ struct Runtime {
         ForgeGlass::Require(Rml::LoadFontFace("fonts/RobotoVariable.ttf"),"Roboto failed to load");ForgeGlass::Require(Rml::LoadFontFace("fonts/BakbakOne-Regular.ttf"),"Heading font failed to load");ForgeGlass::Require(Rml::LoadFontFace("fonts/InterVariable.ttf"),"Inter failed to load");
         context=Rml::CreateContext("game-overlay",{width,height});ForgeGlass::Require(context!=nullptr,"RmlUi context failed");document=context->LoadDocument("overlay.rml");ForgeGlass::Require(document!=nullptr,"Overlay document failed");
         controls=std::make_unique<ForgeGlass::Controller>();auto& c=*controls;c.document=document;c.preview=false;c.monitorPreviewFocus=true;c.restorePreview=[host](float enabled){const ForgeGlass::Value value{"enabled",enabled};const bool ok=host.apply&&host.apply(host.user,&value,1);if(!ok&&host.log)host.log(host.user,"NR preview could not restore its previous state during renderer teardown.");return ok;};c.UseTheme(3);c.LoadPreferences(true);if(c.copyFont=="aptos")c.copyFont="roboto";
-        c.InstallExtraControls();c.Typography();c.Materials();c.Sync();c.SyncSettings();c.Metadata();c.Session({});c.edits.Start(c.values);
-        for(const auto* event:{"click","change","keydown","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&c);
+        c.samplePoster=[this](float x,float y){return renderer->PosterColor(x,y);};c.InstallExtraControls();c.Typography();c.Materials();c.Sync();c.SyncSettings();c.Metadata();c.Session({});c.edits.Start(c.values);
+        for(const auto* event:{"click","change","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&c);
+        document->AddEventListener("keydown",&c,true);
         c.Element("font-select")->SetInnerRML("<option value=\"roboto\">Roboto</option><option value=\"inter\">Inter</option>");document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");c.Visible("type-panel",false);c.Visible("inspector",false);c.Visible("welcome",false);c.Visible("main-panel",frame.visible);document->Show();hostVisible=frame.visible;c.Layout(c.layout);lastValues=c.values;
         const unsigned char pixel[4]={};const float uv[4]={0,0,1,1};DXGI_FORMAT compatible=format;if(format==DXGI_FORMAT_R8G8B8A8_TYPELESS)compatible=DXGI_FORMAT_R8G8B8A8_UNORM;if(format==DXGI_FORMAT_B8G8R8A8_TYPELESS)compatible=DXGI_FORMAT_B8G8R8A8_UNORM;
         backdrop=std::make_unique<Backdrop>(device.Get(),width,height,pixel,1,1,uv,compatible,frame.colorSpace);
@@ -204,8 +220,9 @@ struct Runtime {
         if(frame.welcome){c.Welcome();c.toastUntil=system.GetElapsedTime()+7;}
         if(frame.visible)c.MaybeSetup();
     }
+    bool SkipHidden(bool visible){return !visible&&!hostVisible&&!controls->colorPicking&&controls->toastUntil<=0&&!nrActivationPending&&system.GetElapsedTime()<nextIdlePoll;}
     bool Draw(const ForgeGlass::Host& host,ForgeGlass::Frame& frame,ID3D11Texture2D* target) {
-        auto& c=*controls;const double now=system.GetElapsedTime();c.PollPreferences(now);
+        auto& c=*controls;const double now=system.GetElapsedTime();nextIdlePoll=now+.25;c.PollPreferences(now);
         c.requestJson=[&](const std::string& text){return host.request&&host.request(host.user,text.c_str());};
         c.deletePreset=[&](const std::string& name){const auto request=nlohmann::json{{"op","preset-delete"},{"changes",{{"name",name}}}}.dump();return host.request&&host.request(host.user,request.c_str());};
         c.savePreset=[&](const std::string& name){nlohmann::json values=nlohmann::json::object();for(const auto& key:supportedKeys)if(c.values.contains(key))values[key]=std::floor(c.values.at(key))==c.values.at(key)?nlohmann::json(int(c.values.at(key))):nlohmann::json(c.values.at(key));const auto request=nlohmann::json{{"op","preset-save"},{"changes",{{"name",name},{"values",values}}}}.dump();return host.request&&host.request(host.user,request.c_str());};
@@ -245,7 +262,7 @@ struct Runtime {
             lastValues=c.values;
         }
         if(hostVisible!=frame.visible){if(!frame.visible){c.EndNrPreview();if(c.BarSettings())c.Settings(false);}hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible){c.Enter("main-panel");c.MaybeSetup();}else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
-        const auto beforeSettings=SettingsValues();const int oldShortcut=c.shortcut,oldModifiers=c.shortcutModifiers;
+        const auto beforeSettings=SettingsValues();c.PollColorPick();const int oldShortcut=c.shortcut,oldModifiers=c.shortcutModifiers;
         const bool focused=GetForegroundWindow()==frame.window;const int modifiers=focused?((frame.keys[VK_CONTROL]?Rml::Input::KM_CTRL:0)|(frame.keys[VK_SHIFT]?Rml::Input::KM_SHIFT:0)|(frame.keys[VK_MENU]?Rml::Input::KM_ALT:0)):0;
         context->ProcessMouseMove(focused?int(frame.mouseX):-1,focused?int(frame.mouseY):-1,modifiers);
         for(int i=0;i<3;i++){const bool down=focused&&frame.mouse[i];if(down!=mouse[i]){if(down)context->ProcessMouseButtonDown(i,modifiers);else context->ProcessMouseButtonUp(i,modifiers);mouse[i]=down;}}
@@ -276,7 +293,7 @@ struct Runtime {
                     const auto variable=[e](const char* name,float fallback){const auto* p=e->GetProperty(name);if(!p)return fallback;try{return std::stof(p->Get<Rml::String>());}catch(...){return fallback;}};
                     panel.colored=c.appearance==4;panel.tint=c.SurfaceTint();panel.readability=(c.appearance==3||(c.appearance==4&&!c.AccentLight()))?1.f:0.f;panel.inkShadow=c.textDepth?.14f:0.f;panel.blur=c.blurRadius;panel.radius=std::clamp(variable("--corner-radius",24.f),0.f,100.f)*panel.scale;panel.saturation=std::clamp(variable("--material-saturation",1.12f),0.f,2.f);panel.grain=std::clamp(variable("--material-texture",.028f),0.f,.08f);panel.luminosity=std::clamp(variable("--material-luminosity",.04f),0.f,.25f);
                     panel.shadowOpacity=std::clamp(variable("--shadow-opacity",.30f),0.f,.5f);panel.shadowRadius=std::clamp(variable("--shadow-radius",28.f),8.f,60.f);panel.shadowOffset=std::clamp(variable("--shadow-offset",12.f),0.f,24.f);
-                    panel.opacity=std::clamp(variable("--window-opacity",1.f),0.f,1.f);panel.tone=std::clamp(variable("--surface-tone",.96f),0.f,1.f);panel.grounding=std::clamp(variable("--surface-grounding",.52f),0.f,1.f);panel.blendAmount=std::clamp(variable("--material-blend-opacity",.3f),0.f,1.f);
+                    panel.opacity=c.colorPicking&&std::string(id)!="type-panel"?0:std::clamp(variable("--window-opacity",1.f),0.f,1.f);panel.tone=std::clamp(variable("--surface-tone",.96f),0.f,1.f);panel.grounding=std::clamp(variable("--surface-grounding",.52f),0.f,1.f);panel.blendAmount=std::clamp(variable("--material-blend-opacity",.3f),0.f,1.f);
                     if(const auto* blend=e->GetProperty("--material-blend")) {const auto name=blend->Get<Rml::String>();panel.blendMode=float(MaterialColor::Mode(name));}
                     if(const auto* blend=e->GetProperty("--shadow-blend")) {const auto name=blend->Get<Rml::String>();panel.shadowBlend=name=="overlay"?1.f:name=="soft-light"?2.f:0.f;}
                     panels.push_back(panel);
@@ -295,8 +312,8 @@ struct Runtime {
                 const float clearInk[4]={};immediate->ClearRenderTargetView(inkView.Get(),clearInk);renderUi(c.Element(id.c_str()),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),byId.at(id),true);const auto velocity=c.windowVelocity[id];backdrop->ComposeLayer(frame.target,windowSource.Get(),velocity.x,velocity.y,c.reducedMotion);
             }
 
-            for(const auto* popup:{"layout-picker","tooltip"})if(c.Element(popup)->IsVisible()){
-                if(std::string(popup)=="layout-picker"&&byId.contains("main-panel")){const auto panel=c.QuickLayoutSurface(byId.at("main-panel"));const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target,windowView.Get(),{panel},true,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(c.Element(popup),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,true);backdrop->ComposeLayer(frame.target,windowSource.Get(),0,0,true);}
+            for(const auto* popup:{"layout-picker","accent-editor","tooltip"})if(c.Element(popup)->IsVisible()){
+                if((std::string(popup)=="layout-picker"&&byId.contains("main-panel"))||(std::string(popup)=="accent-editor"&&!c.colorPicking&&byId.contains("type-panel"))){const auto panel=c.QuickLayoutSurface(byId.at(std::string(popup)=="accent-editor"?"type-panel":"main-panel"),popup);const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target,windowView.Get(),{panel},true,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(c.Element(popup),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,true);backdrop->ComposeLayer(frame.target,windowSource.Get(),0,0,true);}
                 else if(outputSpace){backdrop->Draw(target,frame.target,{},false,false);const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);renderUi(c.Element(popup),windowView.Get());backdrop->ComposeLayer(frame.target,windowSource.Get(),0,0,true);}
                 else renderUi(c.Element(popup));
             }
@@ -305,10 +322,12 @@ struct Runtime {
 };
 std::unique_ptr<Runtime> runtime;std::mutex mutex;bool logged=false;std::atomic_bool notificationsActive{false};
 }
+extern "C" bool __cdecl ForgeGlassSkipHiddenFrame(bool visible){std::unique_lock guard(mutex,std::try_to_lock);return guard.owns_lock()&&runtime&&runtime->SkipHidden(visible);}
 extern "C" __declspec(dllexport) bool __cdecl ForgeGlassNotificationsActive(){return notificationsActive.load(std::memory_order_relaxed);}
 extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::Host* host,ForgeGlass::Frame* frame) {
     if(!host||!frame||host->size!=sizeof(*host)||host->abi!=ForgeGlass::Abi||frame->size!=sizeof(*frame)||frame->abi!=ForgeGlass::Abi||!frame->device||!frame->target||frame->colorSpace>2)return false;
     std::unique_lock guard(mutex,std::try_to_lock);if(!guard.owns_lock())return true;
+    if(runtime&&runtime->device.Get()==frame->device&&runtime->SkipHidden(frame->visible))return true;
     const HRESULT apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);const bool uninitialize=SUCCEEDED(apartment);
     bool drawn=false;
     try {

@@ -38,7 +38,9 @@ def effective(settings, game=None):
             t.need(isinstance(path, str) and isinstance(override, dict), 'Invalid per-game overlay settings.')
             if os.path.normcase(str(Path(path).resolve())) == identity:
                 t.need(set(override) <= set(DEFAULTS) - {'overlay_renderer'}, 'Unknown per-game overlay option. The primary overlay is an app-wide choice.')
-                values = options(values | override)
+                merged=values | override
+                merged['overlay_appearance']=values['overlay_appearance'] | override.get('overlay_appearance',{})
+                values = options(merged)
                 break
     return values
 

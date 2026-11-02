@@ -342,10 +342,17 @@ static void TestController(Controller& c,Rml::Context* context)
         click("accent-source-custom");Require(c.accentMode=="custom","Custom accent source did not select");
         auto* color=dynamic_cast<Rml::ElementFormControl*>(c.Element("accent-color"));color->SetValue("#3B8CCF");color->DispatchEvent("change",{});
         Require(c.customAccent=="#3B8CCF"&&std::abs(c.ActiveAccent()[2]-207.f/255)<.001f,"Custom color did not apply");
+        click("accent-swatch");context->Update();Require(c.colorEditorOpen&&c.Element("accent-editor")->IsVisible(),"Custom color swatch did not open the picker");
+        Require(c.document->GetElementById("color-red")==nullptr,"RGB sliders remain in the compact picker");
+        const auto popupSize=c.Element("accent-editor")->GetBox().GetSize(Rml::BoxArea::Border),popupAt=c.Element("accent-editor")->GetAbsoluteOffset(Rml::BoxArea::Border);const auto viewport=context->GetDimensions();
+        Require(popupSize.x<=240*context->GetDensityIndependentPixelRatio()&&popupAt.x>=0&&popupAt.y>=0&&popupAt.x+popupSize.x<=viewport.x&&popupAt.y+popupSize.y<=viewport.y,"Color popover overflowed its compact viewport bounds");
+        c.Element("accent-color")->Focus();context->ProcessKeyDown(Rml::Input::KI_ESCAPE,0);context->ProcessKeyUp(Rml::Input::KI_ESCAPE,0);context->Update();Require(!c.colorEditorOpen&&!c.Element("accent-editor")->IsVisible()&&c.Element("type-panel")->IsVisible(),"Escape did not dismiss just the color picker");click("accent-swatch");context->Update();
+
+        color->SetValue("#3B8CCF");color->DispatchEvent("change",{});context->Update();Require(!c.colorEditorOpen&&!c.Element("accent-editor")->IsVisible(),"Choosing a hex color did not dismiss the picker");
         color->SetValue("invalid");color->DispatchEvent("change",{});Require(c.customAccent=="#3B8CCF","Invalid color replaced saved custom color");
         click("accent-source-theme");const auto neutral=c.ActiveAccent();Require(neutral[0]==neutral[1]&&neutral[1]==neutral[2],"Theme accent is not neutral");
         click("accent-source-adaptive");Require(c.accentMode=="adaptive"&&c.customAccent=="#3B8CCF"&&c.accent==savedAccent,"Source switching erased the custom or Library color");
-        c.accentMode=savedMode;c.customAccent=savedColor;color->SetValue(savedColor);c.Materials();c.Visible("type-panel",false);
+        c.colorEditorOpen=false;c.accentMode=savedMode;c.customAccent=savedColor;color->SetValue(savedColor);c.Materials();c.Visible("type-panel",false);
         std::cout<<"native_accent_source_controls=passed\n";
     }
     click("setting-notifications");Require(!c.showNotifications,"Notification preference did not change");click("setting-notifications");
@@ -406,11 +413,11 @@ static void TestController(Controller& c,Rml::Context* context)
 int wmain(int argc,wchar_t** argv)
 {
     try {
-        fs::path assets,background,output,font,gameCatalog,preferencesPath;DWORD parentProcess=0;int width=2560,height=1440,appearance=3,requestedCopy=22,requestedScale=100;bool benchmark=false;bool gameCapture=false,thumbnail=false,desktopPreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=35,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedAccentMode="adaptive";std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
+        fs::path assets,background,output,font,gameCatalog,preferencesPath,posterPath;DWORD parentProcess=0;int width=2560,height=1440,appearance=3,requestedCopy=22,requestedScale=100;bool colorPickerOpen=false,benchmark=false;bool gameCapture=false,thumbnail=false,desktopPreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=35,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedAccentMode="adaptive";std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
         for(int i=1;i<argc;++i) {
             const std::wstring arg=argv[i];
             const auto next=[&] {Require(i+1<argc,"Missing argument value");return std::wstring(argv[++i]);};
-            if(arg==L"--preferences")preferencesPath=next();else if(arg==L"--assets")assets=next();else if(arg==L"--background")background=next();else if(arg==L"--output")output=next();
+            if(arg==L"--poster")posterPath=next();else if(arg==L"--preferences")preferencesPath=next();else if(arg==L"--assets")assets=next();else if(arg==L"--background")background=next();else if(arg==L"--output")output=next();
             else if(arg==L"--font")font=next();else if(arg==L"--width")width=std::stoi(next());else if(arg==L"--height")height=std::stoi(next());
             else if(arg==L"--dark")appearance=2;else if(arg==L"--light")appearance=1;else if(arg==L"--clear")appearance=3;else if(arg==L"--accent-theme")appearance=4;else if(arg==L"--accent-character")requestedCharacter=std::clamp(std::stof(next()),0.f,100.f);else if(arg==L"--inspector")inspector=true;else if(arg==L"--no-blur")blur=false;else if(arg==L"--crop-left")crop=std::stof(next());
             else if(arg==L"--accent-mode"){requestedAccentMode=Utf8(next());Require(requestedAccentMode=="theme"||requestedAccentMode=="custom"||requestedAccentMode=="adaptive","Use --accent-mode theme, custom, or adaptive");}
@@ -421,7 +428,7 @@ int wmain(int argc,wchar_t** argv)
             else if(arg==L"--game-title")gameTitle=Utf8(next());
             else if(arg==L"--game-catalog")gameCatalog=next();
             else if(arg==L"--parent-process")parentProcess=std::stoul(next());
-            else if(arg==L"--benchmark")benchmark=true;
+            else if(arg==L"--color-picker")colorPickerOpen=appearanceOpen=true;else if(arg==L"--benchmark")benchmark=true;
             else if(arg==L"--thumbnail")thumbnail=true;else if(arg==L"--game-capture")gameCapture=true;
             else if(arg==L"--layout-test")layoutTest=true;else if(arg==L"--production-ui")productionUI=true;else if(arg==L"--appearance")appearanceOpen=true;else if(arg==L"--more")detailsOpen=appearanceOpen=true;
             else if(arg==L"--custom-mfg")customMfg=true;
@@ -475,6 +482,9 @@ int wmain(int argc,wchar_t** argv)
         auto* document=context->LoadDocument(Utf8(assets/L"overlay.rml"));Require(document!=nullptr,"Overlay document could not load");
         Controller controller;controller.document=document;controller.preview=!productionUI;controller.appearance=appearance;controller.accent=accent;controller.accentMode=requestedAccentMode;controller.UseTheme(appearance);if(appearance==4){controller.accentCharacter=requestedCharacter;controller.accentOpacity=100*MaterialColor::AccentOpacity(requestedCharacter);controller.accentSaturation=requestedSaturation;}if(window||desktopPreview)controller.LoadPreferences(false,preferencesPath);
         if(desktopPreview){controller.preferences.clear();controller.setupComplete=true;controller.closePreview=[]{closed=true;};controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("desktop-preview",true);if(library.names.empty())document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");else document->QuerySelector(".preview-label")->SetInnerRML("Game");if(window){SetWindowTextW(window,L"rtxForge · Overlay preview");controller.Element("preview-chrome")->SetProperty("display","block");}}
+        Image posterImage{};
+        const auto changePoster=[&](const fs::path& path){posterImage={};controller.Poster("");if(!path.empty())try{posterImage=LoadImage(path);controller.Poster(Utf8(path));}catch(const std::exception&){};};
+        changePoster(posterPath);controller.samplePoster=[&](float x,float y){if(posterImage.rgba.empty())return std::string();const auto px=std::clamp(int(x*posterImage.width),0,int(posterImage.width)-1),py=std::clamp(int(y*posterImage.height),0,int(posterImage.height)-1);const auto i=(size_t(py)*posterImage.width+px)*4;return Controller::Hex(posterImage.rgba[i]/255.f,posterImage.rgba[i+1]/255.f,posterImage.rgba[i+2]/255.f).substr(0,7);};
         if(!gameTitle.empty())controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("preview-thumbnail",thumbnail);
         if(!window&&!desktopPreview){controller.copySize=requestedCopy;controller.overlayScale=requestedScale;}if(customMfg)controller.values["multiplier"]=3;
         controller.monitorPreviewFocus=window!=nullptr;controller.InstallExtraControls();
@@ -482,7 +492,8 @@ int wmain(int argc,wchar_t** argv)
         if(!desktopPreview)controller.hdr.Set(std::move(hdrPreview),true,true,"Preview HDR preferences. These sample controls do not change a game; connected controls save startup preferences for verified add-on builds.");
         if(!requestedBlend.empty())controller.surfaceBlend=requestedBlend;if(requestedTint>=0){if(controller.appearance==1)controller.lightOpacity=requestedTint;else if(controller.appearance==3)controller.clearOpacity=requestedTint;else if(controller.appearance==4)controller.accentOpacity=requestedTint;else controller.darkOpacity=requestedTint;}
         controller.presets["natural"]=controller.values;controller.presets["cinematic"]=controller.values;controller.presets["cinematic"]["style"]=2;controller.presets["cinematic"]["intensity"]=.8f;
-        for(const auto* event:{"click","change","keydown","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&controller);
+        for(const auto* event:{"click","change","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&controller);
+        document->AddEventListener("keydown",&controller,true);
         controller.Typography();controller.Materials();
         BOOL animate=TRUE;if(SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animate,0) && !animate)reduceMotion=true;
         document->SetClass("reduce-motion",reduceMotion);controller.reducedMotion=reduceMotion||!controller.motionEnabled;
@@ -495,7 +506,7 @@ int wmain(int argc,wchar_t** argv)
         document->GetElementById("inspector")->SetProperty("backdrop-filter","none");
         document->GetElementById("welcome")->SetProperty("backdrop-filter","none");
         document->Show();
-        controller.Layout((window||desktopPreview)?controller.layout:requestedLayout);if(!requestedPage.empty()){Require(requestedPage=="overview"||requestedPage=="frame"||requestedPage=="neural"||requestedPage=="hdr"||requestedPage=="look"||requestedPage=="passes","Use --page overview, frame, neural, hdr, look, or passes");document->SetClass("overview-page",requestedPage=="overview");document->SetClass("frame-page",requestedPage=="frame");document->SetClass("neural-page",requestedPage=="neural");document->SetClass("hdr-page",requestedPage=="hdr");controller.Navigation("nav-"+requestedPage);if(requestedPage=="look"||requestedPage=="passes")controller.Open(requestedPage);controller.Visible("type-panel",false);}if(inspector)controller.Open("passes");if(settings)controller.Settings(true);if(appearanceOpen){controller.moreOpen=detailsOpen;controller.Materials();controller.ShowAppearance();}
+        controller.Layout((window||desktopPreview)?controller.layout:requestedLayout);if(!requestedPage.empty()){Require(requestedPage=="overview"||requestedPage=="frame"||requestedPage=="neural"||requestedPage=="hdr"||requestedPage=="look"||requestedPage=="passes","Use --page overview, frame, neural, hdr, look, or passes");document->SetClass("overview-page",requestedPage=="overview");document->SetClass("frame-page",requestedPage=="frame");document->SetClass("neural-page",requestedPage=="neural");document->SetClass("hdr-page",requestedPage=="hdr");controller.Navigation("nav-"+requestedPage);if(requestedPage=="look"||requestedPage=="passes")controller.Open(requestedPage);controller.Visible("type-panel",false);}if(inspector)controller.Open("passes");if(settings)controller.Settings(true);if(colorPickerOpen){controller.accentMode="custom";controller.colorEditorOpen=true;}if(appearanceOpen){controller.moreOpen=detailsOpen;controller.Materials();controller.ShowAppearance();}
         if(onboarding)controller.BeginSetup();
         if(thumbnail&&controller.layout=="centered")controller.Page("nav-neural");
         auto image=LoadImage(background);
@@ -542,6 +553,7 @@ int wmain(int argc,wchar_t** argv)
             if(!output.empty())system.frameTime=frames/60.;
             if((layoutTest||selfTest)&&frames==8)TestLayout(controller,context);
             if(selfTest && frames==8){TestPreviewPicker(controller,context);TestController(controller,context);}
+            controller.PollColorPick();
             if(controller.sceneRequest>=0&&!library.names.empty()){library.Choose(controller.sceneRequest);controller.sceneRequest=-1;document->QuerySelector(".preview-label")->SetInnerRML("Loading…");}
             if(controller.sceneRequest>=0){const int chosen=controller.sceneRequest;controller.sceneRequest=-1;if(chosen!=selectedScene)try{
                 fs::path path=background;float selectedCrop=crop;std::array<float,3> selectedAccent=accent;std::string title="Overlay preview";
@@ -559,6 +571,7 @@ int wmain(int argc,wchar_t** argv)
                     const auto selectedCrop=value.value("crop",0.f);Require(selectedCrop>=0&&selectedCrop<.8f,"Invalid preview crop");
                     auto next=LoadImage(fs::u8path(value.at("path").get<std::string>()));const auto uv=CropImage(next,width,height,selectedCrop);
                     backdrop->SetPhoto(next.rgba.data(),next.width,next.height,uv.data());image=std::move(next);activeCrop=selectedCrop;stableAccent=selectedAccent;
+                    if(value.contains("poster"))changePoster(fs::u8path(value["poster"].get<std::string>()));
                     library.selected=value.at("index").get<int>();
                     controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(value.at("title").get<std::string>()));
                     document->QuerySelector(".preview-label")->SetInnerRML("Game");controller.Metadata();
@@ -649,7 +662,7 @@ int wmain(int argc,wchar_t** argv)
                     const auto variable=[e](const char* name,float fallback){const auto* p=e->GetProperty(name);if(!p)return fallback;try{return std::stof(p->Get<Rml::String>());}catch(...){return fallback;}};
                     panel.colored=controller.appearance==4;panel.tint=controller.SurfaceTint();panel.readability=(controller.appearance==3||(controller.appearance==4&&!controller.AccentLight()))?1.f:0.f;panel.inkShadow=controller.textDepth?.14f:0.f;panel.blur=controller.blurRadius;panel.radius=std::clamp(variable("--corner-radius",24.f),0.f,100.f)*panel.scale;panel.saturation=std::clamp(variable("--material-saturation",1.12f),0.f,2.f);panel.grain=std::clamp(variable("--material-texture",.028f),0.f,.08f);panel.luminosity=std::clamp(variable("--material-luminosity",.04f),0.f,.25f);
                     panel.shadowOpacity=std::clamp(variable("--shadow-opacity",.30f),0.f,.5f);panel.shadowRadius=std::clamp(variable("--shadow-radius",28.f),8.f,60.f);panel.shadowOffset=std::clamp(variable("--shadow-offset",12.f),0.f,24.f);
-                    panel.opacity=std::clamp(variable("--window-opacity",1.f),0.f,1.f);panel.tone=std::clamp(variable("--surface-tone",.96f),0.f,1.f);panel.grounding=std::clamp(variable("--surface-grounding",.52f),0.f,1.f);panel.blendAmount=std::clamp(variable("--material-blend-opacity",.3f),0.f,1.f);
+                    panel.opacity=controller.colorPicking&&std::string(id)!="type-panel"?0:std::clamp(variable("--window-opacity",1.f),0.f,1.f);panel.tone=std::clamp(variable("--surface-tone",.96f),0.f,1.f);panel.grounding=std::clamp(variable("--surface-grounding",.52f),0.f,1.f);panel.blendAmount=std::clamp(variable("--material-blend-opacity",.3f),0.f,1.f);
                     if(const auto* blend=e->GetProperty("--material-blend")) {const auto name=blend->Get<Rml::String>();panel.blendMode=float(MaterialColor::Mode(name));}
                     if(const auto* blend=e->GetProperty("--shadow-blend")) {const auto name=blend->Get<Rml::String>();panel.shadowBlend=name=="overlay"?1.f:name=="soft-light"?2.f:0.f;}
                     panels.push_back(panel);
@@ -679,8 +692,8 @@ int wmain(int argc,wchar_t** argv)
                 }else if(!desktopPreview)renderUi(controller.Element("game-picker"));
             }
             if(desktopPreview&&window)renderUi(controller.Element("preview-chrome"));
-            for(const auto* popup:{"layout-picker","tooltip"})if(controller.Element(popup)->IsVisible()){
-                if(std::string(popup)=="layout-picker"&&byId.contains("main-panel")){const auto panel=controller.QuickLayoutSurface(byId.at("main-panel"));const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target.Get(),windowView.Get(),{panel},blur,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(controller.Element(popup),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,blur);backdrop->ComposeLayer(view.Get(),windowSource.Get(),0,0,true);}
+            for(const auto* popup:{"layout-picker","accent-editor","tooltip"})if(controller.Element(popup)->IsVisible()){
+                if((std::string(popup)=="layout-picker"&&byId.contains("main-panel"))||(std::string(popup)=="accent-editor"&&!controller.colorPicking&&byId.contains("type-panel"))){const auto panel=controller.QuickLayoutSurface(byId.at(std::string(popup)=="accent-editor"?"type-panel":"main-panel"),popup);const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target.Get(),windowView.Get(),{panel},blur,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(controller.Element(popup),inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,blur);backdrop->ComposeLayer(view.Get(),windowSource.Get(),0,0,true);}
                 else renderUi(controller.Element(popup));
             }
             if(measureGpu){immediate->End(timing.end.Get());immediate->End(timing.disjoint.Get());timing.pending=true;}
@@ -696,7 +709,7 @@ int wmain(int argc,wchar_t** argv)
         std::cout<<"backdrop_adapter=quarter-resolution-separable-gaussian panels="<<(inspector?2:1)<<'\n';
         std::cout<<"appearance="<<(controller.appearance==1?"light":controller.appearance==3?"clear":controller.appearance==4?"accent":"dark")<<" scene_sample_main="<<backdrop->measured[0].valid<<" scene_sample_inspector="<<backdrop->measured[1].valid<<'\n';
         std::cout<<"surface_blend="<<controller.surfaceBlend<<" blur="<<controller.blurRadius<<"dp clear_text_contrast=adaptive\n";
-        if(window && controller.prefsDirty)controller.SavePreferences();inputContext=nullptr;for(const auto* event:{"click","change","keydown","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,&controller);Rml::Shutdown();
+        if(window && controller.prefsDirty)controller.SavePreferences();inputContext=nullptr;for(const auto* event:{"click","change","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,&controller);Rml::Shutdown();
         if(window)DestroyWindow(window);
         return 0;
     } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 1;}

@@ -13,6 +13,9 @@ public sealed class GameOverlayPreferencesView : StackPanel
     readonly Game game;
     readonly StackPanel fields = new() { Spacing = 8 };
     readonly TextBlock status = Prefs.Label("Appearance, layout, menus and shortcuts below apply only to this game.");
+    readonly Border appearanceCard = new() { Style = Prefs.GetStyle("ForgeSettingsCardStyle") };
+    ToggleSwitch? inheritedToggle;
+    Expander? menuOptions;
     bool loading;
 
     public GameOverlayPreferencesView(MainWindow shell, Game game)
@@ -20,6 +23,12 @@ public sealed class GameOverlayPreferencesView : StackPanel
         this.shell = shell; this.game = game;
         Spacing = 10;
         Children.Add(status);
+        Children.Add(appearanceCard);Children.Add(fields);
+        RebuildAppearance();Rebuild();
+    }
+
+    void RebuildAppearance()
+    {
         var appearance = new OverlayPresentationView(edit =>
         {
             try
@@ -28,14 +37,14 @@ public sealed class GameOverlayPreferencesView : StackPanel
                 var glass = GlassAppearance.Load(GlassAppearance.GameFilePath(game));
                 var fresh = ForgeSettings.EditGameOverlay(game, s => { s["overlay_appearance"] = glass.ToJson(); s["overlay_theme"] = glass.Theme; });
                 shell.Settings.CopyOverlayFrom(fresh);
+                loading=true;if(inheritedToggle is not null)inheritedToggle.IsOn=false;loading=false;
+                if(menuOptions is not null)menuOptions.IsEnabled=true;
                 status.Text = "Appearance saved for this game.";
             }
             catch (Exception error) { status.Text = error.Message; }
         }, shell.Service as EngineForgeService, game);
         appearance.SetRendererEnabled(ForgeSettings.Load().OverlayRenderer != "optiscaler");
-        Children.Add(new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = appearance });
-        Children.Add(fields);
-        Rebuild();
+        appearanceCard.Child=appearance;
     }
 
     bool Save(Action<JsonObject>? edit)
@@ -60,17 +69,17 @@ public sealed class GameOverlayPreferencesView : StackPanel
         var values = settings.GameOverlayOptions(game);
         var inherited = !settings.GameOverlaySettings.ContainsKey(game.Id);
         var (defaultsRow, defaults) = Prefs.SwitchRow("Use app overlay settings", "Turn off to choose settings for this game.", inherited, "\uE713");
-        fields.Children.Add(defaultsRow);
+        inheritedToggle=defaults;fields.Children.Add(defaultsRow);
         defaults.Toggled += (_, _) =>
         {
             if (loading) return;
-            Save(defaults.IsOn ? null : _ => { });
-            Rebuild();
+            if(Save(defaults.IsOn ? null : _ => { })){RebuildAppearance();Rebuild();}
         };
         var options = new StackPanel { Spacing = 8 };
-        fields.Children.Add(new Expander { Header = "Menu and welcome settings", Content = options,
+        menuOptions=new Expander { Header = "Menu and welcome settings", Content = options,
             IsEnabled = !inherited,
-            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        fields.Children.Add(menuOptions);
         void Toggle(string title, string key)
         {
             var glyph = key == "overlay_live_stats" ? "\uE9D9" : key.EndsWith("intro") || key == "overlay_welcome" ? "\uE8F2" : "\uE700";

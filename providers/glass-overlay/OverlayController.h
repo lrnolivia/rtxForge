@@ -13,6 +13,7 @@
 #include <PrototypeControls.generated.h>
 #include "HdrControls.h"
 #include "EffectControls.h"
+#include "ScreenColorPicker.h"
 #include <filesystem>
 #include <map>
 #include <functional>
@@ -28,6 +29,25 @@ struct Controller : Rml::EventListener
     HdrControls hdr;
     EffectControls effects;
     BalancedCards balancedCards;
+    ScreenColorPicker screenColorPicker;bool colorEditorOpen=false,colorPicking=false;
+    std::function<std::string(float,float)> samplePoster;
+    void Poster(const std::string& path){for(const auto* id:{"accent-poster","screen-pick-poster"}){auto* image=Element(id);if(path.empty())image->SetProperty("display","none");else{image->SetAttribute("src",path);image->SetProperty("display","block");}}}
+    void ColorEditor(){const auto color=MaterialColor::ParseAccent(customAccent,accent);
+        Element("accent-swatch")->QuerySelector(".color-dot")->SetProperty("background-color",Hex(color[0],color[1],color[2]));
+        Element("accent-editor")->SetProperty("display",colorEditorOpen&&accentMode=="custom"&&Element("type-panel")->IsVisible()?"block":"none");
+        dynamic_cast<Rml::ElementFormControl*>(Element("accent-color"))->SetValue(Hex(color[0],color[1],color[2]).substr(0,7));
+    }
+    void PlaceColorEditor() {
+        auto* popup=Element("accent-editor");if(!colorEditorOpen||!Element("type-panel")->IsVisible()||accentMode!="custom"){popup->SetProperty("display","none");return;}
+        auto* context=document->GetContext();if(!popup->IsVisible()){popup->SetProperty("display","block");context->Update();}const auto view=context->GetDimensions();const float dp=context->GetDensityIndependentPixelRatio();
+        const auto at=Element("accent-swatch")->GetAbsoluteOffset(Rml::BoxArea::Border),size=popup->GetBox().GetSize(Rml::BoxArea::Border);const auto button=Element("accent-swatch")->GetBox().GetSize(Rml::BoxArea::Border);
+        const float x=at.x+(button.x-size.x)*.5f,below=at.y+button.y+18*dp,y=below+size.y<=view.y-12*dp?below:at.y-size.y-18*dp;
+        popup->SetProperty("left",std::to_string(std::clamp(x,12*dp,std::max(12*dp,view.x-size.x-12*dp)))+"px");popup->SetProperty("top",std::to_string(std::clamp(y,12*dp,std::max(12*dp,view.y-size.y-12*dp)))+"px");
+    }
+    void PollColorPick(){if(!colorPicking||!screenColorPicker.Finished())return;const auto picked=screenColorPicker.Result();colorPicking=false;document->SetClass("color-picking",false);
+        if(picked){const auto rgb=*picked;customAccent=Hex(GetRValue(rgb)/255.f,GetGValue(rgb)/255.f,GetBValue(rgb)/255.f).substr(0,7);colorEditorOpen=false;}
+        Materials();
+    }
     std::function<void()> closePreview;
     ForgeWorkbench::Values values{{"intensity",1},{"style",1},{"multiplier",-1},{"dynamic_mfg",0},{"passes",3},{"preset",0},
         {"detail",1},{"colour",1},{"tone",1},{"pass2_strength",.65f},{"pass2_tone",.8f},{"pass2_structure",1},{"pass2_skin",.5f},{"pass2_inherit",0},{"pass2_style",0},
@@ -87,8 +107,10 @@ struct Controller : Rml::EventListener
         auto* actions=document->QuerySelector(".window-actions");const float right=layout=="bar"?actions->GetAbsoluteOffset(Rml::BoxArea::Border).x+actions->GetBox().GetSize(Rml::BoxArea::Border).x:at.x+button.x;
         picker->SetProperty("left",std::to_string(std::clamp(right-size.x,12*dp,std::max(12*dp,view.x-size.x-12*dp)))+"px");picker->SetProperty("top",std::to_string(std::clamp(at.y+(button.y-size.y)*.5f,12*dp,std::max(12*dp,view.y-size.y-12*dp)))+"px");
     }
-    Backdrop::Panel QuickLayoutSurface(Backdrop::Panel panel) {
-        auto* picker=Element("layout-picker");const auto at=picker->GetAbsoluteOffset(Rml::BoxArea::Border),size=picker->GetBox().GetSize(Rml::BoxArea::Border);panel.x=at.x;panel.y=at.y;panel.width=size.x;panel.height=size.y;panel.radius=16*document->GetContext()->GetDensityIndependentPixelRatio();panel.shadowOpacity=.14f;panel.shadowRadius=16;panel.shadowOffset=6;panel.arrow=0;return panel;
+    Backdrop::Panel QuickLayoutSurface(Backdrop::Panel panel,const char* id="layout-picker") {
+        auto* picker=Element(id);const auto at=picker->GetAbsoluteOffset(Rml::BoxArea::Border),size=picker->GetBox().GetSize(Rml::BoxArea::Border);panel.x=at.x;panel.y=at.y;panel.width=size.x;panel.height=size.y;panel.radius=16*document->GetContext()->GetDensityIndependentPixelRatio();panel.shadowOpacity=.14f;panel.shadowRadius=16;panel.shadowOffset=6;panel.arrow=0;
+        if(std::string(id)=="accent-editor"){const auto source=Element("accent-swatch")->GetAbsoluteOffset(Rml::BoxArea::Border),button=Element("accent-swatch")->GetBox().GetSize(Rml::BoxArea::Border);panel.arrow=at.y>source.y?-1.f:1.f;panel.anchorX=std::clamp(source.x+button.x*.5f,at.x+24*panel.scale,at.x+size.x-24*panel.scale);}
+        return panel;
     }
     void QuickLayoutTheme() {
         auto* picker=Element("layout-picker");const bool light=BaseAppearance()==1;
@@ -282,7 +304,7 @@ struct Controller : Rml::EventListener
         if(layout=="centered"){const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border);const float left=(copySize*11.f+64)*dp+56*dp;auto* editor=Element("inspector");const auto before=editor->GetAbsoluteOffset(Rml::BoxArea::Border);if(std::fabs(before.x-at.x-left)>.1f||std::fabs(before.y-at.y-contentTop*dp)>.1f){editor->SetProperty("margin-left","0px");editor->SetProperty("margin-top","0px");editor->SetProperty("left",std::to_string(at.x+left)+"px");editor->SetProperty("top",std::to_string(at.y+contentTop*dp)+"px");}}
         for(const auto* id:{"inspector","type-panel"}){auto* e=Element(id);if((std::string(id)=="inspector"&&inspectorAnchored)||!e->IsVisible()||(layout=="centered"&&std::string(id)=="inspector")||dragged==e||entrances.contains(id)||pendingEntrance.contains(id)||coasting.contains(id))continue;const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=e->GetBox().GetSize(Rml::BoxArea::Border);const float x=std::clamp(at.x,12*dp,std::max(12*dp,view.x-bounds.x-12*dp)),y=std::clamp(at.y,inset,std::max(inset,view.y-bounds.y-12*dp));if(std::fabs(x-at.x)>.1f||std::fabs(y-at.y)>.1f){e->SetProperty("margin-left","0px");e->SetProperty("margin-top","0px");e->SetProperty("left",std::to_string(x)+"px");e->SetProperty("top",std::to_string(y)+"px");}}
         for(const auto* id:{"hdr-main-fields","extra-neural","extra-frame","extra-look","pass-fields","settings-cards"})balancedCards.Arrange(Element(id),document->IsClassSet("wide-content"));
-        PlaceSetup();PlaceQuickLayouts();
+        PlaceSetup();PlaceQuickLayouts();PlaceColorEditor();
     }
     void Enter(const std::string& id) {pendingEntrance.insert(id);coasting.erase(id);}
     void Animate(double now) {
@@ -406,8 +428,8 @@ struct Controller : Rml::EventListener
         Visible("accent-character-row",preview&&godModeOpen&&appearance==4);dynamic_cast<Rml::ElementFormControl*>(Element("accent-character"))->SetValue(std::to_string(accentCharacter));Element("accent-character-value")->SetInnerRML(accentCharacter<25?"Clear":accentCharacter<72?"Light":"Dark");
         Visible("accent-saturation-row",preview&&godModeOpen&&appearance==4);dynamic_cast<Rml::ElementFormControl*>(Element("accent-saturation"))->SetValue(std::to_string(accentSaturation));Element("accent-saturation-value")->SetInnerRML(std::to_string(int(accentSaturation))+"%");
         for(const auto* mode:{"theme","custom","adaptive"})Element((std::string("accent-source-")+mode).c_str())->SetClass("selected",accentMode==mode);
-        Visible("accent-custom-row",accentMode=="custom");
-        Element("accent-source-hint")->SetInnerRML(accentMode=="theme"?"Neutral accents, matched to your theme.":accentMode=="custom"?"Your rtxForge color. Leave blank to use the game color.":"Samples the scene behind this panel, with gentle transitions.");
+        Visible("accent-custom-row",accentMode=="custom");ColorEditor();
+        Element("accent-source-hint")->SetInnerRML(accentMode=="theme"?"Neutral accents, matched to your theme.":accentMode=="custom"?"Your rtxForge color, or a color you choose.":"Samples the scene behind this panel, with gentle transitions.");
         Element("accent-tint")->SetClass("selected",appearance==4);Element("accent-tint")->QuerySelector(".switch")->SetClass("on",appearance==4);
         if(!preview)Element("font-select")->GetParentNode()->SetProperty("display","none");else Element("font-select")->GetParentNode()->RemoveProperty("display");
         Element("toast-pill")->SetClass("selected",toastPill);Element("toast-rounded")->SetClass("selected",!toastPill);
@@ -532,6 +554,9 @@ struct Controller : Rml::EventListener
             set("--shadow-opacity",std::to_string(i==2?.10f:.26f));
         }
         Select("theme-menu",customTheme?"":BaseAppearance()==1?"theme-light":BaseAppearance()==3?"theme-clear":"theme-dark");
+        auto* popup=Element("accent-editor");auto* appearancePanel=Element("type-panel");
+        popup->SetClass("dark",appearancePanel->IsClassSet("dark"));popup->SetClass("clear",appearance==3);popup->SetClass("accent-theme",appearance==4);
+        for(const auto* name:{"--accent","--accent-ink","--accent-soft"})if(const auto* value=appearancePanel->GetProperty(name)){const auto text=value->Get<Rml::String>();const auto key=std::string("accent-editor")+name;if(adaptiveProperties[key]!=text){adaptiveProperties[key]=text;popup->SetProperty(name,text);}}
         QuickLayoutTheme();
     }
     Rml::Element* Element(const char* id) { auto* e=document->GetElementById(id);Require(e!=nullptr,id);return e; }
@@ -545,7 +570,7 @@ struct Controller : Rml::EventListener
     }
     void Sync()
     {
-        if(syncing || typographySync)return;
+        if(syncing || typographySync||colorPicking)return;
         syncing=true;
         auto range=[&](const char* id,const std::string& key) {
             const auto value=values.at(key);auto* field=dynamic_cast<Rml::ElementFormControl*>(Element(id));Require(field!=nullptr,"Expected range control");
@@ -616,20 +641,21 @@ struct Controller : Rml::EventListener
     }
     void ProcessEvent(Rml::Event& event) override
     {
-        if(syncing || typographySync)return;
+        if(syncing || typographySync||colorPicking)return;
         auto* target=event.GetTargetElement();
-        if(setupStep>=0&&event.GetType()=="keydown"&&event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_TAB){
-            const std::vector<const char*> choices=setupStep==0?std::vector<const char*>{"theme-light","theme-dark","theme-clear","accent-source-theme","accent-source-custom","accent-source-adaptive","accent-color","accent-tint","setup-skip","setup-next"}:std::vector<const char*>{"appearance-back","setup-layout-floating","setup-layout-centered","setup-layout-bar","setup-skip","setup-next"};
+        if(setupStep>=0&&!colorEditorOpen&&event.GetType()=="keydown"&&event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_TAB){
+            const std::vector<const char*> choices=setupStep==0?std::vector<const char*>{"theme-light","theme-dark","theme-clear","accent-source-theme","accent-source-custom","accent-source-adaptive","accent-swatch","accent-tint","setup-skip","setup-next"}:std::vector<const char*>{"appearance-back","setup-layout-floating","setup-layout-centered","setup-layout-bar","setup-skip","setup-next"};
             auto* focused=document->GetContext()->GetFocusElement();int index=-1;for(size_t i=0;i<choices.size();++i)if(Element(choices[i])==focused)index=int(i);const int direction=event.GetParameter<int>("shift_key",0)?-1:1;Element(choices[(index+direction+int(choices.size()))%int(choices.size())])->Focus();event.StopPropagation();return;
         }
         const auto inside=[&](const char* id){for(auto* e=target;e;e=e->GetParentNode())if(e->GetId()==id)return true;return false;};
         const bool previewTarget=inside("preview-original");
         if(event.GetType()=="mouseup"||(event.GetType()=="blur"&&previewTarget)||(event.GetType()=="keyup"&&(event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_SPACE||event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_RETURN)))EndNrPreview();
         if(previewTarget&&(event.GetType()=="mousedown"||(event.GetType()=="keydown"&&(event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_SPACE||event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_RETURN)))){BeginNrPreview();event.StopPropagation();return;}
-        if(event.GetType()=="keydown"&&event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_ESCAPE){EndNrPreview();if(setupStep>=0)FinishSetup();else if(Element("layout-picker")->IsVisible())QuickLayouts(false);else if(BarSettings())Settings(false);else if(inspectorAnchored){Visible("inspector",false);inspectorAnchored=false;}event.StopPropagation();return;}
+        if(event.GetType()=="keydown"&&event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_ESCAPE){EndNrPreview();if(colorEditorOpen){colorEditorOpen=false;ColorEditor();Element("accent-swatch")->Focus();}else if(setupStep>=0)FinishSetup();else if(Element("layout-picker")->IsVisible())QuickLayouts(false);else if(BarSettings())Settings(false);else if(inspectorAnchored){Visible("inspector",false);inspectorAnchored=false;}event.StopPropagation();return;}
+        if(event.GetType()=="mousedown"&&colorEditorOpen&&!inside("accent-editor")&&!inside("accent-swatch")){colorEditorOpen=false;ColorEditor();}
         if(event.GetType()=="mousedown"&&!inside("open-layout")&&!inside("layout-picker"))QuickLayouts(false);
         if(event.GetType()=="mousedown"&&inspectorAnchored&&!inside("inspector")&&!inside(inspectorSource.c_str())){Visible("inspector",false);inspectorAnchored=false;}
-        if(event.GetType()=="mousedown"&&BarSettings()&&!inside("inspector")&&!inside("type-panel")){Settings(false);event.StopPropagation();return;}
+        if(event.GetType()=="mousedown"&&BarSettings()&&!inside("inspector")&&!inside("type-panel")&&!inside("accent-editor")){Settings(false);event.StopPropagation();return;}
         if(event.GetType()=="keydown") {
             const int key=event.GetParameter<int>("key_identifier",0);const int mods=event.GetParameter<int>("key_modifier_state",0)&7;
             if(bindingShortcut){
@@ -669,7 +695,7 @@ struct Controller : Rml::EventListener
             }
             auto* glass=target;bool interactive=false;
             while(glass && !glass->IsClassSet("glass")) {const auto tag=glass->GetTagName();if(tag=="button"||tag=="input"||tag=="select"||tag=="option"||tag.find("slider")!=std::string::npos||tag.find("scrollbar")!=std::string::npos)interactive=true;glass=glass->GetParentNode();}
-            if(glass) {const auto id=glass->GetId();if(id=="game-picker")return;Raise(id);
+            if(glass) {const auto id=glass->GetId();if(id=="game-picker"||id=="accent-editor")return;Raise(id);
                 if(!interactive&&!(BarSettings()&&glass==Element("inspector"))) {dragStarted=false;dragThreshold=(glass==Element("inspector")&&inspectorAnchored?18.f:4.f)*document->GetContext()->GetDensityIndependentPixelRatio();dragged=layout=="centered" && (id=="main-panel"||id=="inspector")?Element("main-panel"):glass;coasting.erase(dragged->GetId());entrances.erase(dragged->GetId());dragStart={event.GetParameter<float>("mouse_x",0),event.GetParameter<float>("mouse_y",0)};dragOrigin=dragged->GetAbsoluteOffset(Rml::BoxArea::Border);dragLast=dragOrigin;dragVelocity={};dragTime=Rml::GetSystemInterface()->GetElapsedTime();dragged->SetProperty("margin-left","0px");dragged->SetProperty("margin-top","0px");dragged->SetProperty("left",std::to_string(dragOrigin.x)+"px");dragged->SetProperty("top",std::to_string(dragOrigin.y)+"px");
                     if((layout=="centered" || (layout=="bar" && inspectorAnchored)) && dragged==Element("main-panel") && Element("inspector")->IsVisible()){dragFollower=Element("inspector");followerOrigin=dragFollower->GetAbsoluteOffset(Rml::BoxArea::Border);followerAnchorOrigin=inspectorAnchorX;dragFollower->SetProperty("margin-left","0px");dragFollower->SetProperty("margin-top","0px");}}
             }
@@ -694,7 +720,7 @@ struct Controller : Rml::EventListener
         }
         if(event.GetType()=="change") {
             auto* field=dynamic_cast<Rml::ElementFormControl*>(target);if(!field)return;
-            if(id=="accent-color"){auto color=field->GetValue();if(MaterialColor::ValidAccent(color)){customAccent=color;Materials();}return;}
+            if(id=="accent-color"){auto color=field->GetValue();if(MaterialColor::ValidAccent(color)){customAccent=color;colorEditorOpen=false;Materials();}return;}
             if(id=="scene-select") {const auto value=field->GetValue();if(!value.empty())sceneRequest=std::stoi(value);return;}
             if(id=="welcome-position"){welcomePosition=field->GetValue();prefsDirty=true;PositionWelcome();return;}
             if(id=="primary-menu"){primaryMenu=field->GetValue();prefsDirty=true;return;}
@@ -720,6 +746,10 @@ struct Controller : Rml::EventListener
                 edits.Record(before,values);edits.saved=values;Message(preview?"Preset loaded into this preview":"Preset selected");Notify(name+std::string(preview?" preset · Preview":" preset"));
             }
         } else if(event.GetType()=="click") {
+            if(id=="accent-swatch"){colorEditorOpen=!colorEditorOpen;Materials();if(colorEditorOpen)Element("accent-color")->Focus();return;}
+            if(id=="accent-use-game"){customAccent.clear();colorEditorOpen=false;Materials();return;}
+            if(id=="accent-eyedropper"){screenColorPicker.Start();colorPicking=true;Visible("tooltip",false);document->SetClass("color-picking",true);return;}
+            if(id=="accent-poster"&&samplePoster){const auto at=target->GetAbsoluteOffset(Rml::BoxArea::Border);const auto size=target->GetBox().GetSize(Rml::BoxArea::Border);const auto color=samplePoster((event.GetParameter<float>("mouse_x",0)-at.x)/size.x,(event.GetParameter<float>("mouse_y",0)-at.y)/size.y);if(MaterialColor::ValidAccent(color)&&!color.empty()){customAccent=color;colorEditorOpen=false;Materials();}return;}
             if(id.rfind("accent-source-",0)==0){const auto mode=id.substr(14);if(mode=="theme"||mode=="custom"||mode=="adaptive"){accentMode=mode;Materials();}return;}
             if(id=="preview-close"&&closePreview)closePreview();
             else if(id=="close"){if(closePreview)closePreview();else ToggleOverlay();}

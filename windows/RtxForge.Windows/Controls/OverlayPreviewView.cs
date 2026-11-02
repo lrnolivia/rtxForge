@@ -21,6 +21,7 @@ sealed class OverlayPreviewView : StackPanel
     readonly TextBlock status = new() { Text = "Explore every control in the full preview.", FontSize = 12, Opacity = .75, TextWrapping = TextWrapping.Wrap };
     readonly Microsoft.UI.Dispatching.DispatcherQueueTimer timer;
     IReadOnlyList<Game> games;
+    public Game SelectedGame=>selected;
     Game selected = new() { Id = "overlay-preview-control", Name = "Control Resonant" };
     OverlayPreview.Screenshot shot = new(Path.Combine(AppContext.BaseDirectory,"Assets","OverlayScene.webp"), "Control Resonant · gameplay", .27f);
     CancellationTokenSource? loading;

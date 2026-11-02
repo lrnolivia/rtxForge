@@ -14,7 +14,7 @@ try {
   const baseline=await bounds();
   for(const name of ['Presets','Packages','Extras','Settings','Library']){await nav(name).click();expect(await bounds()).toEqual(baseline);}
   const pane=await page.locator('#game-results').evaluate(n=>{const content=n.closest('#content'),r=n.getBoundingClientRect(),c=content.getBoundingClientRect(),s=getComputedStyle(content);return {bottom:c.bottom-parseFloat(s.paddingBottom)-r.bottom,right:c.right-r.right,left:r.left-c.left,glow:parseFloat(getComputedStyle(n).paddingLeft)}});
-  expect(Math.abs(pane.bottom)).toBeLessThan(2);expect(pane.right).toBeLessThanOrEqual(2);expect(pane.left).toBeLessThanOrEqual(2);expect(pane.glow).toBeGreaterThanOrEqual(24);
+  expect(Math.abs(pane.bottom)).toBeLessThan(2);expect(pane.right).toBeGreaterThanOrEqual(10);expect(pane.right).toBeLessThanOrEqual(14);expect(pane.left).toBeLessThanOrEqual(2);expect(pane.glow).toBeGreaterThanOrEqual(24);
   await page.locator('#game-results').evaluate(n=>n.scrollTop=500);
   await expect(page.locator('.shell')).toHaveAttribute('data-header-collapsed','true');
   await page.getByRole('slider',{name:'Library item size'}).press('Home');

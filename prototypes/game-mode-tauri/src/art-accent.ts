@@ -82,40 +82,13 @@ const mix=(a:number[],b:number[],amount:number)=>a.map((v,i)=>Math.round(v*amoun
 export function heroColors(accent:string,light:boolean,background:number[]=[65,70,75],cardBackground=background) {
   const rgb=parse(/^#[0-9a-f]{6}$/i.test(accent)?accent:'#d8d5ce');
   const [l,a,b]=lab(...rgb as [number,number,number]),c=Math.hypot(a,b),h=Math.atan2(b,a);
-  const [hue]=hsv(rgb),yellow=hue>=45/360&&hue<=100/360;
-  // A dark yellow becomes olive. Use near-neutral charcoal for that ink family,
-  // while keeping the actual accent on fills, strokes and readable titles.
-  const shade=(level:number,chroma:number)=>rgbFromLch(level,yellow&&level<.85?Math.min(chroma,.006):chroma,h);
   const against=(ink:number[],surface:number[])=>(Math.max(luminance(ink),luminance(surface))+.05)/(Math.min(luminance(ink),luminance(surface))+.05);
-  // Yellow glass stays luminous. Darkening yellow makes olive; desaturating
-  // that dark shade makes grey. Its bright surface needs dark neutral ink.
-  const brightCard=light||yellow;
-  const ink=shade(brightCard?.26:.97,Math.min(c*.18,.025));
-  // Preserve color rather than washing the glass with a neutral grey base.
-  // Non-yellow Clear/Dark cards retain pale ink; yellow keeps a bright surface.
-  const cardChroma=Math.min(c*.48,.065);
-  const surface=(level:number)=>rgbFromLch(level,yellow?Math.min(c*.9,.18):light?Math.min(c*.18,.025):cardChroma,h);
-  let card=surface(yellow?.94:light?.955:.49);
-  for(let step=0;step<40&&against(ink,mix(card,cardBackground,light?.62:.76))<4.5;step++){
-    card=surface(brightCard?(yellow?.94:.955)+(step+1)*.001:.49-(step+1)*.005);
-  }
-  const bg=luminance(background),ratio=(color:number[])=>(Math.max(luminance(color),bg)+.05)/(Math.min(luminance(color),bg)+.05);
-  let title=rgb;
-  if(ratio(title)<3){
-    // Mid-tone artwork needs pale lettering; dark ink loses definition in its
-    // darker details. Reserve dark lettering for genuinely bright artwork.
-    const candidates=[.12,.999].map(target=>{
-      for(let step=1;step<=60;step++){
-        const level=l+(target-l)*step/60,candidate=shade(level,c);
-        if(ratio(candidate)>=3)return {color:candidate,distance:Math.abs(target-l)*step/60,pale:target>l};
-      }
-      return null;
-    }).filter((candidate):candidate is {color:number[];distance:number;pale:boolean}=>candidate!==null);
-    candidates.sort((a,b)=>a.distance-b.distance);
-    title=(bg<.35?candidates.find(candidate=>candidate.pale):undefined)?.color||candidates[0]?.color||rgb;
-
-  }
-  return {title:hex(title),card:hex(card),ink:hex(ink),light};
+  // Titles keep a bright version of the game's hue in every UI theme.
+  // Protect their backdrop instead of turning bright yellow into grey ink.
+  const title=c<.025?rgbFromLch(.97,c,h):rgbFromLch(Math.max(l,.8),Math.min(c,.24),h);
+  let titleVeil=0;
+  while(titleVeil<.94&&against(title,mix([12,18,23],background,titleVeil))<4.5)titleVeil+=.02;
+  return {title:hex(title),titleVeil,card:'#ffffff',ink:'#f8f6f1',cardOpacity:.12,cardBrightness:.36,light};
 }
 export function heroBadge(background:number[]=[65,70,75]) {
   return luminance(background)>.35
@@ -140,7 +113,7 @@ export function sampleHero(image:HTMLImageElement,area:DOMRect,includeVeil=false
       if(pixels[i+3]<128)continue;count++;
       const pixel=i/4,x=area.x+(pixel%24+.5)*area.width/24,y=area.y+(Math.floor(pixel/24)+.5)*area.height/8;
       const t=clamp(.5+((x-bounds.x-bounds.width/2)*dx+(y-bounds.y-bounds.height/2)*dy)/length,0,1);
-      const alpha=opacity*(t<.38?.52+(.17-.52)*t/.38:t<.66?.17*(.66-t)/.28:0);
+      const alpha=opacity*(t<.38?.94+(.65-.94)*t/.38:t<.9?.65*(.9-t)/.52:0);
       for(let j=0;j<3;j++)sums[j]+=pixels[i+j]*(1-alpha)+[12,18,23][j]*alpha;
     }
     return count?sums.map(v=>v/count):null;

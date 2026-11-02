@@ -59,7 +59,7 @@ try {
     await expect(page.getByRole('button', { name: 'Install Features', exact: true })).toBeDisabled();
     await capture('details');
     await page.getByRole('button', { name: 'Appearance', exact: true }).click();
-    await page.locator('#game-accent-color').fill('#4bbfff');
+    await expect(page.locator('#game-accent-color')).toBeDisabled();
     const tintControl=page.getByRole('switch', { name: 'Accent tint', exact: true });if(await tintControl.getAttribute('aria-checked')!=='true')await tintControl.click();
     await expect(page.locator('html')).toHaveAttribute('data-tint', 'true');
     expect(await page.locator('.details-layout').evaluate(n=>getComputedStyle(n,':before').opacity)).toBe('0.3');

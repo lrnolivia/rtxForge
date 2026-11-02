@@ -1,4 +1,5 @@
-"""Bounded, read-only presentation adapter. Never imports DesktopService or calls writes.
+"""Bounded presentation adapter. Never imports DesktopService or modifies game files.
+Store screenshots use only the application-owned background cache.
 
 Uses the existing discovery manifest/VDF parsers. Presence in this snapshot is
 library discovery, not engine eligibility, ownership verification or live status.
@@ -17,6 +18,10 @@ import platform
 import re
 import sys
 import subprocess
+
+# The private embedded Python runtime intentionally omits the script directory.
+# Only fixed, bundled presentation helpers are imported from this directory.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 MAX_JSON = 4 * 1024 * 1024
 MAX_GAMES = 1000
@@ -386,9 +391,19 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--artwork')
     parser.add_argument('--role', choices=('poster','hero','capsule'))
+    parser.add_argument('--background')
+    parser.add_argument('--background-list')
+    parser.add_argument('--screenshot')
     args = parser.parse_args()
     try:
-        snapshot = {'image': local_artwork(args.artwork,args.role)} if args.artwork else collect(args.root.resolve())
+        if args.background_list:
+            from store_background import gallery
+            snapshot = {'screenshots': gallery(args.background_list, settings_path().parent / 'state/game-mode/store-backgrounds')}
+        elif args.background:
+            from store_background import background
+            snapshot = background(args.background, settings_path().parent / 'state/game-mode/store-backgrounds', screenshot=args.screenshot)
+        else:
+            snapshot = {'image': local_artwork(args.artwork,args.role)} if args.artwork else collect(args.root.resolve())
         sys.stdout.reconfigure(encoding='utf-8')
         print(json.dumps(snapshot, ensure_ascii=False, separators=(',', ':')))
     except (OSError, ValueError, ImportError) as error:

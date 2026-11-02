@@ -1,12 +1,13 @@
 import './style.css';
 import { captureArrival, arrive } from './motion';
-import { bindArtworkFailures, hydrateArtwork, clearArtworkCache } from './artwork';
+import { bindArtworkFailures, hydrateArtwork, clearArtworkCache, prioritizeArtwork } from './artwork';
 // Artwork sources remain exact library identities.
-import { appearanceDefaults, escape as e, readAppearance, readGameAccents, readSnapshot, type Appearance, type Game, type Snapshot, type View } from './model';
+import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type Snapshot, type View } from './model';
 import { operationFlow,operationStep,flowGame } from './operation-ui';
 import { installInput } from './input';
 import { setupLibraryLayout } from './library-layout';
 import { setupShellLayout } from './shell-layout';
+import { applyStoreBackground, screenshotGallery, selectedScreenshots, chooseScreenshots, type StoreScreenshot } from './store-background';
 import { webviewZoom } from './display-scale';
 import { controllerGlyph, type ControllerFamily } from './controller-glyphs';
 import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero } from './art-accent';
@@ -48,11 +49,7 @@ let artworkAssets: Record<string, unknown>[] = [], artworkMessage = '', gridConn
 let librarySizeOpen = false;
 let shellMenuOpen = false, detailsMenuOpen=false, presetSelection = false;
 const presetId = '__library-presets__';
-const gameAccentDrafts = readGameAccents();
-function persistGameAccents() {
-  try { localStorage.setItem('rtxforge-game-mode-accents',JSON.stringify(Object.fromEntries(gameAccentDrafts))); }
-  catch { announce('The color is available for this session, but could not be saved locally.'); }
-}
+const gameAccentDrafts = new Map<string,string>();const backgroundGalleries=new Map<string,StoreScreenshot[]>(),loadingGalleries=new Set<string>();
 const supportSelection = new Set<string>();
 let heroResize: ResizeObserver | undefined;
 let renderedView: View | undefined, renderedGame = '';
@@ -293,7 +290,7 @@ function detailFeatures(game: Game, row?: EngineRow) {
   return `<section class="glass-section"><div class="section-heading"><h2>Package</h2><span class="state-label" id="draft-label">${drafts.has(game.id)?'Draft · not applied':!backend.enabled?'Read-only preview':''}</span></div><div class="inner-card">${selectField('provider','Feature package',[['y4my','OptiScaler'],['skynizz','Skynizz NR'],['dlss-unlocked','DLSS-Unlocked'],['feeder','Feeder NR'],...(values.provider==='vulkan-native'||row?.vulkan_available?[['vulkan-native','Native Vulkan'] as [string,string]]:[])],values.provider,row?.installed?'Another package applies after you restore this game.':'Games without DLSS get their NR package automatically.',!backend.enabled||Boolean(row?.installed))}${selectField('profile','Feature mode',[['mfg-only','MFG only'],['nr-only','NR only'],['nr-mfg','NR + MFG']],values.profile,'',!backend.enabled||Boolean(row?.installed))}</div><button class="quiet extra-actions" data-detail-section="overlay">${icon('sliders')}Overlay settings</button></section><section class="glass-section"><h2>Features</h2>${external?`<p>${values.provider==='feeder'?'Use ReShade’s NR panel in the running game to adjust passes, resolution, tone and structure.':'Adjust Vulkan NR and MFG in the running game’s rtxForge overlay.'}</p>`:`<div class="inner-card">${selectField('mfg_enabled','Frame generation',[['true','On'],['false','Off']],values.mfg_enabled,'',!backend.enabled)}${selectField('mfg_mode','MFG mode',[['0','Automatic'],['1','Custom'],...(row?.dynamic_mfg_available?[['2','Dynamic'] as [string,string]]:[])],values.mfg_mode,'',!backend.enabled||values.mfg_enabled==='false')}${selectField('multiplier','MFG multiplier',[['2','2×'],['3','3×'],['4','4×'],['5','5×'],['6','6×']],values.multiplier,'',!backend.enabled||values.mfg_enabled==='false'||values.mfg_mode==='0')}${selectField('nr','Enable NR on launch',[['false','Off'],['true','On']],values.nr,'',!backend.enabled)}</div>${schemaControls(game,values.provider)}`}<div class="section-footer"><button class="quiet" data-operation="reset" ${!backend.enabled||!row?.installed?'disabled':''}>Use library defaults</button><button class="primary" data-operation="apply" ${!backend.enabled||!row?.installed?'disabled':''}>Apply to this game</button></div></section>`;
 }
 function detailsAccent(game?: Game) {
-  const accent = game && (gameAccentDrafts.get(game.id) || game.accent || game.artworkAccent);
+  const accent = game && (game.accent || game.artworkAccent);
   return accent && /^#[0-9a-f]{6}$/i.test(accent) ? accent : null;
 }
 function applyDetailsAccent() {
@@ -312,6 +309,7 @@ function applyDetailsAccent() {
   const colors=heroColors(accent||'#d8d5ce',appearance.theme==='light',sampled||undefined,cardSample||undefined);
   const badgeColors=heroBadge(image&&badge?sampleHero(image,badge.getBoundingClientRect())||undefined:undefined);
   content.style.setProperty('--game-title-color',colors.title);
+  content.style.setProperty('--title-veil',String(colors.titleVeil));
   content.style.setProperty('--hero-card-color',colors.card);
   content.style.setProperty('--hero-card-ink',colors.ink);
   content.style.setProperty('--hero-badge-surface',badgeColors.surface);
@@ -319,9 +317,19 @@ function applyDetailsAccent() {
   if(page)page.dataset.heroCard=colors.light?'light':'dark';
   content.dataset.gameAccent = String(Boolean(accent));
 }
+function screenshotChoices(game:Game){
+  if(!game.appid||currentPreferences().online_art===false)return '';
+  const shots=backgroundGalleries.get(game.appid);
+  if(!shots&&!loadingGalleries.has(game.appid)){
+    loadingGalleries.add(game.appid);
+    void screenshotGallery(game.appid).then(gallery=>{backgroundGalleries.set(game.appid!,gallery);loadingGalleries.delete(game.appid!);if(view==='details'&&selectedId===game.id&&detailsSection==='appearance')render();});
+  }
+  const chosen=selectedScreenshots(game.id,shots||[]);
+  return `<section class="glass-section"><div class="section-heading"><h2>Page Background</h2><button class="quiet" data-action="randomize-screenshots" ${!shots?.length?'disabled':''}>${icon('refresh')}Pick a random set</button></div><p>Choose up to five screenshots. Selected images rotate gently while Details is open. One image stays still.</p><p class="subtle">${shots?`${chosen.length} of 5 selected`:'Loading Steam screenshots...'}</p><div class="screenshot-choices" role="group" aria-label="Background screenshots">${(shots||[]).map((shot,index)=>`<button class="screenshot-choice" data-background-shot="${e(shot.id)}" aria-label="Screenshot ${index+1}" aria-pressed="${chosen.includes(shot.id)}" ${!chosen.includes(shot.id)&&chosen.length>=5?'disabled':''}>${shot.thumbnail?`<img loading="lazy" src="${e(shot.thumbnail)}" alt=""/>`:''}<span>Screenshot ${index+1}</span>${chosen.includes(shot.id)?icon('check'):''}</button>`).join('')}</div>${shots&&!shots.length?'<p>No Steam screenshots are available for this game.</p>':''}</section>`;
+}
 function detailAppearance(game: Game) {
   const accent = detailsAccent(game);
-  return `<section class="glass-section"><h2>Game Accent</h2><p>${gameAccentDrafts.has(game.id) ? 'Local preview color. The saved game accent has not changed.' : game.accent ? `Saved library color · ${e(game.accent.toUpperCase())}` : game.artworkAccent ? `Artwork color from your library · ${e(game.artworkAccent.toUpperCase())}` : 'No artwork color available. This game uses neutral surfaces and controls.'}</p><div class="inner-card"><label class="field"><span><strong>Preview game accent</strong><small>Try a color in this preview.</small></span><input type="color" id="game-accent-color" value="${accent || '#d8d5ce'}" aria-label="Preview game accent" /></label>${toggle('tint','Accent tint','Tint these surfaces with this game’s configured or preview color.',appearance.tint)}</div><button class="quiet extra-actions" data-action="reset-game-accent" ${gameAccentDrafts.has(game.id)?'':'disabled'}>Use saved accent</button></section>${artworkEditor(game)}`;
+  return `<section class="glass-section"><h2>Game Accent</h2><p>${game.accent ? `Saved in rtxForge · ${e(game.accent.toUpperCase())}` : game.artworkAccent ? 'Automatic color from your library poster.' : 'No artwork color available. This game uses neutral surfaces and controls.'}</p><div class="inner-card"><label class="field color-field"><span><strong>Game accent</strong><small>Shared with Desktop Mode. Changes are saved after review.</small></span><input type="color" id="game-accent-color" value="${gameAccentDrafts.get(game.id)||accent||'#b4b4b4'}" aria-label="Game accent" ${!backend.enabled?'disabled':''}/></label>${toggle('tint','Accent tint','Tint these surfaces with this game’s configured color.',appearance.tint)}</div><div class="operation-actions extra-actions"><button class="primary" data-action="review-game-accent" ${!backend.enabled||!gameAccentDrafts.has(game.id)?'disabled':''}>Review accent color</button><button class="quiet" data-action="reset-game-accent" ${!backend.enabled||!game.accent?'disabled':''}>Use artwork color</button></div></section>${screenshotChoices(game)}${artworkEditor(game)}`;
 }
 function setupHero() {
   heroResize?.disconnect();
@@ -672,8 +680,8 @@ function render() {
   const content = view === 'library' ? library() : view === 'presets' ? presets() : view === 'details' ? details() : view === 'packages' ? packages() : view === 'extras' ? extras() : view === 'operation' ? operationView() : settings();
   app.innerHTML = `<div class="shell"><header class="app-header" data-tauri-drag-region><a href="#library" class="brand" data-route="library" aria-label="rtxForge library"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></a><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><span>${icon('eye')}<span>${backend.enabled?'Game Mode':'Read-only demo'}</span></span><div id="input-hints">${hints()}</div><span class="reader-state"><i class="${snapshot ? 'connected' : ''}"></i>${loading ? 'Reading library' : snapshot ? 'Local library loaded' : 'Reader unavailable'}</span></footer></div>`;
   const game = selectedGame(), scene = document.querySelector<HTMLElement>('#scene')!;
-  scene.style.backgroundImage = '';
-  scene.dataset.hero = 'false';
+  if(view==='details'&&snapshot&&game)prioritizeArtwork(snapshot,game.id);
+  applyStoreBackground(view==='details'&&currentPreferences().online_art!==false?game?.appid:null,scene,game?.id);
   applyDetailsAccent();
   applyOperationAccent();
   bind();
@@ -724,7 +732,7 @@ function bind() {
   app.querySelector<HTMLInputElement>('#background-image-file')?.addEventListener('change',event=>{const file=(event.target as HTMLInputElement).files?.[0];if(file)void chooseBackground(file);});
   app.querySelectorAll<HTMLElement>('[data-tool-kind]').forEach(node=>node.addEventListener('click',()=>{ extraKind=node.dataset.toolKind!; extraSource=''; toolImportOpen=true; render(); app.querySelector<HTMLInputElement>('#extra-source')?.focus(); }));
   app.querySelector<HTMLSelectElement>('#test-result')?.addEventListener('change',event=>{ const game=selectedGame(); if(game) void engineRequest('notes_save',{game:game.path,status:(event.target as HTMLSelectElement).value,notes:noteDrafts.get(game.id)??game.notes??''}).then(()=>announce('Test result saved.')).catch(problem=>announce(problem.message)); });
-  app.querySelector<HTMLInputElement>('#game-accent-color')?.addEventListener('input',event=>{ const game=selectedGame(); if(game){gameAccentDrafts.set(game.id,(event.target as HTMLInputElement).value);persistGameAccents();const reset=app.querySelector<HTMLButtonElement>('[data-action="reset-game-accent"]');if(reset)reset.disabled=false;} applyDetailsAccent(); });
+  app.querySelector<HTMLInputElement>('#game-accent-color')?.addEventListener('input',event=>{const game=selectedGame();if(game){gameAccentDrafts.set(game.id,(event.target as HTMLInputElement).value);const review=app.querySelector<HTMLButtonElement>('[data-action="review-game-accent"]');if(review)review.disabled=false;}});
   app.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLButtonElement>('[data-preset-key]').forEach(node => node.addEventListener(node instanceof HTMLButtonElement ? 'click' : 'change',()=>{ drafts.set(presetId,{...drafts.get(presetId),[node.dataset.presetKey!]:node.dataset.presetValue ?? node.value}); render(); app.querySelector<HTMLElement>(`[data-preset-key="${node.dataset.presetKey}"]${node.dataset.presetValue ? `[data-preset-value="${node.dataset.presetValue}"]` : ''}`)?.focus(); }));
   app.querySelectorAll<HTMLElement>('[data-route]').forEach(node => node.addEventListener('click', event => { event.preventDefault(); setView(node.dataset.route as View); }));
   app.querySelectorAll<HTMLElement>('[data-game]').forEach(node => node.addEventListener('click', () => { selectedId = node.dataset.game!; detailsSection='overview'; extraRecords=[];extraSource='';toolImportOpen=false; setView('details'); }));
@@ -734,6 +742,7 @@ function bind() {
   app.querySelector<HTMLInputElement>('#library-size')?.addEventListener('input',event=>{const input=event.target as HTMLInputElement;appearance.libraryScale=Number(input.value);const results=app.querySelector<HTMLElement>('#game-results');if(results)results.scrollTop=0;input.setAttribute('aria-valuetext',input.value+'%');const output=app.querySelector<HTMLOutputElement>('.library-size output');if(output)output.value=input.value+'%';applyAppearance();disposeLibraryLayout();disposeLibraryLayout=setupLibraryLayout(app);requestAnimationFrame(()=>{if(results?.isConnected)results.scrollTop=0;});});
   app.querySelector<HTMLInputElement>('#library-search')?.addEventListener('input', event => { query = (event.target as HTMLInputElement).value; disposeLibraryLayout(); app.querySelector('#game-results')!.innerHTML = gameResults(filteredLibrary(), snapshot?.games.length || 0); bindResults(); disposeLibraryLayout = setupLibraryLayout(app); });
   app.querySelectorAll<HTMLElement>('[data-number-step]').forEach(node=>node.addEventListener('click',()=>{const field=node.parentElement?.querySelector<HTMLInputElement>('input[type=number]');if(!field||field.disabled)return; if(node.dataset.numberStep==='1')field.stepUp();else field.stepDown();field.dispatchEvent(new Event('change',{bubbles:true}));}));
+  app.querySelectorAll<HTMLButtonElement>('[data-background-shot]').forEach(button=>button.addEventListener('click',()=>{const game=selectedGame();if(!game?.appid)return;const shots=backgroundGalleries.get(game.appid)||[],ids=selectedScreenshots(game.id,shots),id=button.dataset.backgroundShot!;if(ids.includes(id)){if(ids.length===1){announce('Keep at least one background selected.');return;}chooseScreenshots(game.id,ids.filter(value=>value!==id));}else if(ids.length<5)chooseScreenshots(game.id,[...ids,id]);render();app.querySelector<HTMLElement>(`[data-background-shot="${id}"]`)?.focus({preventScroll:true});}));
   app.querySelectorAll<HTMLElement>('[data-action]').forEach(node => node.addEventListener('click', () => action(node.dataset.action!)));
   app.querySelectorAll<HTMLElement>('[data-theme-choice]').forEach(node => node.addEventListener('click', () => { appearance.theme = node.dataset.themeChoice as Appearance['theme']; applyAppearance(); render(); app.querySelector<HTMLElement>(`[data-theme-choice="${appearance.theme}"]`)?.focus(); }));
   app.querySelectorAll<HTMLElement>('[data-toggle]').forEach(node => node.addEventListener('click', () => { const key = node.dataset.toggle as 'motion' | 'tint'; appearance[key] = !appearance[key]; applyAppearance(); node.setAttribute('aria-checked', String(appearance[key])); }));
@@ -814,9 +823,10 @@ function bindSelections() {
   app.querySelectorAll<HTMLElement>('[data-select-game]').forEach(node => node.addEventListener('click', () => { const id = node.dataset.selectGame!; if (batchSelection.has(id)) batchSelection.delete(id); else batchSelection.add(id); render(); app.querySelector<HTMLElement>(`[data-select-game="${CSS.escape(id)}"]`)?.focus(); }));
 }
 function action(name: string) {
+  if(name==='randomize-screenshots'){const game=selectedGame(),shots=game?.appid?backgroundGalleries.get(game.appid):undefined;if(game&&shots?.length){const shuffled=[...shots];for(let index=shuffled.length-1;index>0;index--){const other=Math.floor(Math.random()*(index+1));[shuffled[index],shuffled[other]]=[shuffled[other],shuffled[index]];}chooseScreenshots(game.id,shuffled.slice(0,3).map(shot=>shot.id));render();app.querySelector<HTMLElement>('[data-action="randomize-screenshots"]')?.focus({preventScroll:true});}return;}
   if(name==='toggle-window-mode'&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke<boolean>('toggle_fullscreen')).then(fullscreen=>{backend.fullscreen=fullscreen;render();}).catch(problem=>announce(String(problem)));return;}
   if(name==='minimize-app'&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke('minimize_app')).catch(problem=>announce(String(problem)));return;}
-  if (name === 'reset-game-accent') { const game=selectedGame(); if(game)gameAccentDrafts.delete(game.id); persistGameAccents();render(); return; }
+  if(name==='review-game-accent'||name==='reset-game-accent') { const game=selectedGame();if(!game||!backend.enabled)return;void engineRequest<Record<string,unknown>>('settings_get').then(settings=>{const colors={...(settings.game_accents||{}) as Record<string,string>};const identity=Object.keys(colors).find(key=>pathKey(key)===pathKey(game.path))||game.path;if(name==='reset-game-accent')delete colors[identity];else{const color=gameAccentDrafts.get(game.id);if(!color)return;colors[identity]=color;}return withOperation('Review game accent','settings_review',{changes:{game_accents:colors}});}).catch(problem=>announce(problem.message));return; }
   if (name === 'reset-presets') { drafts.delete(presetId); render(); return; }
   if (name === 'select-preset-games') { presetSelection=true; batchSelection.clear(); setView('library'); announce('Select configured games, then review their preset changes.'); return; }
   if (name === 'end-preset-selection') { presetSelection=false; batchSelection.clear(); setView('presets'); return; }
@@ -923,6 +933,7 @@ async function confirmOperation() {
         if(state.changedKeys?.includes('library_view'))libraryView=sharedPreferences.library_view==='list'?'list':sharedPreferences.library_view==='capsules'?'capsules':'grid';
         if(state.changedKeys?.includes('navigation_position'))appearance.navigation=sharedPreferences.navigation_position==='bottom'?'bottom':'top';
         if(state.changedKeys?.includes('ui_scale'))appearance.scale=sharedPreferences.ui_scale==='auto'?'auto':Number(sharedPreferences.ui_scale);
+        if(state.changedKeys?.includes('game_accents')){gameAccentDrafts.clear();await refresh();}
         if(state.changedKeys?.some(key=>['game_folders','extra_folders','library_folders','removed_games'].includes(key))){snapshot=await readSnapshot();batchSelection.clear();}
       } catch { /* The completed operation result remains authoritative if refreshing preferences fails. */ }
     }

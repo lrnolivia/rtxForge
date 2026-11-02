@@ -551,10 +551,12 @@ button.ui-control:not(:disabled):not(.game-card):not(.primary):is(:hover,:focus-
 /* The results pane uses the entire remaining surface, with one scrollbar. */
 :root[data-surface=library] .content{display:flex;flex-direction:column;overflow:hidden}
 :root[data-surface=library] .content>:not(#game-results){flex-shrink:0}
-#game-results{flex:1;min-height:0;overflow:auto;overflow-anchor:none;scrollbar-gutter:auto;padding-inline:24px;margin-inline:-24px}
+#game-results{flex:1;min-height:0;overflow:auto;overflow-anchor:none;scrollbar-gutter:auto;scrollbar-width:auto;scrollbar-color:auto;padding-inline:24px 12px;margin-inline:-24px -12px}
 #game-results:has(.games:not(.game-list)){scrollbar-gutter:auto}
 #game-results::-webkit-scrollbar{width:12px;height:12px}
 #game-results::-webkit-scrollbar-thumb{border:4px solid transparent;background-clip:padding-box;border-radius:12px}
+#game-results::-webkit-scrollbar-track{margin-block:8px}
+#game-results::-webkit-scrollbar-button{display:none;width:0;height:0}
 .games{overflow-anchor:none;min-width:0}
 .library-size-control{position:relative;min-width:0}
 .library-size-button{display:none}
@@ -562,7 +564,7 @@ button.ui-control:not(:disabled):not(.game-card):not(.primary):is(:hover,:focus-
 .library-size{grid-column:auto;grid-row:auto}
 @media(max-width:760px){
   :root[data-surface=library] .content{overflow:auto}
-  #game-results{flex:1 0 200px;padding-inline:16px;margin-inline:-16px}
+  #game-results{flex:1 0 200px;padding-inline:16px 8px;margin-inline:-16px -8px}
   .library-tools{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 44px auto;gap:8px}
   .library-tools .search{grid-column:1/-1;min-width:0}
   .library-filter{grid-column:1;grid-row:2;margin:0;min-width:0}
@@ -582,6 +584,10 @@ button.ui-control:not(:disabled):not(.game-card):not(.primary):is(:hover,:focus-
 :root[data-controller=true] .app-header nav.main-nav button.ui-control:not(:disabled):focus{outline-offset:-3px;scale:1}
 /* Keep navigation available while freeing height after scrolling. */
 @media(min-width:761px){
+  :root[data-surface=library] .content{padding-bottom:12px}
+  .games:not(.game-list){padding-top:16px}
+  .library-tools{grid-template-columns:minmax(180px,36%) minmax(0,1fr) minmax(160px,210px) auto}
+  .library-filter{justify-self:start}
   .shell[data-header-collapsed=true]{grid-template-rows:56px minmax(0,1fr) 40px}
   :root[data-navigation=bottom] .shell[data-header-collapsed=true]{grid-template-rows:minmax(0,1fr) 56px 40px}
   .shell[data-header-collapsed=true] .app-header nav.main-nav{min-height:52px;padding:5px}
@@ -608,3 +614,25 @@ button.ui-control:not(:disabled):not(.game-card):not(.primary):is(:hover,:focus-
   .library-tools select{min-height:40px;padding-block:8px}
   :root[data-surface=library] .library-operation-bar,:root[data-surface=library] .library-tools{margin-bottom:8px}
 }
+
+/* Store screenshots cover Details; smaller originals receive only a fine softening. */
+#scene[data-hero=true][data-store-quality]{inset:0;filter:brightness(.58) saturate(.8);transform:none}
+#scene[data-hero=true][data-store-quality=soft]{inset:-5px;filter:blur(1.5px) brightness(.58) saturate(.8)}
+#scene[data-store-quality=soft]:before{content:'';position:absolute;inset:0;background-image:url('/grain.png');background-repeat:repeat;opacity:.045;mix-blend-mode:soft-light}
+
+/* Action controls use capsule geometry; navigation rows and content cards keep their shape. */
+button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choice,.artwork-asset,.screenshot-choice,.setting-action,.settings-tabs button,.detail-nav button,.extra-nav button,.select-menu button,.shell-menu button,.game-menu button)){border-radius:9999px}
+.feature-mode-segments,.feature-mode-indicator,.preset-segments,.preset-segments button{border-radius:9999px}
+.hero-artwork:after{background:linear-gradient(32deg,rgb(12 18 23 / .94),rgb(12 18 23 / .65) 38%,transparent 90%);opacity:.9}
+
+.scene-next{position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity 1.8s ease;pointer-events:none}
+.scene-next[data-quality=soft]{filter:blur(1.5px)}
+.screenshot-choices{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
+.screenshot-choice{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:6px;text-align:left;border-radius:12px;background:var(--nested);min-width:0}
+.screenshot-choice img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px}
+.screenshot-choice>span:not(.icon){padding:2px 6px 6px;font-size:.8rem}
+.screenshot-choice[aria-pressed=true]{box-shadow:inset 0 0 0 2px var(--accent)}
+.screenshot-choice>.icon{position:absolute;right:12px;top:12px;background:var(--accent);color:var(--primary-ink);padding:4px;border-radius:50%;font-size:16px}
+.details-title-copy h1.game-title{position:relative;isolation:isolate}
+.details-title-copy h1.game-title:before{content:'';position:absolute;inset:-18px -24px;background:rgb(12 18 23 / var(--title-veil,0));filter:blur(16px);z-index:-1;pointer-events:none}
+:root[data-theme] .hero-info-card{background:rgb(255 255 255 / .12);color:#f8f6f1;backdrop-filter:blur(28px) brightness(.36) saturate(1.05);box-shadow:inset 0 0 0 1px rgb(255 255 255 / .2),0 5px 18px rgb(0 0 0 / .08)}

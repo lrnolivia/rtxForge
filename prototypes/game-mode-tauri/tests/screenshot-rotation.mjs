@@ -1,0 +1,30 @@
+import {chromium,expect} from '@playwright/test';
+const browser=await chromium.launch({channel:process.env.RTXFORGE_BROWSER||'msedge',headless:true});
+const page=await browser.newPage({viewport:{width:1920,height:1080},reducedMotion:'no-preference'});
+const errors=[];page.on('pageerror',error=>errors.push(error.message));
+const nav=name=>page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name,exact:true});
+try{
+  await page.clock.install();let fullRequests=0;page.on('request',request=>{if(request.url().includes('/api/store-background?appid=1091500'))fullRequests++;});
+  await page.goto('http://127.0.0.1:1420');await page.waitForSelector('.game-card');expect(fullRequests).toBe(0);
+  await page.getByRole('button',{name:'Open Cyberpunk 2077 details',exact:true}).click();
+  await expect(page.locator('#scene')).toHaveAttribute('data-background-state','ready',{timeout:20000});
+  await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id','0');
+  await expect.poll(()=>fullRequests).toBe(2);
+  await page.clock.fastForward(20050);await page.clock.fastForward(1900);
+  await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id','1');expect(fullRequests).toBeLessThanOrEqual(3);
+  await page.getByRole('button',{name:'Appearance',exact:true}).click();
+  const gallery=page.getByRole('group',{name:'Background screenshots'});
+  await expect(gallery.locator('[aria-pressed=true]')).toHaveCount(3);
+  await gallery.getByRole('button',{name:'Screenshot 4',exact:true}).click();await gallery.getByRole('button',{name:'Screenshot 5',exact:true}).click();
+  await expect(gallery.locator('[aria-pressed=true]')).toHaveCount(5);await expect(gallery.getByRole('button',{name:'Screenshot 6',exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:'Pick a random set',exact:true}).click();await expect(gallery.locator('[aria-pressed=true]')).toHaveCount(3);
+  const chosen=await gallery.locator('[aria-pressed=true]').evaluateAll(nodes=>nodes.map(n=>n.dataset.backgroundShot));
+  await page.reload();await page.waitForSelector('.game-card');await page.getByRole('button',{name:'Open Cyberpunk 2077 details',exact:true}).click();await page.getByRole('button',{name:'Appearance',exact:true}).click();
+  await expect(gallery.locator('[aria-pressed=true]')).toHaveCount(3);
+  expect(await gallery.locator('[aria-pressed=true]').evaluateAll(nodes=>nodes.map(n=>n.dataset.backgroundShot))).toEqual(chosen.sort((a,b)=>Number(a)-Number(b)));
+  const action=page.getByRole('button',{name:'Pick a random set',exact:true});expect(await action.evaluate(n=>parseFloat(getComputedStyle(n).borderTopLeftRadius))).toBeGreaterThanOrEqual(1000);
+  const sidebar=page.getByRole('navigation',{name:'Game details'}).getByRole('button',{name:'Overview',exact:true});expect(await sidebar.evaluate(n=>parseFloat(getComputedStyle(n).borderTopLeftRadius))).toBeLessThan(30);
+  await nav('Library').click();await expect(page.locator('#scene')).toHaveAttribute('data-hero','false');
+  const before=fullRequests;await page.clock.fastForward(60000);expect(fullRequests).toBe(before);expect(errors).toEqual([]);
+  console.log(JSON.stringify({passed:true,checks:['no full screenshots on library startup','current and next only','slow rotation','five-image limit','random three-image set','per-game choices persist','true action pills and rectangular sidebar','rotation stops outside Details']}));
+}finally{await browser.close();}

@@ -4,6 +4,12 @@ The Game Mode application for Windows and Linux, using the approved overlay glas
 
 Library opens game tiles directly. Details uses a full-width desktop-style hero header with the poster beside the title, followed by the section navigation and translucent control workspace. Accent Tint affects that Details window only. Clear, Light and Dark remain independent choices.
 
+Native Game Mode opens fullscreen. F11 or the More options menu switches to a borderless window; the empty header area can be dragged in windowed mode. Library item size is independent of text and display scaling, and its size control moves into a popover on narrow windows.
+
+Game Details loads Steam Store screenshots on demand using the game's known Steam ID. Appearance selects up to five screenshots or picks a random three-image set. Three are selected initially. Images crossfade every 20 seconds while Details is visible; reduced motion disables automatic rotation. Only the current and next chosen full-size images load, with at most six compressed images retained in memory. The loader tries the original of the Store's sized screenshot, prefers verified 3840×2160 imagery, and keeps a bounded 128 MiB disk cache under the application settings directory's `state/game-mode/store-backgrounds` folder. Cached images remain available offline. Lower-resolution originals receive a slight blur and grain. Games without a usable Store image retain the app background.
+
+Posters, capsules, hero artwork and saved per-game accents follow Desktop Mode's shared library records and rtxForge settings. An explicit rtxForge accent wins; otherwise the original poster supplies the automatic color. Old browser-only accent previews do not override Desktop settings. Native accent edits use the shared preference review flow.
+
 ## Run
 
 Use Node 22.12+ and Python 3.11+. Install JavaScript dependencies once:

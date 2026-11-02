@@ -1,7 +1,7 @@
 import type { Snapshot, Game } from './model';
 import { artworkAccent } from './art-accent';
 const steam='https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/';
-interface Assets {active:boolean;urls:Set<string>;cache:Map<string,{image:string;accent?:string|null}>}
+interface Assets {active:boolean;urls:Set<string>;cache:Map<string,{image:string;accent?:string|null}>;jobs?:{game:Game;role:string}[]}
 const assets = new WeakMap<Snapshot,Assets>();
 function session(snapshot:Snapshot) {
   let found=assets.get(snapshot);
@@ -52,11 +52,16 @@ export function clearArtworkCache(snapshot:Snapshot){
   for(const url of state.urls)URL.revokeObjectURL(url);
   state.urls.clear();state.cache.clear();assets.delete(snapshot);
 }
+export function prioritizeArtwork(snapshot:Snapshot,id:string){
+  const jobs=assets.get(snapshot)?.jobs;
+  jobs?.sort((a,b)=>Number(b.game.id===id)-Number(a.game.id===id)||Number(b.role==='poster')-Number(a.role==='poster'));
+}
 export async function hydrateArtwork(snapshot:Snapshot,changed:(game:Game,role:string)=>void){
   const state=session(snapshot);
   // Resolve the authoritative posters (and their colors) before loading heroes.
   const jobs=snapshot.games.flatMap(game=>(game.localArtwork||[]).map(role=>({game,role})))
     .sort((a,b)=>Number(b.role==='poster')-Number(a.role==='poster'));
+  state.jobs=jobs;
   async function worker(){
     while(jobs.length&&state.active){
       const {game,role}=jobs.shift()!,key=game.id+':'+role;

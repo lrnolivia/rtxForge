@@ -50,6 +50,15 @@ function bridge() {
       } catch (error) { res.statusCode = 400; res.end(JSON.stringify({ error: error.message })); }
       return;
     }
+    if (['/api/store-background','/api/store-screenshots'].includes(req.url?.split('?')[0])) {
+      res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
+      const query=new URL(req.url,'http://127.0.0.1:1420').searchParams,appid=query.get('appid')||'',screenshot=query.get('screenshot');
+      if(req.method!=='GET'||!/^[1-9][0-9]{0,9}$/.test(appid)||(screenshot!==null&&!/^[0-9]{1,6}$/.test(screenshot))){res.statusCode=400;return res.end('{}');}
+      const args=[req.url.split('?')[0]==='/api/store-screenshots'?'--background-list':'--background',appid];
+      if(screenshot!==null)args.push('--screenshot',screenshot);
+      try{return res.end(JSON.stringify(await collectSnapshot(args)));}
+      catch{res.statusCode=503;return res.end('{}');}
+    }
     if (req.url?.split('?')[0] === '/api/artwork') {
       res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
       const query=new URL(req.url,'http://127.0.0.1:1420').searchParams,id=query.get('id')||'',role=query.get('role')||'';

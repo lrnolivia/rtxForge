@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn2.steamgriddb.com https://cdn.steamgriddb.com https://shared.akamai.steamstatic.com; font-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; base-uri 'self'; frame-src 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn2.steamgriddb.com https://cdn.steamgriddb.com https://shared.akamai.steamstatic.com https://shared.fastly.steamstatic.com; font-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; base-uri 'self'; frame-src 'none'"
     }
   },
   "bundle": {
@@ -35,6 +35,7 @@
     ],
     "resources": {
       "../bridge/read_snapshot.py": "bridge/read_snapshot.py",
+      "../bridge/store_background.py": "bridge/store_background.py",
       "../bridge/engine_host.py": "bridge/engine_host.py",
       "../bridge/linux_host.py": "bridge/linux_host.py",
       "../bridge/review_routes.py": "bridge/review_routes.py"

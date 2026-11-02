@@ -62,7 +62,7 @@ async fn choose_path(app: tauri::AppHandle, kind: String) -> Result<Option<Strin
     }).await.map_err(|_| "The file picker closed unexpectedly.".to_string())?
 }
 
-fn read_snapshot(app: tauri::AppHandle, artwork: Option<(String,String)>) -> Result<serde_json::Value, String> {
+fn read_snapshot(app: tauri::AppHandle, artwork: Option<(String,String)>, background: Option<String>, screenshot: Option<String>, gallery: bool) -> Result<serde_json::Value, String> {
     // Fixed reader only. No caller-supplied executable, method or filesystem path.
     let checkout = runtime::root();
     let reader = runtime::bridge(&app, "read_snapshot.py")?;
@@ -70,6 +70,8 @@ fn read_snapshot(app: tauri::AppHandle, artwork: Option<(String,String)>) -> Res
     let mut command = Command::new(python);
     command.arg("-B").arg(reader).arg("--root").arg(checkout);
     if let Some((id,role)) = artwork { command.arg("--artwork").arg(id).arg("--role").arg(role); }
+    if let Some(appid) = background { command.arg(if gallery {"--background-list"} else {"--background"}).arg(appid); }
+    if let Some(id) = screenshot { command.arg("--screenshot").arg(id); }
     #[cfg(windows)] {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000);
@@ -82,16 +84,28 @@ fn read_snapshot(app: tauri::AppHandle, artwork: Option<(String,String)>) -> Res
 
 #[tauri::command]
 async fn snapshot(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    tauri::async_runtime::spawn_blocking(move || read_snapshot(app,None)).await.map_err(|_| "The library reader stopped unexpectedly.".to_string())?
+    tauri::async_runtime::spawn_blocking(move || read_snapshot(app,None,None,None,false)).await.map_err(|_| "The library reader stopped unexpectedly.".to_string())?
 }
 
 #[tauri::command]
 async fn artwork(app: tauri::AppHandle, id: String, role: String) -> Result<serde_json::Value,String> {
     if id.len()>100 || !["poster","hero","capsule"].contains(&role.as_str()) { return Err("Invalid artwork selection.".into()); }
-    tauri::async_runtime::spawn_blocking(move || read_snapshot(app,Some((id,role)))).await.map_err(|_| "Artwork reader stopped.".to_string())?
+    tauri::async_runtime::spawn_blocking(move || read_snapshot(app,Some((id,role)),None,None,false)).await.map_err(|_| "Artwork reader stopped.".to_string())?
+}
+
+#[tauri::command]
+async fn store_background(app: tauri::AppHandle, appid: String, screenshot_id: Option<String>) -> Result<serde_json::Value,String> {
+    if appid.is_empty() || appid.len()>10 || !appid.bytes().all(|byte|byte.is_ascii_digit()) { return Err("Invalid Steam application ID.".into()); }
+    tauri::async_runtime::spawn_blocking(move || read_snapshot(app,None,Some(appid),screenshot_id,false)).await.map_err(|_| "Store background reader stopped.".to_string())?
+}
+
+#[tauri::command]
+async fn store_screenshots(app: tauri::AppHandle, appid: String) -> Result<serde_json::Value,String> {
+    if appid.is_empty() || appid.len()>10 || !appid.bytes().all(|byte|byte.is_ascii_digit()) { return Err("Invalid Steam application ID.".into()); }
+    tauri::async_runtime::spawn_blocking(move || read_snapshot(app,None,Some(appid),None,true)).await.map_err(|_| "Store screenshot list stopped.".to_string())?
 }
 
 fn main() {
-    tauri::Builder::default().plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![snapshot, artwork, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
+    tauri::Builder::default().plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![snapshot, artwork, store_background, store_screenshots, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
         .run(tauri::generate_context!()).expect("Could not run Game Mode");
 }

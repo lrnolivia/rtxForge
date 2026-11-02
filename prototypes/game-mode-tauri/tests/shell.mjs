@@ -50,20 +50,18 @@ try {
   await page.locator('#library-search').fill('');
   await expect(page.locator('.game-card')).toHaveCount(count);
   await expect(page.locator('.games')).toHaveAttribute('data-visible-rows','2');
-  // The demo's per-game color must propagate to the whole library and survive
-  // a reload, without writing the shared desktop preferences.
+  // Desktop Mode's saved color is authoritative, including over old browser previews.
+  const savedAccent=await page.locator('.game-item').filter({has:page.getByRole('button',{name:'Open The Sims™ 4 details',exact:true})}).evaluate(n=>n.style.getPropertyValue('--game-accent'));
+  const simsIdentity=await page.locator('.game-item').filter({has:page.getByRole('button',{name:'Open The Sims™ 4 details',exact:true})}).getAttribute('data-library-game');
   await page.getByRole('button',{name:'Open The Sims™ 4 details',exact:true}).click();
   await page.getByRole('button',{name:'Appearance',exact:true}).click();
-  await page.locator('#game-accent-color').fill('#db38a3');
-  await expect(page.getByRole('button',{name:'Use saved accent',exact:true})).toBeEnabled();
+  await expect(page.locator('#game-accent-color')).toBeDisabled();
+  await page.evaluate(id=>{localStorage.setItem('rtxforge-game-mode-accents',JSON.stringify({[id]:'#db38a3'}));},simsIdentity);
   await nav('Library').click();
   const sims=page.locator('.game-item').filter({has:page.getByRole('button',{name:'Open The Sims™ 4 details',exact:true})});
-  expect(await sims.evaluate(n=>n.style.getPropertyValue('--game-accent'))).toBe('#db38a3');
-  await sims.locator('[data-select-game]').click();
-  await expect(sims.locator('.game-card')).toHaveCSS('background-color','rgb(219, 56, 163)');
-  await page.getByRole('button',{name:'Clear selection',exact:true}).click();
+  expect(await sims.evaluate(n=>n.style.getPropertyValue('--game-accent'))).toBe(savedAccent);
   await page.reload();await page.waitForSelector('.game-card');
-  expect(await sims.evaluate(n=>n.style.getPropertyValue('--game-accent'))).toBe('#db38a3');
+  expect(await sims.evaluate(n=>n.style.getPropertyValue('--game-accent'))).toBe(savedAccent);
   for(const size of [{width:1440,height:990},{width:960,height:900},{width:390,height:844}]) {
     await page.setViewportSize(size);
     for(const layout of ['Poster grid','Wide capsules','Game list']) {
@@ -92,5 +90,5 @@ try {
   await nav('Settings').click();
   await expect(page.locator('#details-navigation')).toHaveValue('sidebar');
   expect(errors).toEqual([]);
-  console.log(JSON.stringify({passed:true,checks:['full-width 4K at 150% equivalent','two complete poster rows with full-height results pane','all games reachable in real results scroller','focus and scroll restored after details','search replacement recalculates layout','Sims 4 color propagates to selected library card and survives reload','poster/capsule/list proportions and no overflow at 1440/960/390','Presets and all appearance themes fit','narrow menu anchoring and Escape focus/ARIA','sidebar default','no page errors']}));
+  console.log(JSON.stringify({passed:true,checks:['full-width 4K at 150% equivalent','two complete poster rows with full-height results pane','all games reachable in real results scroller','focus and scroll restored after details','search replacement recalculates layout','Desktop accent stays authoritative across navigation and reload','poster/capsule/list proportions and no overflow at 1440/960/390','Presets and all appearance themes fit','narrow menu anchoring and Escape focus/ARIA','sidebar default','no page errors']}));
 } finally {await browser.close();}

@@ -71,3 +71,18 @@ The browser preview defaults to the safe local reader. `Run.ps1 -Engine` makes t
 
 
 The Library uses real saved overrides or the shared artwork signature algorithm. Idle titles are neutral. Selected poster/capsule cards and complete list rows use the solid game accent with readable ink, matching the desktop selection model. Hero artwork and Details tint span the frame; section cards use one material without duplicate outer-glass layers. These visual checks do not establish native feature parity or acceptance of real game operations.
+
+
+## Native delivery update
+
+Native operations are enabled by default; the explicit read-only environment
+flag always wins. Release resolution requires the packaged private engine,
+Python and adapter. Window close, application exit and Desktop handoff drain the
+host at existing safe cancellation boundaries and reap its process. Process
+fixtures cover EOF during a transaction and restarting an idle host. Route token
+consumption is locked against concurrent confirmation.
+
+Windows and Linux payload jobs include the same offline screenshot detector,
+private Python, complete manifests and an installed-directory hello/settings
+smoke. These checks do not establish live game, physical controller, Wayland,
+X11 or Gamescope acceptance. Those must be reported separately from packaging.

@@ -6,7 +6,6 @@ import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type App
 import { operationFlow,operationStep,flowGame } from './operation-ui';
 import { installInput } from './input';
 import { setupLibraryLayout } from './library-layout';
-import { setupShellLayout } from './shell-layout';
 import { heroCrop, analyzeHeroFocus } from './hero-focus';
 import { applyStoreBackground, prepareStoreBackground, screenshotGallery, selectedScreenshots, chooseScreenshots, updateBackgroundContrast, type StoreScreenshot } from './store-background';
 import { webviewZoom } from './display-scale';
@@ -431,7 +430,7 @@ function setupHero() {
   const apply = () => {
     frame=0;
     if(page.clientWidth!==measuredWidth)measure();
-    if (page.clientWidth <= 760) { page.dataset.collapsing='false';page.dataset.heroCompact='false';page.dataset.heroScrolled='false';page.dataset.heroSummary='true';applyHeroFraming();applyDetailsAccent();return; }
+    if (page.clientWidth <= 760) { page.style.setProperty('--hero-contrast-visibility','1');page.style.setProperty('--hero-title-bright','100%');page.dataset.collapsing='false';page.dataset.heroCompact='false';page.dataset.heroScrolled='false';page.dataset.heroSummary='true';applyHeroFraming();applyDetailsAccent();return; }
     page.dataset.collapsing='true';
     const removed=Math.min(scroller.scrollTop,expanded-compact), progress=removed/(expanded-compact);
     page.style.setProperty('--hero-expanded',expanded+'px');
@@ -442,6 +441,8 @@ function setupHero() {
     page.style.setProperty('--poster-radius',10-4*progress+'px');
     page.style.setProperty('--title-size',(selectedGame()!.name.length>28 ? 31-7*progress : 38-12*progress)+'px');
     page.style.setProperty('--art-opacity',String(.92*(1-progress)**2));
+    page.style.setProperty('--hero-contrast-visibility',String(Math.max(0,1-progress/.32)**2));
+    page.style.setProperty('--hero-title-bright',Math.max(0,1-progress/.45)*100+'%');
     page.style.setProperty('--identity-left',(removed>0?94:30)+'px');
     page.style.setProperty('--back-top',(18+24*progress)+'px');
     page.dataset.heroScrolled=String(removed>0);
@@ -729,7 +730,6 @@ function setupScrollFades() {
 }
 let arrivalKey = '';
 let disposeLibraryLayout = () => {};
-let disposeShellLayout = () => {};
 function render() {
   const priorFocus = document.activeElement instanceof HTMLElement && app.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = priorFocus ? (priorFocus.id ? `#${CSS.escape(priorFocus.id)}` : [...priorFocus.attributes].filter(a=>a.name.startsWith('data-')).map(a=>`[${a.name}="${CSS.escape(a.value)}"]`).join('')) : null;
@@ -737,7 +737,6 @@ function render() {
   const arrival = nextArrival !== arrivalKey ? captureArrival(app) : null;
   closeSelectMenu(false);
   disposeLibraryLayout();
-  disposeShellLayout();
   const sameSurface = renderedView === view && (view !== 'details' || renderedGame === selectedGame()?.id);
   const contentScroll = sameSurface ? app.querySelector<HTMLElement>('#content')?.scrollTop || 0 : 0;
   const detailsScroll = sameSurface ? app.querySelector<HTMLElement>('.details-scroll')?.scrollTop || 0 : 0;
@@ -762,7 +761,6 @@ function render() {
   const main = app.querySelector<HTMLElement>('#content'); if(main)main.scrollTop=contentScroll;
   const results = app.querySelector<HTMLElement>('#game-results'); if(results)results.scrollTop=resultsScroll;
   const scrollingDetails=app.querySelector<HTMLElement>('.details-scroll'); if(scrollingDetails) { scrollingDetails.scrollTop=detailsScroll; scrollingDetails.dispatchEvent(new Event('scroll')); }
-  disposeShellLayout = setupShellLayout(app);
   renderedView=view;renderedGame=selectedGame()?.id||'';
   if (arrival) arrive(app, arrival, view);
   if (sameSurface && focusKey) app.querySelector<HTMLElement>(focusKey)?.focus({preventScroll:true});

@@ -20,3 +20,17 @@ This package is an isolated Game Mode UI preview. It reads the real local librar
 - Signing, production updater integration and replacement of the existing native shells.
 
 The Desktop hero port is deferred at the user's request and has been withdrawn from this branch. Hero presentation refinements continue in Game Mode only. The portable executable is a separate Game Mode preview. Build receipts identify the packaged source revision. Prior local preview versions and the existing Desktop installation are retained for rollback.
+
+
+## Production delivery checks
+
+The current source adds 39 Python adapter/screening/lifecycle checks and retains
+17 JavaScript unit checks. Synthetic controller, fixed-shell geometry and hero
+collapse checks run against the local browser server. Real subprocess fixtures
+verify transaction drain on EOF and one-time concurrent review consumption.
+
+The portable screening worker must be tested without PYTHONPATH or a development
+checkout. Package validation verifies all files and runs hello/settings_get from
+the bundled Python before publishing an installation shortcut. Full Windows and
+Linux builds run in the Game Mode native workflow. Native resource measurements,
+GUI platform acceptance and live game operations remain separate evidence.

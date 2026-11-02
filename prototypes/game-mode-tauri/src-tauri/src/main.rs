@@ -2,11 +2,23 @@
 
 use std::{path::PathBuf, process::Command};
 use tauri_plugin_dialog::DialogExt;
+use tauri::Manager;
+use std::sync::atomic::Ordering;
 mod engine;
 mod runtime;
 
 #[tauri::command]
-fn exit_app(app: tauri::AppHandle) { app.exit(0); }
+fn exit_app(app: tauri::AppHandle) { close_safely(&app); }
+
+fn close_safely(app: &tauri::AppHandle) {
+    let state = app.state::<engine::EngineState>();
+    if state.closing.swap(true, Ordering::SeqCst) { return; }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        engine::drain(&app.state::<engine::EngineState>());
+        app.exit(0);
+    });
+}
 
 #[tauri::command]
 fn toggle_fullscreen(window: tauri::Window) -> Result<bool,String> {
@@ -19,7 +31,7 @@ fn toggle_fullscreen(window: tauri::Window) -> Result<bool,String> {
 fn minimize_app(window: tauri::Window) -> Result<(),String> { window.minimize().map_err(|e|e.to_string()) }
 
 #[tauri::command]
-fn desktop_mode(app: tauri::AppHandle) -> Result<(), String> {
+async fn desktop_mode(app: tauri::AppHandle) -> Result<(), String> {
     let mut candidates = Vec::new();
     #[cfg(windows)] {
         if let Some(base) = std::env::var_os("LOCALAPPDATA") {
@@ -38,9 +50,19 @@ fn desktop_mode(app: tauri::AppHandle) -> Result<(), String> {
     }
     let executable = candidates.into_iter().find(|path| path.is_file())
         .ok_or("The desktop application is not installed in its standard location.")?;
-    Command::new(executable).env_remove("SteamAppId").env_remove("SteamGameId")
-        .spawn().map_err(|_| "The desktop application could not be opened.")?;
-    app.exit(0);
+    if app.state::<engine::EngineState>().closing.swap(true, Ordering::SeqCst) {
+        return Err("The application is already closing.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        engine::drain(&app.state::<engine::EngineState>());
+        let result = Command::new(executable).env_remove("SteamAppId").env_remove("SteamGameId").spawn();
+        if result.is_ok() { app.exit(0); Ok(()) } else {
+            let state = app.state::<engine::EngineState>();
+            state.drained.store(false, Ordering::SeqCst);
+            state.closing.store(false, Ordering::SeqCst);
+            Err("The desktop application could not be opened.".to_string())
+        }
+    }).await.map_err(|_| "Desktop handoff stopped unexpectedly.".to_string())??;
     Ok(())
 }
 
@@ -64,9 +86,9 @@ async fn choose_path(app: tauri::AppHandle, kind: String) -> Result<Option<Strin
 
 fn read_snapshot(app: tauri::AppHandle, artwork: Option<(String,String)>, background: Option<String>, screenshot: Option<String>, gallery: bool) -> Result<serde_json::Value, String> {
     // Fixed reader only. No caller-supplied executable, method or filesystem path.
-    let checkout = runtime::root();
+    let checkout = runtime::root()?;
     let reader = runtime::bridge(&app, "read_snapshot.py")?;
-    let python = runtime::python();
+    let python = runtime::python()?;
     let mut command = Command::new(python);
     command.arg("-B").arg(reader).arg("--root").arg(checkout);
     if let Some((id,role)) = artwork { command.arg("--artwork").arg(id).arg("--role").arg(role); }
@@ -107,5 +129,16 @@ async fn store_screenshots(app: tauri::AppHandle, appid: String) -> Result<serde
 
 fn main() {
     tauri::Builder::default().plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![snapshot, artwork, store_background, store_screenshots, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
-        .run(tauri::generate_context!()).expect("Could not run Game Mode");
+        .build(tauri::generate_context!()).expect("Could not build Game Mode")
+        .run(|app, event| match event {
+            tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::CloseRequested { api, .. }, .. } => {
+                api.prevent_close(); close_safely(app);
+            },
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                if !app.state::<engine::EngineState>().drained.load(Ordering::SeqCst) {
+                    api.prevent_exit(); close_safely(app);
+                }
+            },
+            _ => ()
+        });
 }

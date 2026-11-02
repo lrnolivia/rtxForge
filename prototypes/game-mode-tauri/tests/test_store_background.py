@@ -5,6 +5,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('store_background', Path(__file__).resolve().parents[1] / 'bridge/store_background.py')
 store = importlib.util.module_from_spec(spec)
@@ -19,7 +20,11 @@ class StoreBackgroundTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.cache = Path(self.directory.name)
-        self.urls = ['https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/10/ss_' + str(i) + '.jpg' for i in range(3)]
+        hashes = [f'{i + 1:040x}' for i in range(3)]
+        self.urls = ['https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/10/ss_' + value + '.jpg' for value in hashes]
+        policy = patch.dict(store.CLEAN_SCREENSHOTS, {'10': frozenset(hashes)})
+        policy.start()
+        self.addCleanup(policy.stop)
         self.calls = []
 
     def tearDown(self):
@@ -95,7 +100,9 @@ class StoreBackgroundTests(unittest.TestCase):
         hud = clean.replace(approved, '0' * 40)
         (self.cache / (appid + '.gallery.json')).write_text(json.dumps({'checked': 100, 'screenshots': [
             {'id': '0', 'full': hud}, {'id': '8', 'full': clean}]}), encoding='utf-8')
-        self.assertEqual(store.gallery(appid, self.cache, now=101), [{'id': '8', 'full': clean}])
+        self.assertEqual(store.gallery(appid, self.cache, now=101,
+                         download=lambda *_: jpeg_header(1280, 720),
+                         screen=lambda paths: [{'clean': False, 'reason': 'edge-ui-label'} for _ in paths]), [{'id': '8', 'full': clean}])
         data = jpeg_header(3840, 2160)
         (self.cache / (appid + '-0.image')).write_bytes(data)
         import hashlib
@@ -115,6 +122,33 @@ class StoreBackgroundTests(unittest.TestCase):
         self.assertEqual(store.gallery(appid, self.cache, now=101), shots[2:])
         for shot in shots[:2]:
             self.assertFalse(store.clean_screenshot(shot['full'], appid))
+
+    def test_unreviewed_images_and_hud_only_galleries_do_not_become_backgrounds(self):
+        for appid in ['99999999', '71250', '213610', '2198150']:
+            self.assertFalse(store.clean_screenshot(f'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/ss_' + '0' * 40 + '.jpg', appid))
+
+    def test_unfamiliar_library_is_screened_automatically_and_decisions_are_cached(self):
+        appid = '777'
+        shots = [{'id': str(i), 'full': f'https://shared.akamai.steamstatic.com/steam/apps/{appid}/ss_' + str(i+8)*40 + '.jpg'} for i in range(2)]
+        (self.cache / (appid + '.gallery.json')).write_text(json.dumps({'checked': 100, 'screenshots': shots}), encoding='utf-8')
+        calls = []
+        def screen(paths):
+            calls.append(len(paths))
+            self.assertTrue(all(path.is_file() for path in paths))
+            return [{'clean': True, 'reason': 'screened'}, {'clean': False, 'reason': 'text-heavy'}]
+        result = store.gallery(appid, self.cache, now=101, download=lambda *_: jpeg_header(1280, 720), screen=screen)
+        self.assertEqual(result, shots[:1])
+        self.assertEqual(calls, [2])
+        self.assertTrue(store.clean_screenshot(shots[0]['full'], appid, self.cache))
+        self.assertEqual(store.gallery(appid, self.cache, now=102,
+                         download=lambda *_: self.fail('Cached decisions must avoid network and inference'),
+                         screen=lambda *_: self.fail('Cached decision must avoid model startup')), shots[:1])
+
+    def test_missing_screening_worker_does_not_admit_unknown_images(self):
+        appid = '778'
+        shot = {'id': '0', 'full': f'https://shared.akamai.steamstatic.com/steam/apps/{appid}/ss_' + '8'*40 + '.jpg'}
+        (self.cache / (appid + '.gallery.json')).write_text(json.dumps({'checked': 100, 'screenshots': [shot]}), encoding='utf-8')
+        self.assertEqual(store.gallery(appid, self.cache, now=101, download=lambda *_: jpeg_header(1280, 720), screen=lambda _: []), [])
 
 
 if __name__ == '__main__':

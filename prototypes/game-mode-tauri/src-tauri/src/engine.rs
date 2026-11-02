@@ -3,11 +3,11 @@ use tauri::Emitter;
 
 type Reply = Result<serde_json::Value, String>;
 type Pending = Arc<Mutex<HashMap<String, mpsc::Sender<Reply>>>>;
-pub struct Session { _child: Mutex<Child>, input: Mutex<ChildStdin>, pending: Pending, alive: Arc<AtomicBool> }
+pub struct Session { child: Mutex<Child>, input: Mutex<Option<ChildStdin>>, pending: Pending, alive: Arc<AtomicBool> }
 #[derive(Default)]
-pub struct EngineState { session: Mutex<Option<Arc<Session>>> }
+pub struct EngineState { session: Mutex<Option<Arc<Session>>>, pub closing: AtomicBool, pub drained: AtomicBool }
 
-pub fn enabled() -> bool { std::env::var("RTXFORGE_PREVIEW_READ_ONLY").as_deref() != Ok("1") && std::env::var("RTXFORGE_ENGINE_BRIDGE").as_deref() == Ok("1") }
+pub fn enabled() -> bool { std::env::var("RTXFORGE_PREVIEW_READ_ONLY").as_deref() != Ok("1") && std::env::var("RTXFORGE_ENGINE_BRIDGE").as_deref() != Ok("0") }
 #[tauri::command]
 pub fn engine_status(window: tauri::Window) -> serde_json::Value {
     serde_json::json!({"enabled": enabled(), "fullscreen":window.is_fullscreen().unwrap_or(false), "reason": if enabled() { "Reviewed operations are available." } else { "Read-only preview. Game, Steam and shared settings actions are disabled." }})
@@ -15,11 +15,13 @@ pub fn engine_status(window: tauri::Window) -> serde_json::Value {
 
 fn session(app: &tauri::AppHandle, state: &EngineState) -> Result<Arc<Session>, String> {
     let mut current = state.session.lock().map_err(|_| "Engine session lock failed.")?;
+    if state.closing.load(Ordering::SeqCst) { return Err("The application is closing.".into()); }
     if let Some(found) = current.as_ref() { if found.alive.load(Ordering::Relaxed) { return Ok(found.clone()); } }
+    if let Some(dead) = current.take() { let _ = dead.child.lock().map(|mut child| child.wait()); }
     let reader = crate::runtime::bridge(app, "engine_host.py")?;
-    let python = crate::runtime::python();
+    let python = crate::runtime::python()?;
     let mut command = Command::new(python);
-    command.env("RTXFORGE_ROOT", crate::runtime::root()).arg("-u").arg("-B").arg(reader).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    command.env("RTXFORGE_ROOT", crate::runtime::root()?).env("RTXFORGE_ENGINE_BRIDGE", "1").arg("-u").arg("-B").arg(reader).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
     let mut child = command.spawn().map_err(|_| "Could not start Python for the reviewed host.")?;
     let input = child.stdin.take().ok_or("Host input is unavailable.")?;
@@ -45,7 +47,7 @@ fn session(app: &tauri::AppHandle, state: &EngineState) -> Result<Arc<Session>, 
         reader_alive.store(false, Ordering::Relaxed);
         if let Ok(mut requests) = reader_pending.lock() { for (_, reply) in requests.drain() { let _ = reply.send(Err("The reviewed host stopped. Review again before retrying.".into())); } }
     });
-    let result = Arc::new(Session { _child: Mutex::new(child), input: Mutex::new(input), pending, alive });
+    let result = Arc::new(Session { child: Mutex::new(child), input: Mutex::new(Some(input)), pending, alive });
     *current = Some(result.clone()); Ok(result)
 }
 
@@ -62,11 +64,25 @@ pub async fn engine_request(app: tauri::AppHandle, state: tauri::State<'_, Engin
         { let mut requests = session.pending.lock().map_err(|_| "Engine request lock failed.")?;
           if requests.contains_key(&id) { return Err("Duplicate engine request.".into()); } requests.insert(id.clone(), sender); }
         let message = serde_json::json!({"id": id, "method": method, "params": params});
-        let written = session.input.lock().map_err(|_| "Engine input lock failed.").and_then(|mut input| writeln!(input, "{}", message).map_err(|_| "The reviewed host disconnected."));
+        let written = session.input.lock().map_err(|_| "Engine input lock failed.").and_then(|mut input| {
+            let input = input.as_mut().ok_or("The application is closing.")?;
+            writeln!(input, "{}", message).map_err(|_| "The reviewed host disconnected.")
+        });
         if let Err(error) = written { if let Ok(mut requests) = session.pending.lock() { requests.remove(&id); } return Err(error.into()); }
         match receiver.recv_timeout(Duration::from_secs(1800)) {
             Ok(result) => result,
             Err(_) => { if let Ok(mut requests) = session.pending.lock() { requests.remove(&id); } Err("The host is still working or disconnected. Check its state before retrying.".to_string()) }
         }
     }).await.map_err(|_| "The engine request stopped unexpectedly.".to_string())?
+}
+
+pub fn drain(state: &EngineState) {
+    state.closing.store(true, Ordering::SeqCst);
+    let session = state.session.lock().ok().and_then(|mut current| current.take());
+    if let Some(session) = session {
+        // EOF requests safe cancellation; the host finishes its current transaction.
+        if let Ok(mut input) = session.input.lock() { input.take(); }
+        if let Ok(mut child) = session.child.lock() { let _ = child.wait(); }
+    }
+    state.drained.store(true, Ordering::SeqCst);
 }

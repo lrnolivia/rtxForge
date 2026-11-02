@@ -5,13 +5,13 @@ import path from 'node:path';
 import { EngineClient } from './bridge/engine-client.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-export function collectSnapshot(extra = []) {
+export function collectSnapshot(extra = [], timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const executable = process.env.RTXFORGE_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
     const child = spawn(executable, ['-B', path.join(root, 'bridge/read_snapshot.py'), '--root', path.resolve(root, '../..'), ...extra], {
       windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
     });
-    const timeout = setTimeout(() => { child.kill(); reject(new Error('The library reader timed out. Try refreshing.')); }, 20000);
+    const timeout = setTimeout(() => { child.kill(); reject(new Error('The library reader timed out. Try refreshing.')); }, timeoutMs);
     timeout.unref();
     let data = '', errors = '';
     child.stdout.on('data', chunk => {
@@ -56,7 +56,7 @@ function bridge() {
       if(req.method!=='GET'||!/^[1-9][0-9]{0,9}$/.test(appid)||(screenshot!==null&&!/^[0-9]{1,6}$/.test(screenshot))){res.statusCode=400;return res.end('{}');}
       const args=[req.url.split('?')[0]==='/api/store-screenshots'?'--background-list':'--background',appid];
       if(screenshot!==null)args.push('--screenshot',screenshot);
-      try{return res.end(JSON.stringify(await collectSnapshot(args)));}
+      try{return res.end(JSON.stringify(await collectSnapshot(args,60000)));}
       catch{res.statusCode=503;return res.end('{}');}
     }
     if (req.url?.split('?')[0] === '/api/artwork') {

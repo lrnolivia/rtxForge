@@ -6,6 +6,14 @@ const errors=[];
 page.on('pageerror',error=>errors.push(error.message));
 const nav=name=>page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name,exact:true});
 const noOverflow=async()=>expect(await page.locator('#content,.shell,.main-nav,.preset-pod,.preset-mfg,.field,.number-stepper,.game-list').evaluateAll(nodes=>nodes.filter(n=>n.scrollWidth>n.clientWidth+2).map(n=>n.className))).toEqual([]);
+const stableShellOnScroll=async selector=>{
+  const geometry=()=>page.locator('.app-header').evaluate(n=>{const nav=n.querySelector('.main-nav'),brand=n.querySelector('.brand');return [n.getBoundingClientRect().height,nav.getBoundingClientRect().height,brand.getBoundingClientRect().height,getComputedStyle(brand).display];});
+  const before=await geometry(),top=await page.locator(selector).evaluate(n=>n.scrollTop);
+  await page.locator(selector).evaluate(n=>{n.scrollTop=n.scrollHeight;});
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  expect(await geometry(),'Main header and navigation stay fixed while content scrolls').toEqual(before);
+  await page.locator(selector).evaluate((n,y)=>{n.scrollTop=y;},top);
+};
 try {
   await page.goto('http://127.0.0.1:1420');
   await page.waitForSelector('.game-card');
@@ -23,6 +31,7 @@ try {
   expect(rows.width).toBeGreaterThan(2400);
   expect(rows.visible).toBe(2);expect(rows.complete).toBe(2);expect(rows.complete).toBeGreaterThanOrEqual(2);
   await noOverflow();
+  await stableShellOnScroll('#game-results');
   await page.setViewportSize({width:1920,height:1080});
   await expect(page.locator('.games')).toHaveAttribute('data-visible-rows','2');
   const size=page.getByRole('slider',{name:'Library item size'});
@@ -75,8 +84,8 @@ try {
     for(const button of await heroActions.all())await expect(button.locator(':scope>.icon')).toBeVisible();
     expect(await page.locator('.hero-actions').evaluate(n=>n.scrollWidth<=n.clientWidth+1)).toBe(true);
     await page.getByRole('button',{name:'Back to Library',exact:true}).click();
-    await nav('Presets').click();await noOverflow();
-    await nav('Settings').click();await noOverflow();
+    await stableShellOnScroll('#game-results');
+    for(const section of ['Presets','Packages','Extras','Settings']){await nav(section).click();await noOverflow();await stableShellOnScroll('#content');}
     for(const theme of ['Clear','Dark','Light']){await page.getByRole('button',{name:theme,exact:true}).click();await noOverflow();}
     await nav('Library').click();
   }

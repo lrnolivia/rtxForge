@@ -304,4 +304,9 @@ def bind(root, send):
             send({'id': rid, 'result': result})
         except Exception as error:
             send({'id': rid, 'error': desktop_service.friendly(str(error))})
-    return {'handle': handle, 'send': send}
+    def shutdown():
+        routes.shutdown()
+        for token in list(running) + list(reviews):
+            cancel({'token': token})
+        discard({'tokens': list(reviews)})
+    return {'handle': handle, 'send': send, 'shutdown': shutdown}

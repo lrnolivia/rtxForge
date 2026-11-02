@@ -10,6 +10,7 @@ from pathlib import Path
 import runpy
 import sys
 import threading
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 ALLOWED = frozenset(('hello', 'hardware', 'scan', 'prepare', 'execute', 'cancel', 'discard_operation',
                      'prepare_routes', 'execute_routes', 'cancel_routes', 'discard_routes',
@@ -34,18 +35,8 @@ def main():
                 print(json.dumps(message, default=str), file=output, flush=True)
         host = bind(root, send)
         host['send']({'event': 'ready', 'adapter': 'existing Linux DesktopService', 'automaticRefresh': False})
-        workers = []
-        for line in sys.stdin.buffer:
-            request = json.loads(line)
-            if request.get('method') not in ALLOWED:
-                send({'id': request.get('id'), 'error': 'Unsupported reviewed adapter method.'})
-                continue
-            workers = [worker for worker in workers if worker.is_alive()]
-            worker = threading.Thread(target=host['handle'], args=(request,))
-            worker.start()
-            workers.append(worker)
-        for worker in workers:
-            worker.join()
+        from host_lifecycle import serve
+        serve(sys.stdin.buffer, host['handle'], send, ALLOWED, host['shutdown'])
         return 0
     host = runpy.run_path(str(root / 'windows/engine-host/rtxforge_win_host.py'), run_name='rtxforge_prototype_host')
     features = sys.modules['win_features']
@@ -191,28 +182,13 @@ def main():
     host['METHODS'].update(prepare_routes=routes.prepare, execute_routes=routes.execute, cancel_routes=routes.cancel, discard_routes=routes.discard)
     host['_DOWNLOAD_METHODS'].update(('prepare_routes', 'execute_routes'))
     host['send']({'event': 'ready', 'adapter': 'existing Windows reviewed host', 'automaticRefresh': False})
-    workers = []
-    for line in sys.stdin.buffer:
-        try:
-            request = json.loads(line)
-            method = request.get('method')
-            if method not in ALLOWED:
-                host['send']({'id': request.get('id'), 'error': 'Method is outside this prototype’s reviewed adapter.'})
-                continue
-            if method in ('update_dlss',) and 'token' not in (request.get('params') or {}):
-                host['send']({'id': request.get('id'), 'error': 'A fresh exact review token is required.'})
-                continue
-            workers = [worker for worker in workers if worker.is_alive()]
-            if method == 'cancel':
-                host['handle'](request)
-            else:
-                worker = threading.Thread(target=host['handle'], args=(request,), daemon=False)
-                worker.start()
-                workers.append(worker)
-        except (ValueError, TypeError) as error:
-            host['send']({'error': str(error)})
-    for worker in workers:
-        worker.join()
+    def shutdown():
+        routes.shutdown()
+        for token in list(host['running']) + list(host['reviews']):
+            host['cancel']({'token': token})
+        discard_reviews({'tokens': list(host['reviews']) + list(host['steam_reviews'])})
+    from host_lifecycle import serve
+    serve(sys.stdin.buffer, host['handle'], host['send'], ALLOWED, shutdown)
     return 0
 
 

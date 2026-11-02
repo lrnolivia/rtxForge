@@ -2,7 +2,7 @@ param([switch]$Native, [switch]$Build, [switch]$Engine)
 $ErrorActionPreference = 'Stop'
 Push-Location $PSScriptRoot
 try {
-    if ($Engine) { $env:RTXFORGE_ENGINE_BRIDGE = '1'; Remove-Item Env:RTXFORGE_PREVIEW_READ_ONLY -ErrorAction SilentlyContinue }
+    if ($Engine) { $env:RTXFORGE_ENGINE_BRIDGE = '1' }
     else { $env:RTXFORGE_PREVIEW_READ_ONLY = '1'; Remove-Item Env:RTXFORGE_ENGINE_BRIDGE -ErrorAction SilentlyContinue }
     if (-not $env:RTXFORGE_ROOT) { $env:RTXFORGE_ROOT = (Resolve-Path ../..).Path }
     $nodePath = if ($env:RTXFORGE_NODE) { $env:RTXFORGE_NODE } else { (Get-Command node -ErrorAction Stop).Source }
@@ -17,4 +17,5 @@ try {
     elseif ($Native) { & $nodePath node_modules/@tauri-apps/cli/tauri.js dev }
     else { & $nodePath node_modules/vite/bin/vite.js --host 127.0.0.1 --port 1420 --strictPort --configLoader native }
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if ($Build) { python package_bundle.py --record-native; if ($LASTEXITCODE -ne 0) { throw "Build identity recording failed." } }
 } finally { Pop-Location }

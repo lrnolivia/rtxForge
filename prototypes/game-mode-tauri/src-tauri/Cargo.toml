@@ -1,7 +1,7 @@
 [package]
 name = "rtxforge-game-mode"
-version = "0.1.0"
-description = "rtxForge Game Mode prototype"
+version = "1.0.0"
+description = "rtxForge Game Mode"
 edition = "2021"
 rust-version = "1.90"
 

@@ -1,15 +1,19 @@
 [CmdletBinding()]
-param([switch]$SkipBuild)
+param([switch]$SkipBuild,
+      [string]$OutputPath,
+      [Parameter(Mandatory)][string]$ScreeningPath)
 $ErrorActionPreference = 'Stop'
 $project = [IO.Path]::GetFullPath($PSScriptRoot)
 $repo = [IO.Path]::GetFullPath((Join-Path $project '../..'))
-$output = [IO.Path]::GetFullPath((Join-Path $project 'out/rtxForge-Game-Mode-Preview-win-x64'))
-# The shared bundler refreshes python/ and engine/. Validate its recursive targets.
-foreach ($name in @('python', 'engine')) {
+if (-not $OutputPath) {
+    $scratch = if (Test-Path -LiteralPath 'G:/BuildScratch') { 'G:/BuildScratch' } else { [IO.Path]::GetTempPath() }
+    $OutputPath = Join-Path $scratch ('rtxforge-game-mode-package-' + [Guid]::NewGuid().ToString('N'))
+}
+$output = [IO.Path]::GetFullPath($OutputPath)
+if ($output -eq $repo -or $output -eq $project -or $project.StartsWith($output + [IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'Choose a distinct package directory.' }
+foreach ($name in @('python','engine')) {
     $target = [IO.Path]::GetFullPath((Join-Path $output $name))
-    if (-not $target.StartsWith($project + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Bundle target escapes the project: $target"
-    }
+    if (-not $target.StartsWith($output + [IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'Bundle target escapes its package.' }
 }
 if (-not $SkipBuild) {
     & (Join-Path $project 'Run.ps1') -Build
@@ -22,7 +26,7 @@ $bridge = Join-Path $output 'bridge'
 New-Item -ItemType Directory -Force -Path $bridge | Out-Null
 Get-ChildItem -LiteralPath (Join-Path $project 'bridge') -Filter '*.py' -File | Copy-Item -Destination $bridge -Force
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE'),(Join-Path $project 'README.md'),(Join-Path $project 'FEATURE_PARITY.md'),(Join-Path $project 'VALIDATION.md'),(Join-Path $project 'ASSETS.md') -Destination $output -Force
-Copy-Item -LiteralPath (Join-Path $project 'Install-Preview.ps1') -Destination $output -Force
+Copy-Item -LiteralPath (Join-Path $project 'Install.ps1') -Destination $output -Force
 $notices = Join-Path $output 'notices'
 New-Item -ItemType Directory -Force -Path $notices | Out-Null
 Get-ChildItem -LiteralPath (Join-Path $project 'public/fonts') -Filter '*.txt' -File | Copy-Item -Destination $notices -Force
@@ -45,6 +49,6 @@ foreach ($entry in [regex]::Matches($locks, '(?ms)^name = "([^"]+)"\r?\nversion 
         Copy-Item -LiteralPath $_.FullName -Destination $destination -Force
     }
 }
-$revision = (& git -C $repo rev-parse HEAD).Trim()
-@{ version='0.1.0-preview.1'; source=$revision; platform='win-x64'; readOnlyDefault=$true; python='3.14.5' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'build.json') -Encoding utf8
+python (Join-Path $project 'package_bundle.py') --output $output --screening $ScreeningPath
+if ($LASTEXITCODE -ne 0) { throw 'Portable payload validation failed.' }
 Write-Output $output

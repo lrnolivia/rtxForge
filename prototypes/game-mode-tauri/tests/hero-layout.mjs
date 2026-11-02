@@ -27,6 +27,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     for (const scroll of [0, 70, 180, 400]) {
       await page.locator('.details-scroll').evaluate((element, y) => { element.scrollTop = y; }, scroll);
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       await expect.poll(() => page.evaluate(() => {
         const back = document.querySelector('.details-hero .back').getBoundingClientRect();
         return [...document.querySelectorAll('.details-identity .hero-status, .details-identity h1, .details-identity .detail-artwork')]
@@ -39,6 +40,7 @@ try {
       }), { message: 'Back button overlaps header at width ' + width + ', scroll ' + scroll }).toEqual([]);
       checks++;
       if(width>760&&scroll>=180){
+        if(await page.locator('.details-page').getAttribute('data-collapsing')==='true')expect(await page.locator('.details-page').evaluate(n=>Number(n.style.getPropertyValue('--hero-contrast-visibility')))).toBe(0);
         const compact=await page.locator('.details-page').getAttribute('data-hero-compact');
         if(compact==='true')expect(await page.locator('.game-title').evaluate(n=>getComputedStyle(n,'::before').display)).toBe('none');
       }

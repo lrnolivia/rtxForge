@@ -14,7 +14,7 @@ Posters, capsules, hero artwork and saved per-game accents follow Desktop Mode's
 
 Hero framing honors Desktop Mode's saved focal point, then uses its visual-saliency calculation when no override exists. Where the WebView exposes on-device face detection, it also checks the saliency result against faces. Select the Appearance preview to adjust directly with the D-pad, left stick or arrow keys; Select/Enter keeps the draft and Back/Escape cancels the adjustment. Compact sliders remain available. Native edits use the shared preference review flow. Windows Desktop's separate native face detector is not yet integrated into this WebView application.
 
-Reviewed screenshot catalogs exclude HUD and menu frames by immutable Steam image hash. Assassin's Creed Shadows currently offers three reviewed clean images; unreviewed games still use their Store catalog. This is source curation, not automatic UI or text recognition.
+Unknown Store screenshots are screened locally by a bundled CPU detector on Windows and Linux. Text-heavy panels and edge HUD labels are excluded from both defaults and the picker. Decisions are cached by image hash; curated corrections supplement the detector. Failed screening does not admit unknown images. Icon-only HUDs can still escape detection, and environmental signs can be false positives. See [SCREENSHOT_SCREENING.md](SCREENSHOT_SCREENING.md) for limits and dependency provenance.
 
 ## Run
 
@@ -40,11 +40,13 @@ pwsh -NoProfile -File ./Run.ps1 -Build
 
 Set `RTXFORGE_NODE` if Node is not on the process PATH. Development builds use the checkout. The Windows portable preview includes a private Python runtime, the reader and engine files; it can run from another folder without a checkout or system Python. WebView2 is still required.
 
-### Windows portable preview
+### Native packages
 
-Extract the preview ZIP and open `rtxforge-game-mode.exe`. Operations are disabled by default. To install a separate Start menu entry, run the included `Install-Preview.ps1` from the extracted folder. Each version gets its own directory under `%LOCALAPPDATA%/Programs/rtxForge Game Mode Preview`; the existing Desktop application is not replaced. Earlier preview versions remain available for rollback.
+Extract the complete Windows ZIP and open `rtxforge-game-mode.exe`. Reviewed operations are enabled in the installed application. `RTXFORGE_PREVIEW_READ_ONLY=1` overrides enablement and prevents the operation host from starting. The browser development server remains read-only unless explicitly enabled.
 
-From source, `Build-Portable.ps1` builds and bundles the Windows preview. The package includes dependency license texts and a `build.json` receipt identifying its source revision. Linux packaging, signing and updater integration remain qualification work.
+Run `Install.ps1` to create a separate Start menu entry under `%LOCALAPPDATA%/Programs/rtxForge Game Mode`. Installation verifies every payload file, tests the installed host from its own directory, then updates the shortcut. Previous versions and the Desktop application are preserved. Linux tarballs contain a private Python and the same offline screening worker; run `./python/bin/python3 -B install_linux.py` for a per-user installation. Linux requires WebKitGTK 4.1.
+
+Build the offline worker in an isolated Python 3.14 environment with `screening-requirements.txt` and `build_screening.py --output <scratch>`. On Windows, use `Build-Portable.ps1 -ScreeningPath <worker-folder> -OutputPath <package-folder>`. Linux and Windows complete payloads are also built by the Game Mode native workflow. `build.json` records source, native input digest and hashes for the complete package. Release builds refuse missing private engine/Python files instead of silently falling back to a development checkout.
 
 Native prerequisites are documented by [Tauri](https://v2.tauri.app/start/prerequisites/): Rust, WebView2 and MSVC on Windows; the documented WebKitGTK and development packages on Linux. The native file picker uses the [Tauri dialog plugin](https://v2.tauri.app/plugin/dialog/).
 
@@ -54,7 +56,7 @@ The default development preview keeps operations disabled. To connect the existi
 
 This connects real methods. Confirming an install, restore, settings change, tool import or Steam shortcut review performs the corresponding existing engine operation. Library discovery and opening a review never fabricate an installed or active state.
 
-The Windows adapter imports the existing host methods without calling its `main()`, which would start an automatic installed-overlay refresh. The Linux adapter binds the existing `DesktopService` configuration without its startup refresh. File planning, verification, ownership, backups, process checks and writes remain in the existing services. Exact review tokens stay in one long-lived host; confirmation sends that exact token once. Progress is forwarded from the host, and cancellation is requested at its safe boundaries.
+The Windows adapter imports the existing host methods without calling its `main()`, which would start an automatic installed-overlay refresh. The Linux adapter binds the existing `DesktopService` configuration without its startup refresh. File planning, verification, ownership, backups, process checks and writes remain in the existing services. Exact review tokens stay in one long-lived host; confirmation sends that exact token once. Native close, exit and Desktop handoff close its input, request cancellation at existing safe boundaries, drain in-flight work and reap the process before leaving. New queued requests are refused during shutdown. Progress is forwarded from the host, and cancellation is requested at its safe boundaries.
 
 No existing game installs, Steam state or shared preferences were changed during development verification. Engine workflow checks use explicit contract fixtures. The read-only native preview was opened for visual review. File pickers and real mutation flows were not exercised.
 

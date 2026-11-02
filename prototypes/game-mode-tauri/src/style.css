@@ -581,26 +581,12 @@ button.ui-control:not(:disabled):not(.game-card):not(.primary):is(:hover,:focus-
 /* Focus stays inside the navigation pills, including controller focus. */
 .app-header nav.main-nav button.ui-control:not(:disabled):is(:hover,:focus-visible),
 :root[data-controller=true] .app-header nav.main-nav button.ui-control:not(:disabled):focus{outline-offset:-3px;scale:1}
-/* Keep navigation available while freeing height after scrolling. */
+/* Compact tools leave room for the library without changing shell geometry. */
 @media(min-width:761px){
   :root[data-surface=library] .content{padding-bottom:12px}
   .games:not(.game-list){padding-top:16px}
   .library-tools{grid-template-columns:minmax(180px,36%) minmax(0,1fr) minmax(160px,210px) auto}
   .library-filter{justify-self:start}
-  .shell[data-header-collapsed=true]{grid-template-rows:56px minmax(0,1fr) 40px}
-  :root[data-navigation=bottom] .shell[data-header-collapsed=true]{grid-template-rows:minmax(0,1fr) 56px 40px}
-  .shell[data-header-collapsed=true] .app-header nav.main-nav{min-height:52px;padding:5px}
-  .shell[data-header-collapsed=true] .app-header nav.main-nav button{min-height:42px;padding-block:6px}
-  .shell[data-header-collapsed=true] .brand img{width:34px;height:34px}
-  .shell[data-header-collapsed=true] .brand{font-size:1.3rem}
-}
-@media(max-width:760px){
-  .shell[data-header-collapsed=true]{grid-template-rows:64px minmax(0,1fr) 46px}
-  :root[data-navigation=bottom] .shell[data-header-collapsed=true]{grid-template-rows:minmax(0,1fr) 64px 46px}
-  .shell[data-header-collapsed=true] .app-header{grid-template-columns:minmax(0,1fr) 40px;grid-template-rows:64px;gap:6px}
-  .shell[data-header-collapsed=true] .app-header .brand{display:none}
-  .shell[data-header-collapsed=true] .app-header nav.main-nav{grid-column:1;grid-row:1;min-width:0}
-  .shell[data-header-collapsed=true] .shell-more{grid-column:2;grid-row:1}
 }
 
 /* Compact Library tools keep both rows visible at the default card size. */
@@ -632,8 +618,8 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .screenshot-choice>span:not(.icon){padding:2px 6px 6px;font-size:.8rem}
 .screenshot-choice[aria-pressed=true]{box-shadow:inset 0 0 0 2px var(--accent)}
 .screenshot-choice>.icon{position:absolute;right:12px;top:12px;background:var(--accent);color:var(--primary-ink);padding:4px;border-radius:50%;font-size:16px}
-.details-title-copy h1.game-title{position:relative;isolation:isolate}
-.details-title-copy h1.game-title:before{content:'';position:absolute;inset:-18px -24px;background:rgb(12 18 23 / var(--title-veil,0));filter:blur(16px);z-index:-1;pointer-events:none}
+.details-title-copy h1.game-title{position:relative;isolation:isolate;width:fit-content;max-width:100%}
+.details-title-copy h1.game-title:before{content:'';position:absolute;inset:-18px -24px;background:color-mix(in srgb,var(--accent) 24%,#0c1217);opacity:calc(var(--title-veil,0) * var(--hero-contrast-visibility,1));filter:blur(22px);z-index:-1;pointer-events:none}
 :root[data-theme] .hero-info-card{background:rgb(238 240 242 / .14);color:#f8f6f1;backdrop-filter:blur(16px);box-shadow:inset 0 0 0 1px rgb(255 255 255 / .2),0 5px 18px rgb(0 0 0 / .08)}
 :root[data-theme][data-tint=true] .hero-info-card{background:color-mix(in srgb,var(--accent) 24%,rgb(238 240 242 / .14))}
 .hero-info-card .hero-metadata,.hero-info-card .hero-description,.hero-info-card .hero-cache-note,.hero-info-card .hero-credits{text-shadow:0 1px 2px rgb(12 18 23 / .8)}
@@ -642,7 +628,7 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .view-switch button.ui-control{border-radius:10px}
 
 /* A diagonal title-side veil ends near the middle, clear of the subject. */
-.hero-artwork:after{background:linear-gradient(32deg,rgb(12 18 23 / .94),rgb(12 18 23 / .6) 28%,transparent 55%);opacity:.9}
+.hero-artwork:after{background:linear-gradient(32deg,color-mix(in srgb,var(--accent) 24%,#0c1217),color-mix(in srgb,color-mix(in srgb,var(--accent) 24%,#0c1217) 64%,transparent) 28%,transparent 55%);opacity:calc(.9 * var(--hero-contrast-visibility,1))}
 .hero-focal-preview{position:relative;overflow:hidden;border-radius:14px;aspect-ratio:6;background:var(--nested);margin-bottom:20px}
 .hero-focal-preview img{display:block;width:100%;height:100%;object-fit:cover}
 .focal-point{position:absolute;left:var(--focal-x,50%);top:var(--focal-y,30%);width:24px;height:24px;border:2px solid white;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 2px #15191d,0 2px 8px #15191d}
@@ -694,7 +680,7 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .games:not(.game-list){padding-top:28px;padding-bottom:28px}
 
 :root[data-theme=light] .hero-info-card{background:rgb(247 248 250 / .72);color:var(--hero-card-ink,#26323d)}
-:root[data-theme=light][data-tint=true] .hero-info-card{background:color-mix(in srgb,var(--accent) 12%,rgb(247 248 250 / .72))}
+:root[data-theme=light][data-tint=true] .hero-info-card{background:color-mix(in srgb,var(--accent) 32%,rgb(247 248 250 / .72))}
 :root[data-theme=light] .hero-info-card :is(.hero-metadata,.hero-description,.hero-cache-note,.hero-credits){text-shadow:none}
 :root[data-theme=light][data-surface=details] .details-page .detail-body :is(h2,h3){-webkit-text-stroke:0;text-shadow:none}
 
@@ -721,4 +707,5 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 /* The compact title clips for ellipsis; keep its contrast treatment on glyphs. */
 .details-page[data-hero-compact=true] .details-title-copy h1.game-title:before{display:none}
 :root[data-surface=details] .details-page[data-hero-compact=true] .details-title-copy h1.game-title{text-shadow:0 2px 6px rgb(12 18 23 / calc(.25 + var(--title-veil,0) * .45)),0 0 2px rgb(12 18 23 / var(--title-veil,0))}
+:root[data-surface=details][data-theme=light] .details-page .details-title-copy h1.game-title{color:color-mix(in srgb,var(--game-title-color,var(--accent)) var(--hero-title-bright,100%),var(--hero-card-ink,var(--accent)))}
 :root[data-surface=details][data-theme=light] .details-page[data-hero-compact=true] .details-title-copy h1.game-title{color:var(--hero-card-ink,var(--accent));text-shadow:none}

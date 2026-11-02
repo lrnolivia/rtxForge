@@ -19,6 +19,8 @@ class ReviewedRoutes:
         self._cancel, self._discard, self._settings = cancel, discard, settings
         self._defaults = defaults
         self.reviews, self.running = {}, {}
+        self._lock = threading.RLock()
+        self._closing = False
 
     @staticmethod
     def feeder(row):
@@ -38,6 +40,9 @@ class ReviewedRoutes:
         return operation, chosen or settings.get('runtime_provider', 'y4my')
 
     def prepare(self, params):
+        with self._lock:
+            if self._closing:
+                raise ValueError('The application is closing.')
         rows = sorted(params.get('rows') or [], key=lambda row: row['name'].casefold())
         defaults = params.get('defaults')
         if defaults is not None:
@@ -111,7 +116,10 @@ class ReviewedRoutes:
             default_review = self._defaults[0]({'changes': defaults}) if defaults is not None else None
             if default_review:
                 all_tokens.append(default_review['token'])
-            self.reviews[token] = {'primary': primary, 'offers': offers, 'defaults': default_review, 'cancel': threading.Event()}
+            with self._lock:
+                if self._closing:
+                    raise ValueError('The application is closing.')
+                self.reviews[token] = {'primary': primary, 'offers': offers, 'defaults': default_review, 'cancel': threading.Event()}
             trusts = list(dict.fromkeys(review['trust'] for review in [*primary, *[offer['review'] for offer in offers]] if review.get('trust')))
             return {'token': token, 'title': 'Review selected changes', 'action': 'Apply reviewed changes',
                     'rows': [row for review in primary for row in review.get('rows', [])] +
@@ -127,20 +135,23 @@ class ReviewedRoutes:
 
     def execute(self, params):
         token = params['token']
-        record = self.reviews.get(token)
-        if record is None:
-            raise ValueError('This review expired. Review the exact selection again.')
-        chosen = params.get('supported') or []
-        allowed = {offer['review']['token'] for offer in record['offers']}
-        if not isinstance(chosen, list) or any(value not in allowed for value in chosen):
-            raise ValueError('The supported-feature selection differs from the review.')
-        selected = record['primary'] + [offer['review'] for offer in record['offers'] if offer['review']['token'] in chosen]
-        if not selected and not record.get('defaults'):
-            raise ValueError('Choose at least one reviewed change.')
-        if any(review.get('trust') for review in selected) and params.get('offline_acknowledged') is not True:
-            raise ValueError('Acknowledge the exact review notice before continuing.')
-        self.reviews.pop(token)
-        self.running[token] = record
+        with self._lock:
+            if self._closing:
+                raise ValueError('The application is closing.')
+            record = self.reviews.get(token)
+            if record is None:
+                raise ValueError('This review expired. Review the exact selection again.')
+            chosen = params.get('supported') or []
+            allowed = {offer['review']['token'] for offer in record['offers']}
+            if not isinstance(chosen, list) or any(value not in allowed for value in chosen):
+                raise ValueError('The supported-feature selection differs from the review.')
+            selected = record['primary'] + [offer['review'] for offer in record['offers'] if offer['review']['token'] in chosen]
+            if not selected and not record.get('defaults'):
+                raise ValueError('Choose at least one reviewed change.')
+            if any(review.get('trust') for review in selected) and params.get('offline_acknowledged') is not True:
+                raise ValueError('Acknowledge the exact review notice before continuing.')
+            self.reviews.pop(token)
+            self.running[token] = record
         completed = []
         try:
             for review in sorted(selected, key=lambda review: min(str(row.get('name', '')).casefold() for row in review['rows'])):
@@ -153,7 +164,8 @@ class ReviewedRoutes:
         except Exception as error:
             raise ValueError(f'{error} {len(completed)} review batch(es) completed; their recovery records are kept.') from error
         finally:
-            self.running.pop(token, None)
+            with self._lock:
+                self.running.pop(token, None)
             self._discard({'tokens': self.tokens(record)})
 
     @staticmethod
@@ -163,7 +175,8 @@ class ReviewedRoutes:
                 ([record['defaults']['token']] if record.get('defaults') else []))
 
     def cancel(self, params):
-        record = self.reviews.get(params['token']) or self.running.get(params['token'])
+        with self._lock:
+            record = self.reviews.get(params['token']) or self.running.get(params['token'])
         if record:
             record['cancel'].set()
             for review in record['primary'] + [offer['review'] for offer in record['offers']]:
@@ -172,7 +185,20 @@ class ReviewedRoutes:
 
     def discard(self, params):
         for token in params.get('tokens', [params.get('token')]):
-            record = self.reviews.pop(token, None)
+            with self._lock:
+                record = self.reviews.pop(token, None)
             if record:
                 self._discard({'tokens': self.tokens(record)})
         return {}
+
+    def shutdown(self):
+        with self._lock:
+            self._closing = True
+            records = list(self.reviews.values()) + list(self.running.values())
+            idle = list(self.reviews)
+            for record in records:
+                record['cancel'].set()
+        for record in records:
+            for token in self.tokens(record):
+                self._cancel({'token': token})
+        self.discard({'tokens': idle})

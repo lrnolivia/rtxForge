@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+import threading
 
 spec = importlib.util.spec_from_file_location('review_routes', Path(__file__).resolve().parents[1] / 'bridge/review_routes.py')
 module = importlib.util.module_from_spec(spec)
@@ -9,6 +10,31 @@ spec.loader.exec_module(module)
 
 
 class RouteTests(unittest.TestCase):
+    def test_concurrent_execution_consumes_review_once(self):
+        review = self.review()
+        barrier = threading.Barrier(3)
+        results = []
+        def execute():
+            barrier.wait()
+            try:
+                self.routes.execute({'token': review['token']})
+                results.append('completed')
+            except ValueError:
+                results.append('expired')
+        workers = [threading.Thread(target=execute) for _ in range(2)]
+        for worker in workers: worker.start()
+        barrier.wait()
+        for worker in workers: worker.join()
+        self.assertCountEqual(['completed', 'expired'], results)
+        self.assertEqual(['1', '3'], self.executed)
+
+    def test_shutdown_discards_idle_and_prevents_execution(self):
+        review = self.review()
+        self.routes.shutdown()
+        with self.assertRaisesRegex(ValueError, 'closing'):
+            self.routes.execute({'token': review['token']})
+        self.assertEqual([], self.executed)
+        self.assertEqual({}, self.routes.reviews)
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.calls, self.executed, self.discarded, self.cancelled = [], [], [], []

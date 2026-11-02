@@ -15,6 +15,26 @@ IMAGE_LIMIT = 8 * 1024 * 1024
 CACHE_LIMIT = 128 * 1024 * 1024
 TTL = 30 * 86400
 
+# Reviewed against the Store's actual images. Immutable filename hashes keep
+# a reordered or replaced Store gallery from silently approving a HUD frame.
+CLEAN_SCREENSHOTS = {
+    '3159330': frozenset((
+        '81bbd04dae05b0a52dc62818dc5219abeb849f8d',
+        'e53dc9ec73e3de9b8e680472898de775f0dc1cae',
+        '2e74c5442faa027ea699dcfa15be173b43a8d37a',
+    )),
+}
+
+
+def clean_screenshot(url, appid):
+    approved = CLEAN_SCREENSHOTS.get(appid)
+    match = re.search(r'/ss_([0-9a-f]{40})(?:\.|$)', urllib.parse.urlsplit(url).path)
+    return approved is None or bool(match and match[1] in approved)
+
+
+def clean_gallery(shots, appid):
+    return [shot for shot in shots if clean_screenshot(shot.get('full', ''), appid)]
+
 
 def dimensions(data):
     if data.startswith(b'\x89PNG\r\n\x1a\n') and len(data) >= 24:
@@ -94,7 +114,7 @@ def gallery(appid, cache, *, download=fetch, now=None):
             raise ValueError('Invalid screenshot catalog')
         stored = json.loads(record.read_text('utf-8'))
         if current - stored['checked'] < (TTL if stored.get('screenshots') else 900):
-            return stored.get('screenshots', [])
+            return clean_gallery(stored.get('screenshots', []), appid)
     except (OSError, ValueError, KeyError, TypeError):
         stored = {}
     try:
@@ -113,9 +133,9 @@ def gallery(appid, cache, *, download=fetch, now=None):
                 continue
             shots.append({'id': identity, 'full': item['path_full'], 'thumbnail': thumbnail if allowed(thumbnail, appid) else item['path_full']})
         atomic(record, json.dumps({'checked': current, 'screenshots': shots}).encode())
-        return shots
+        return clean_gallery(shots, appid)
     except (OSError, ValueError, TypeError):
-        return stored.get('screenshots', [])
+        return clean_gallery(stored.get('screenshots', []), appid)
 
 
 def background(appid, cache, *, screenshot=None, download=fetch, now=None):
@@ -134,6 +154,8 @@ def background(appid, cache, *, screenshot=None, download=fetch, now=None):
         if receipt.is_symlink() or image.is_symlink() or receipt.stat().st_size > 4096:
             raise ValueError('Invalid screenshot cache entry')
         stored = json.loads(receipt.read_text('utf-8'))
+        if stored.get('source') and not clean_screenshot(stored['source'], appid):
+            raise ValueError('Cached screenshot is no longer approved for backgrounds')
         if stored.get('missing') and current - stored['checked'] < 900:
             return {'image': None}
         if image.stat().st_size > IMAGE_LIMIT:

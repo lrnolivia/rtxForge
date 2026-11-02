@@ -10,7 +10,9 @@ Game Details loads one Steam Store screenshot using the game's known Steam ID. A
 
 Posters, capsules, hero artwork and saved per-game accents follow Desktop Mode's shared library records and rtxForge settings. An explicit rtxForge accent wins; otherwise the original poster supplies the automatic color. Old browser-only accent previews do not override Desktop settings. Native accent edits use the shared preference review flow.
 
-Hero framing honors Desktop Mode's saved focal point, then uses its visual-saliency calculation when no override exists. Where the WebView exposes on-device face detection, it also checks the saliency result against faces. Appearance provides a live crop preview and horizontal/vertical sliders: left/right adjust, up/down switch axes. Native edits use the shared preference review flow. Windows Desktop's separate native face detector is not yet integrated into this WebView application.
+Hero framing honors Desktop Mode's saved focal point, then uses its visual-saliency calculation when no override exists. Where the WebView exposes on-device face detection, it also checks the saliency result against faces. Select the Appearance preview to adjust directly with the D-pad, left stick or arrow keys; Select/Enter keeps the draft and Back/Escape cancels the adjustment. Compact sliders remain available. Native edits use the shared preference review flow. Windows Desktop's separate native face detector is not yet integrated into this WebView application.
+
+Reviewed screenshot catalogs exclude HUD and menu frames by immutable Steam image hash. Assassin's Creed Shadows currently offers three reviewed clean images; unreviewed games still use their Store catalog. This is source curation, not automatic UI or text recognition.
 
 ## Run
 

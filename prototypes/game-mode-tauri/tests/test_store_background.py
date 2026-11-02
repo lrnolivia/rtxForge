@@ -88,6 +88,21 @@ class StoreBackgroundTests(unittest.TestCase):
             raise OSError('offline')
         self.assertEqual(store.background('10', self.cache, download=offline, now=101), {'image': None})
 
+    def test_reviewed_clean_gallery_filters_cached_hud_frames_and_reordered_ids(self):
+        appid = '3159330'
+        approved = next(iter(store.CLEAN_SCREENSHOTS[appid]))
+        clean = f'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/ss_{approved}.1920x1080.jpg'
+        hud = clean.replace(approved, '0' * 40)
+        (self.cache / (appid + '.gallery.json')).write_text(json.dumps({'checked': 100, 'screenshots': [
+            {'id': '0', 'full': hud}, {'id': '8', 'full': clean}]}), encoding='utf-8')
+        self.assertEqual(store.gallery(appid, self.cache, now=101), [{'id': '8', 'full': clean}])
+        data = jpeg_header(3840, 2160)
+        (self.cache / (appid + '-0.image')).write_bytes(data)
+        import hashlib
+        (self.cache / (appid + '-0.json')).write_text(json.dumps({'version': 2, 'checked': 100,
+            'source': hud, 'sha256': hashlib.sha256(data).hexdigest()}), encoding='utf-8')
+        self.assertEqual(store.background(appid, self.cache, screenshot='0', now=101), {'image': None})
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -38,6 +38,13 @@ try {
           }).map(node => node.className);
       }), { message: 'Back button overlaps header at width ' + width + ', scroll ' + scroll }).toEqual([]);
       checks++;
+      const overlaps=await page.evaluate(()=>{
+        const pane=innerWidth>760?document.querySelector('.details-scroll'):document.querySelector('#content');
+        const gutter=pane.offsetWidth-pane.clientWidth;if(gutter<4||pane.scrollHeight<=pane.clientHeight)return [];
+        const edge=pane.getBoundingClientRect().right-gutter-4;
+        return [...document.querySelectorAll('.hero-actions button')].filter(n=>n.getBoundingClientRect().right>edge).map(n=>n.getAttribute('aria-label')||n.textContent);
+      });
+      expect(overlaps,'Hero actions must clear the scrollbar at '+width).toEqual([]);
     }
   }
   await page.locator('.details-hero .back').click();

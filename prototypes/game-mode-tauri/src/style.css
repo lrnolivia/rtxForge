@@ -635,8 +635,8 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .screenshot-choice>.icon{position:absolute;right:12px;top:12px;background:var(--accent);color:var(--primary-ink);padding:4px;border-radius:50%;font-size:16px}
 .details-title-copy h1.game-title{position:relative;isolation:isolate}
 .details-title-copy h1.game-title:before{content:'';position:absolute;inset:-18px -24px;background:rgb(12 18 23 / var(--title-veil,0));filter:blur(16px);z-index:-1;pointer-events:none}
-:root[data-theme] .hero-info-card{background:#727a83;color:#f8f6f1;backdrop-filter:none;box-shadow:inset 0 0 0 1px rgb(255 255 255 / .2),0 5px 18px rgb(0 0 0 / .08)}
-:root[data-theme][data-tint=true] .hero-info-card{background:color-mix(in srgb,var(--hero-card-color) 8%,#727a83)}
+:root[data-theme] .hero-info-card{background:rgb(238 240 242 / .14);color:#f8f6f1;backdrop-filter:blur(16px);box-shadow:inset 0 0 0 1px rgb(255 255 255 / .2),0 5px 18px rgb(0 0 0 / .08)}
+:root[data-theme][data-tint=true] .hero-info-card{background:color-mix(in srgb,var(--accent) 24%,rgb(238 240 242 / .14))}
 .hero-info-card .hero-metadata,.hero-info-card .hero-description,.hero-info-card .hero-cache-note,.hero-info-card .hero-credits{text-shadow:0 1px 2px rgb(12 18 23 / .8)}
 /* A filtered entrance temporarily prevents nested backdrop filters from settling. */
 .content>.details-page{animation:none}
@@ -657,3 +657,39 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 /* Soft Light colors the screenshot without replacing its detail with a wash. */
 #scene{isolation:isolate}
 :root[data-surface=details][data-tint=true] #scene[data-background-state=ready]:after{background:var(--game-accent,#808080);mix-blend-mode:soft-light;opacity:1}
+
+/* Keep the actual artwork behind the glass card clear of the hero's edge fade. */
+.hero-artwork[data-info-mask=true]{mask-image:linear-gradient(to bottom,#000 0%,#000 45%,rgb(0 0 0 / .98) 56%,rgb(0 0 0 / .82) 68%,rgb(0 0 0 / .46) 81%,rgb(0 0 0 / .13) 92%,transparent 100%),var(--info-mask);mask-size:100% 100%,var(--info-mask-width) var(--info-mask-height);mask-position:0 0,var(--info-mask-x) var(--info-mask-y);mask-repeat:no-repeat;mask-composite:add}
+
+/* Keep section headings light; the narrow edge protects them on bright glass. */
+:root[data-surface=details] .details-page .detail-body :is(h2,h3){color:var(--section-heading-color,#f5f3ee);-webkit-text-stroke:1px rgb(12 18 23 / .85);paint-order:stroke fill;text-shadow:0 1px 2px rgb(12 18 23 / .5)}
+
+.hero-framing-editor .section-heading{margin-bottom:8px;gap:20px}
+.hero-framing-editor .section-heading h2{margin:0}
+.framing-state{font-size:.8rem;color:var(--ink);white-space:nowrap}
+.hero-framing-editor>p{margin:0 0 20px}
+.hero-focal-preview.ui-control{display:block;padding:0;width:100%;border-radius:14px;min-height:120px;text-align:left;scale:1!important;transform:none!important}
+.hero-focal-preview.ui-control:focus-visible,.hero-focal-preview[aria-pressed=true]{outline:3px solid var(--accent);outline-offset:-3px}
+.hero-focal-preview .focal-point{width:20px;height:20px;pointer-events:none}
+.hero-focal-preview .focal-point:before{height:28px;left:7px;top:-6px}.hero-focal-preview .focal-point:after{width:28px;top:7px;left:-6px}
+.framing-preview-action{position:absolute;right:14px;bottom:14px;display:inline-flex;align-items:center;gap:8px;background:rgb(15 23 30 / .8);color:#f8f6f1;padding:9px 14px;border-radius:9999px;font-size:.82rem;pointer-events:none}
+.framing-preview-action .icon{font-size:18px}
+.hero-framing-controls{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.hero-framing-editor .hero-focus-sliders{flex:1;min-width:min(100%,420px);max-width:680px;margin:0;gap:24px}
+.hero-framing-editor .library-size{font-size:.82rem;gap:10px}
+.hero-framing-editor .library-size output{min-width:3.5ch;font-variant-numeric:tabular-nums}
+.hero-framing-editor .operation-actions{margin:0;gap:12px}
+.hero-framing-editor .operation-actions button{min-height:44px;font-size:.82rem}
+.hero-framing-editor .framing-help{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:18px 0 0;font-size:.8rem;color:var(--ink)}
+.framing-help .pad-glyph svg{width:22px;height:22px}
+@media(max-width:760px){.hero-framing-editor .section-heading{align-items:start;flex-direction:column;gap:6px}.hero-framing-editor .hero-focus-sliders{max-width:none;gap:14px}.hero-framing-controls{gap:18px}.hero-framing-editor .operation-actions{flex-wrap:wrap}.framing-preview-action{right:10px;bottom:10px}}
+
+/* Details keeps its perimeter above the edge-to-edge hero artwork. */
+:root[data-surface=details] .content{border:1px solid rgb(244 247 250 / .26);border-top-color:rgb(244 247 250 / .45);box-shadow:0 18px 48px rgb(8 13 20 / .34),0 4px 14px rgb(8 13 20 / .18)}
+:root[data-surface=details][data-tint=true] .content{border-color:color-mix(in srgb,var(--accent) 22%,rgb(244 247 250 / .28));border-top-color:color-mix(in srgb,var(--accent) 18%,rgb(244 247 250 / .5));box-shadow:0 18px 48px rgb(8 13 20 / .34),0 7px 30px color-mix(in srgb,var(--accent) 18%,transparent)}
+
+@media(min-width:761px){.details-identity{right:58px}}
+@media(max-width:760px){.details-identity{right:48px}}
+/* Feather the glow at the scrollport rather than cutting it at a hard edge. */
+#game-results:has(.games:not(.game-list)){mask-image:linear-gradient(to bottom,transparent,#000 12px,#000 calc(100% - 12px),transparent)}
+.games:not(.game-list){padding-top:28px;padding-bottom:28px}

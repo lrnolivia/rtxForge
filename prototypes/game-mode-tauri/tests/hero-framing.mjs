@@ -10,6 +10,13 @@ try{
   await page.goto('http://127.0.0.1:1420');await page.waitForSelector('.game-card');await open();
   const x=page.getByRole('slider',{name:'Horizontal hero focal point'}),y=page.getByRole('slider',{name:'Vertical hero focal point'});
   await expect(x).toHaveValue('72');await expect(y).toHaveValue('48');
+  const editor=page.getByRole('button',{name:'Adjust hero framing',exact:true});
+  await editor.focus();await page.keyboard.press('Enter');await expect(editor).toHaveAttribute('aria-pressed','true');await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowDown');await expect(x).toHaveValue('73');await expect(y).toHaveValue('49');
+  await expect(editor.locator('.framing-action-label')).toHaveText('Done adjusting');
+  await page.keyboard.press('Escape');await expect(editor).toHaveAttribute('aria-pressed','false');await expect(x).toHaveValue('72');await expect(y).toHaveValue('48');await expect(page.locator('.details-page')).toBeVisible();
+  await page.evaluate(()=>window.dispatchEvent(new Event('gamepadconnected')));await editor.focus();await press(0);await press(15);await press(13);await expect(x).toHaveValue('73');await expect(y).toHaveValue('49');await press(1);await expect(x).toHaveValue('72');await expect(y).toHaveValue('48');
+  await press(0);await press(14);await press(12);await press(0);await expect(editor).toHaveAttribute('aria-pressed','false');await expect(x).toHaveValue('71');await expect(y).toHaveValue('47');
+  await page.getByRole('button',{name:'Use Desktop framing',exact:true}).click();
   const initial=await page.locator('.hero-focal-preview img').evaluate(n=>n.style.objectPosition);
   await x.focus();await page.keyboard.press('ArrowRight');await expect(x).toHaveValue('73');await page.keyboard.press('ArrowDown');await expect(y).toBeFocused();await expect(y).toHaveValue('48');
   await page.keyboard.press('ArrowRight');await expect(y).toHaveValue('49');await page.keyboard.press('ArrowUp');await expect(x).toBeFocused();
@@ -22,5 +29,5 @@ try{
   await page.setViewportSize({width:600,height:900});await x.scrollIntoViewIfNeeded();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   const bounds=await page.locator('.hero-focal-preview').evaluate(n=>{const r=n.getBoundingClientRect();return {width:r.width,height:r.height}});expect(bounds.width).toBeGreaterThan(bounds.height);
-  expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['saved Desktop focus honored','keyboard and synthetic controller adjust and switch axes','live crop resets to Desktop','draft discarded on leaving Details','read-only preview cannot save','narrow preview fits']}));
+  expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['saved Desktop focus honored','preview has four-way keyboard/controller adjustment','Back cancels adjustment without leaving Details; Select keeps it','sliders adjust and switch axes','live crop resets to Desktop','draft discarded on leaving Details','read-only preview cannot save','narrow preview fits']}));
 }finally{await browser.close();}

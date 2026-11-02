@@ -53,6 +53,7 @@ let shellMenuOpen = false, detailsMenuOpen=false, presetSelection = false;
 const presetId = '__library-presets__';
 const gameAccentDrafts = new Map<string,string>();
 const heroFocusDrafts=new Map<string,[number,number]>(),automaticHeroFocus=new Map<string,{source:string;point:[number,number]}>(),loadingHeroFocus=new Set<string>();const backgroundGalleries=new Map<string,StoreScreenshot[]>(),loadingGalleries=new Set<string>();
+let heroAdjustment:{game:string;previous?:[number,number]}|undefined;
 const supportSelection = new Set<string>();
 let heroResize: ResizeObserver | undefined;
 let renderedView: View | undefined, renderedGame = '';
@@ -103,7 +104,7 @@ function setView(next: View, focus = true) {
   if (operation?.stage === 'running' && next !== 'operation') { announce('The operation is running. Request cancellation to stop safely.'); return; }
   if (view === 'operation' && next !== 'operation' && operation?.stage === 'checking') operation.dismissed = true;
   const previousView = view;
-  if(view==='details'&&next!=='details')heroFocusDrafts.clear();
+  if(view==='details'&&next!=='details'){heroFocusDrafts.clear();heroAdjustment=undefined;}
   if (view === 'library') libraryScroll=app.querySelector<HTMLElement>('#game-results')?.scrollTop||app.querySelector<HTMLElement>('#content')?.scrollTop||0;
   librarySizeOpen = false; shellMenuOpen = false; detailsMenuOpen=false; view = next; render();
   if (focus) document.querySelector<HTMLElement>('#page-title')?.focus();
@@ -311,10 +312,19 @@ function applyDetailsAccent() {
   const titleRange=document.createRange();if(title)titleRange.selectNodeContents(title);
   const sampled=image&&title?sampleHero(image,titleRange.getBoundingClientRect(),true):null;
   const info=content.querySelector<HTMLElement>('.hero-info-card'),badge=content.querySelector<HTMLElement>('.hero-status');
+  const artwork=content.querySelector<HTMLElement>('.hero-artwork');
+  if(info&&artwork){
+    const card=info.getBoundingClientRect(),art=artwork.closest('.details-hero')!.getBoundingClientRect();
+    artwork.dataset.infoMask='true';
+    artwork.style.setProperty('--info-mask-x',(card.left-art.left)+'px');artwork.style.setProperty('--info-mask-y',(card.top-art.top)+'px');
+    artwork.style.setProperty('--info-mask-width',card.width+'px');artwork.style.setProperty('--info-mask-height',card.height+'px');
+    artwork.style.setProperty('--info-mask',`url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${card.width}" height="${card.height}"><rect width="100%" height="100%" rx="12" fill="black"/></svg>`)}")`);
+  }
   const cardSample=image&&info?sampleHero(image,info.getBoundingClientRect()):null;
   const colors=heroColors(accent||'#d8d5ce',appearance.theme==='light',sampled||undefined,cardSample||undefined,appearance.tint);
   const badgeColors=heroBadge(image&&badge?sampleHero(image,badge.getBoundingClientRect())||undefined:undefined);
   content.style.setProperty('--game-title-color',colors.title);
+  content.style.setProperty('--section-heading-color',colors.title);
   content.style.setProperty('--title-veil',String(colors.titleVeil));
   content.style.setProperty('--hero-card-color',colors.card);
   content.style.setProperty('--hero-card-ink',colors.ink);
@@ -340,7 +350,29 @@ function heroPoint(game:Game):[number,number]{
 function heroFocusEditor(game:Game){
   if(!game.hero)return '';
   const point=heroPoint(game);
-  return `<section class="glass-section"><h2>Hero Framing</h2><p>${heroFocusDrafts.has(game.id)?'Preview - not saved.':game.heroFocus?'Using the focal point saved in Desktop Mode.':'Automatic subject framing.'}</p><div class="hero-focal-preview" role="img" aria-label="Hero framing preview"><img src="${e(game.hero)}" alt=""/><i class="focal-point" aria-hidden="true"></i></div><div class="hero-focus-sliders">${['Horizontal','Vertical'].map((axis,index)=>`<label class="library-size"><span>${axis}</span><input type="range" id="hero-focus-${index}" data-hero-focus="${index}" min="0" max="100" step="1" value="${Math.round(point[index]*100)}" aria-label="${axis} hero focal point"/><output for="hero-focus-${index}">${Math.round(point[index]*100)}%</output></label>`).join('')}</div><p class="subtle">Left and right adjust a slider. Up and down change sliders.</p><div class="operation-actions"><button class="quiet" data-action="reset-hero-framing">Use Desktop framing</button><button class="primary" data-action="save-hero-framing" ${!backend.enabled||!heroFocusDrafts.has(game.id)?'disabled':''}>Review hero framing</button></div></section>`;
+  return `<section class="glass-section hero-framing-editor"><div class="section-heading"><h2>Hero Framing</h2><span class="framing-state">${heroFocusDrafts.has(game.id)?'Unsaved framing':game.heroFocus?'Desktop framing':'Automatic framing'}</span></div><p>Keep your subject in view as the header gets shorter.</p><button id="hero-focal-preview" class="hero-focal-preview" data-focal-editor aria-label="Adjust hero framing" aria-pressed="${Boolean(heroAdjustment)}" aria-describedby="hero-framing-help"><img src="${e(game.hero)}" alt="Hero framing preview"/><i class="focal-point" aria-hidden="true"></i><span class="framing-preview-action">${icon('sliders')}<span class="framing-action-label">${heroAdjustment?'Done adjusting':'Adjust framing'}</span></span></button><div class="hero-framing-controls"><div class="hero-focus-sliders">${['Horizontal','Vertical'].map((axis,index)=>`<label class="library-size"><span>${axis}</span><input type="range" id="hero-focus-${index}" data-hero-focus="${index}" min="0" max="100" step="1" value="${Math.round(point[index]*100)}" aria-label="${axis} hero focal point"/><output for="hero-focus-${index}">${Math.round(point[index]*100)}%</output></label>`).join('')}</div><div class="operation-actions"><button class="quiet" data-action="reset-hero-framing">Use Desktop framing</button><button class="primary" data-action="save-hero-framing" ${!backend.enabled||!heroFocusDrafts.has(game.id)?'disabled':''}>Review hero framing</button></div></div><p id="hero-framing-help" class="framing-help">${framingHelp()}</p></section>`;
+}
+function framingHelp(){
+  if(controller)return heroAdjustment?`D-pad or left stick moves the focal point. ${controllerGlyph(controllerFamily(),0)} Done ${controllerGlyph(controllerFamily(),1)} Cancel`:`${controllerGlyph(controllerFamily(),0)} Adjust on the preview. Sliders also work with the D-pad.`;
+  return heroAdjustment?'Arrow keys move the focal point. Enter finishes; Escape cancels.':'Select the preview to adjust with arrow keys, or use the sliders.';
+}
+function updateHeroPoint(point:[number,number]){
+  const game=selectedGame();if(!game)return;
+  heroFocusDrafts.set(game.id,point.map(value=>Math.max(0,Math.min(1,value))) as [number,number]);
+  applyHeroFraming();applyDetailsAccent();
+  const status=app.querySelector('.framing-state');if(status)status.textContent='Unsaved framing';
+  const save=app.querySelector<HTMLButtonElement>('[data-action="save-hero-framing"]');if(save)save.disabled=!backend.enabled;
+}
+function finishHeroAdjustment(cancel=false){
+  if(!heroAdjustment)return;
+  const state=heroAdjustment;heroAdjustment=undefined;
+  if(cancel){if(state.previous)heroFocusDrafts.set(state.game,state.previous);else heroFocusDrafts.delete(state.game);}
+  applyHeroFraming();applyDetailsAccent();
+  const button=app.querySelector<HTMLButtonElement>('[data-focal-editor]');button?.setAttribute('aria-pressed','false');
+  const label=button?.querySelector('.framing-action-label');if(label)label.textContent='Adjust framing';
+  const help=app.querySelector('#hero-framing-help');if(help)help.innerHTML=framingHelp();
+  const game=selectedGame(),status=app.querySelector('.framing-state');if(game&&status)status.textContent=heroFocusDrafts.has(game.id)?'Unsaved framing':game.heroFocus?'Desktop framing':'Automatic framing';
+  const save=app.querySelector<HTMLButtonElement>('[data-action="save-hero-framing"]');if(save)save.disabled=!backend.enabled||!game||!heroFocusDrafts.has(game.id);
 }
 function applyHeroFraming(){
   const game=selectedGame(),hero=app.querySelector<HTMLElement>('.details-hero'),image=hero?.querySelector<HTMLImageElement>('.details-hero-image');
@@ -393,7 +425,7 @@ function setupHero() {
   const apply = () => {
     frame=0;
     if(page.clientWidth!==measuredWidth)measure();
-    if (page.clientWidth <= 760) { page.dataset.collapsing='false';page.dataset.heroCompact='false';page.dataset.heroScrolled='false';page.dataset.heroSummary='true';applyDetailsAccent();return; }
+    if (page.clientWidth <= 760) { page.dataset.collapsing='false';page.dataset.heroCompact='false';page.dataset.heroScrolled='false';page.dataset.heroSummary='true';applyHeroFraming();applyDetailsAccent();return; }
     page.dataset.collapsing='true';
     const removed=Math.min(scroller.scrollTop,expanded-compact), progress=removed/(expanded-compact);
     page.style.setProperty('--hero-expanded',expanded+'px');
@@ -771,7 +803,22 @@ function bind() {
   app.querySelector<HTMLInputElement>('#library-size')?.addEventListener('input',event=>{const input=event.target as HTMLInputElement;appearance.libraryScale=Number(input.value);const results=app.querySelector<HTMLElement>('#game-results');if(results)results.scrollTop=0;input.setAttribute('aria-valuetext',input.value+'%');const output=app.querySelector<HTMLOutputElement>('.library-size output');if(output)output.value=input.value+'%';applyAppearance();disposeLibraryLayout();disposeLibraryLayout=setupLibraryLayout(app);requestAnimationFrame(()=>{if(results?.isConnected)results.scrollTop=0;});});
   app.querySelector<HTMLInputElement>('#library-search')?.addEventListener('input', event => { query = (event.target as HTMLInputElement).value; disposeLibraryLayout(); app.querySelector('#game-results')!.innerHTML = gameResults(filteredLibrary(), snapshot?.games.length || 0); bindResults(); disposeLibraryLayout = setupLibraryLayout(app); });
   app.querySelectorAll<HTMLElement>('[data-number-step]').forEach(node=>node.addEventListener('click',()=>{const field=node.parentElement?.querySelector<HTMLInputElement>('input[type=number]');if(!field||field.disabled)return; if(node.dataset.numberStep==='1')field.stepUp();else field.stepDown();field.dispatchEvent(new Event('change',{bubbles:true}));}));
-  app.querySelectorAll<HTMLInputElement>('[data-hero-focus]').forEach(field=>field.addEventListener('input',()=>{const game=selectedGame();if(!game)return;const point=[...heroPoint(game)] as [number,number];point[Number(field.dataset.heroFocus)]=Number(field.value)/100;heroFocusDrafts.set(game.id,point);applyHeroFraming();applyDetailsAccent();const save=app.querySelector<HTMLButtonElement>('[data-action="save-hero-framing"]');if(save)save.disabled=!backend.enabled;}));
+  app.querySelectorAll<HTMLInputElement>('[data-hero-focus]').forEach(field=>field.addEventListener('input',()=>{const game=selectedGame();if(!game)return;const point=[...heroPoint(game)] as [number,number];point[Number(field.dataset.heroFocus)]=Number(field.value)/100;updateHeroPoint(point);}));
+  const focalEditor=app.querySelector<HTMLButtonElement>('[data-focal-editor]');
+  focalEditor?.addEventListener('click',()=>{
+    if(heroAdjustment){finishHeroAdjustment();return;}
+    const game=selectedGame();if(!game)return;
+    const draft=heroFocusDrafts.get(game.id);heroAdjustment={game:game.id,previous:draft?[...draft]:undefined};
+    focalEditor.setAttribute('aria-pressed','true');focalEditor.querySelector('.framing-action-label')!.textContent='Done adjusting';
+    app.querySelector('#hero-framing-help')!.innerHTML=framingHelp();
+  });
+  focalEditor?.addEventListener('keydown',event=>{
+    if(event.key==='Tab'){finishHeroAdjustment();return;}
+    if(!heroAdjustment||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
+    event.preventDefault();event.stopPropagation();
+    const game=selectedGame();if(!game)return;const point=[...heroPoint(game)] as [number,number];
+    point[event.key==='ArrowLeft'||event.key==='ArrowRight'?0:1]+=(event.key==='ArrowLeft'||event.key==='ArrowUp'?-.01:.01);updateHeroPoint(point);
+  });
   app.querySelectorAll<HTMLButtonElement>('[data-background-shot]').forEach(button=>button.addEventListener('click',()=>{const game=selectedGame();if(!game)return;chooseScreenshots(game.id,[button.dataset.backgroundShot!]);render();app.querySelector<HTMLElement>(`[data-background-shot="${button.dataset.backgroundShot}"]`)?.focus({preventScroll:true});}));
   app.querySelectorAll<HTMLElement>('[data-action]').forEach(node => node.addEventListener('click', () => action(node.dataset.action!)));
   app.querySelectorAll<HTMLElement>('[data-theme-choice]').forEach(node => node.addEventListener('click', () => { appearance.theme = node.dataset.themeChoice as Appearance['theme']; applyAppearance(); render(); app.querySelector<HTMLElement>(`[data-theme-choice="${appearance.theme}"]`)?.focus(); }));
@@ -853,7 +900,7 @@ function bindSelections() {
   app.querySelectorAll<HTMLElement>('[data-select-game]').forEach(node => node.addEventListener('click', () => { const id = node.dataset.selectGame!; if (batchSelection.has(id)) batchSelection.delete(id); else batchSelection.add(id); render(); app.querySelector<HTMLElement>(`[data-select-game="${CSS.escape(id)}"]`)?.focus(); }));
 }
 function action(name: string) {
-  if(name==='reset-hero-framing'){const game=selectedGame();if(game)heroFocusDrafts.delete(game.id);render();app.querySelector<HTMLElement>('[data-action="reset-hero-framing"]')?.focus();return;}
+  if(name==='reset-hero-framing'){const game=selectedGame();if(game)heroFocusDrafts.delete(game.id);heroAdjustment=undefined;render();app.querySelector<HTMLElement>('[data-action="reset-hero-framing"]')?.focus();return;}
   if(name==='save-hero-framing'){const game=selectedGame(),point=game?heroFocusDrafts.get(game.id):undefined;if(!game||!point||!backend.enabled)return;void engineRequest<Record<string,unknown>>('settings_get').then(settings=>{const choices={...(settings.game_hero_focus||{}) as Record<string,number[]>};const identity=Object.keys(choices).find(key=>pathKey(key)===pathKey(game.path))||game.path;choices[identity]=point;return withOperation('Review hero framing','settings_review',{changes:{game_hero_focus:choices}});}).catch(problem=>announce(problem.message));return;}
   if(name==='toggle-window-mode'&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke<boolean>('toggle_fullscreen')).then(fullscreen=>{backend.fullscreen=fullscreen;render();}).catch(problem=>announce(String(problem)));return;}
   if(name==='minimize-app'&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke('minimize_app')).catch(problem=>announce(String(problem)));return;}
@@ -1071,16 +1118,17 @@ for(const name of ['pointerout','focusout'])app.addEventListener(name,event=>{
 });
 document.addEventListener('pointerdown',event=>{
   const target=event.target as HTMLElement;
+  if(heroAdjustment&&!target.closest('[data-focal-editor]'))finishHeroAdjustment();
   if(librarySizeOpen&&!target.closest('.library-size-control'))closeLibrarySize(false);
   if(shellMenuOpen&&!target.closest('.shell-more')){shellMenuOpen=false;const menu=app.querySelector<HTMLElement>('#shell-menu');if(menu)menu.hidden=true;app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false');}
   if(detailsMenuOpen&&!target.closest('.hero-more')){detailsMenuOpen=false;const menu=app.querySelector<HTMLElement>('.game-menu');if(menu)menu.hidden=true;app.querySelector('[data-action="game-menu"]')?.setAttribute('aria-expanded','false');}
 });
 document.addEventListener('keydown',event=>{if(event.key==='F11'&&'__TAURI_INTERNALS__' in window){event.preventDefault();action('toggle-window-mode');}});
 function closeLibrarySize(restoreFocus=true){librarySizeOpen=false;const control=app.querySelector<HTMLElement>('.library-size-control');if(control)control.dataset.open='false';app.querySelector('#library-size-button')?.setAttribute('aria-expanded','false');if(restoreFocus)app.querySelector<HTMLElement>('#library-size-button')?.focus();}
-installInput(() => { if(librarySizeOpen){closeLibrarySize();return;} if(selectMenuOpen()){closeSelectMenu();return;} if(detailsMenuOpen){detailsMenuOpen=false;render();app.querySelector<HTMLElement>('[data-action="game-menu"]')?.focus();return;} if (shellMenuOpen) { shellMenuOpen=false; const menu=app.querySelector<HTMLElement>('#shell-menu'); if(menu)menu.hidden=true; app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false'); app.querySelector<HTMLElement>('#shell-menu-button')?.focus(); return; } if (view === 'operation' && operation?.stage === 'running') { announce('The operation is running. Use Request cancellation to stop safely.'); return; } if (view === 'operation' && (operation?.stage === 'review'||operation?.stage==='startup'||operation?.stage==='checking')) { void discardReview(); return; } if (view !== 'library') setView('library'); else app.querySelector<HTMLElement>('[data-route="library"]')?.focus(); }, delta => {
-  if(librarySizeOpen||selectMenuOpen()||shellMenuOpen||detailsMenuOpen||view==='operation')return;
+installInput(() => { if(heroAdjustment){finishHeroAdjustment(true);return;} if(librarySizeOpen){closeLibrarySize();return;} if(selectMenuOpen()){closeSelectMenu();return;} if(detailsMenuOpen){detailsMenuOpen=false;render();app.querySelector<HTMLElement>('[data-action="game-menu"]')?.focus();return;} if (shellMenuOpen) { shellMenuOpen=false; const menu=app.querySelector<HTMLElement>('#shell-menu'); if(menu)menu.hidden=true; app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false'); app.querySelector<HTMLElement>('#shell-menu-button')?.focus(); return; } if (view === 'operation' && operation?.stage === 'running') { announce('The operation is running. Use Request cancellation to stop safely.'); return; } if (view === 'operation' && (operation?.stage === 'review'||operation?.stage==='startup'||operation?.stage==='checking')) { void discardReview(); return; } if (view !== 'library') setView('library'); else app.querySelector<HTMLElement>('[data-route="library"]')?.focus(); }, delta => {
+  if(heroAdjustment||librarySizeOpen||selectMenuOpen()||shellMenuOpen||detailsMenuOpen||view==='operation')return;
   const index = tabs.findIndex(tab => tab.id === (view === 'details' ? 'library' : view));
   setView(tabs[(index + delta + tabs.length) % tabs.length].id);
-}, (state, id) => { document.documentElement.dataset.controller=String(state); controller = state; controllerId = id || ''; const hint = app.querySelector('#input-hints'); if (hint) hint.innerHTML = hints(); }, showHints);
+}, (state, id) => { document.documentElement.dataset.controller=String(state); controller = state; controllerId = id || ''; const hint = app.querySelector('#input-hints'); if (hint) hint.innerHTML = hints(); const framing=app.querySelector('#hero-framing-help');if(framing)framing.innerHTML=framingHelp(); }, showHints);
 void refresh();
 void engineStatus().then(status => { backend = status; render(); }).catch(() => { backend = { enabled: false, reason: 'The reviewed host adapter is unavailable. Refresh the local preview.' }; });

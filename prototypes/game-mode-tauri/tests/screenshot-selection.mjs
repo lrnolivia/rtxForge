@@ -12,9 +12,10 @@ try{
   await expect(page.locator('.scene-next')).toHaveCount(1);
   await expect(page.locator('.scene-next')).toHaveCSS('transition-duration','0.7s');
   await expect(page.locator('.details-page')).toHaveCSS('animation-name','none');
-  await expect(page.locator('.hero-info-card')).toHaveCSS('backdrop-filter','none');
+  await expect(page.locator('.hero-info-card')).toHaveCSS('backdrop-filter','blur(16px)');
   await expect(page.locator('.hero-info-card')).toHaveCSS('background-image','none');
-  expect(await page.locator('.hero-info-card').evaluate(n=>getComputedStyle(n).backgroundColor)).not.toContain(' / ');
+  expect(await page.locator('.hero-info-card').evaluate(n=>getComputedStyle(n).backgroundColor)).toContain(' / ');
+  await expect(page.locator('.hero-artwork')).toHaveAttribute('data-info-mask','true');
   await page.clock.fastForward(800);
   await expect(page.locator('#scene')).toHaveAttribute('data-screenshot-id','0');expect(fullRequests).toBe(1);
   await page.clock.fastForward(60000);

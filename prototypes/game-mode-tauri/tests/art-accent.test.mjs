@@ -45,6 +45,14 @@ test('yellow titles remain bright with a protected backdrop, and badges follow l
  assert.notEqual(heroBadge([245,240,230]).ink,heroBadge([20,30,40]).ink);
 });
 
+test('section headings keep light accent ink with contrast against their narrow edge',()=>{
+ for(const accent of ['#009b8e','#cc4ee8','#fffb00','#0d222c','#ff3020','#123ee8']){
+  const ink=rgb(heroColors(accent,false).title),edge=[12,18,23].map(value=>value*.85+255*.15);
+  assert.ok(luminance(ink)>.4,'Keep section heading ink light');
+  assert.ok(contrast(ink,edge)>=4.5,'The heading edge protects light ink even over white imagery');
+ }
+});
+
 test('Avatar mid-tone hero keeps a pale readable title in both themes',()=>{
  for(const [accent,background] of [['#4b8fb5',[71,106,126]],['#4191af',[141.0625,149.8333,144.5833]],['#4191af',[141.39872520683807,143.43357177424272,134.2694220455464]]]){
  const clear=heroColors(accent,false,background),light=heroColors(accent,true,background);

@@ -85,6 +85,9 @@ export async function hydrateArtwork(snapshot:Snapshot,changed:(game:Game,role:s
           canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);
           canvas.getContext('2d')!.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
           const thumbnail=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,'image/webp',.9));
+          // Encoding is complete. Release the GPU canvas backing immediately;
+          // an idle page need not retain a full-size surface for every game.
+          canvas.width=1;canvas.height=1;
           URL.revokeObjectURL(raw);state.urls.delete(raw);raw=undefined;
           if(!state.active)continue;
           cached={image:imageUrl(thumbnail||original,state),accent};state.cache.set(key,cached);

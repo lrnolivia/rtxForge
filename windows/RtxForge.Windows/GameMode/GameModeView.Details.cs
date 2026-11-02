@@ -265,6 +265,7 @@ public sealed partial class GameModeView
         if (g.AdoptionAvailable) rows.Add(ui.RowButton("Adopt with rtxForge", null, () => { CloseModal(); _ = shell.ReviewAdoptionAsync([g]); }));
         if (g.OfflineLaunchAvailable) rows.Add(ui.RowButton("Launch offline", null, () => { CloseModal(); _ = shell.LaunchOfflineAsync(g); }));
         rows.Add(ui.RowButton("Open Folder", null, () => { CloseModal(); _ = shell.OpenGameFolderAsync(g); }, enabled: !shell.Service.IsPreview && Directory.Exists(g.Location)));
+        rows.Add(ui.RowButton("Rename game", null, () => { CloseModal(); _ = shell.RenameGameAsync(g); }, enabled: !shell.Busy && !shell.Service.IsPreview));
         rows.Add(ui.RowButton("Remove from library", null, () => { CloseModal(); ConfirmRemoveGames([g]); }, danger: true));
         ShowModal("Game options", ui.Group(rows), [ui.Button("Back", CloseModal, GmKind.Card, .85)], CloseModal, 900);
     }

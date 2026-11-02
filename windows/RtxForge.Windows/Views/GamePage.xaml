@@ -117,6 +117,7 @@
                                         <MenuFlyoutItem x:Name="OfflineLaunchItem" Text="Launch offline" Click="OnLaunchOffline" />
                                         <MenuFlyoutItem x:Name="OpenFolderItem" Text="Open Folder" Click="OnOpenFolder"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
                                         <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem Text="Rename game" Click="OnRenameGame" />
                                         <MenuFlyoutItem Text="Remove from library" Click="OnRemoveFromLibrary"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
                                     </MenuFlyout>
                                 </Button.Flyout>

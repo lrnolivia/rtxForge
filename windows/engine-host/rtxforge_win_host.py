@@ -379,6 +379,8 @@ def _scan(params):
             traceback.print_exc()
     # Your chosen artwork over Steam's, and each game's saved notes (Linux details()).
     win_features.decorate(rows)
+    import library_identity
+    library_identity.decorate(rows, params)
     # Soft blocks you chose to try anyway, and each game's known result.
     import compat_list
     compat_list.apply(win_features._config(), rows, engine_bridge.module(service.config))

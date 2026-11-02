@@ -34,7 +34,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     static string SnapshotPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "library-snapshot.json");
     // Each build keys its own snapshot, so an update never shows the previous build's verdicts.
     static readonly string Build = typeof(EngineForgeService).Assembly.ManifestModule.ModuleVersionId.ToString("N");
-    string SnapshotKey() => LibrarySnapshot.Key(Settings.RuntimeProvider + "|" + Build + "|" + Settings.ExecutableSelectionKey, Settings.GameFolders, Settings.LibraryFolders);
+    string SnapshotKey() => LibrarySnapshot.Key(Settings.RuntimeProvider + "|" + Build + "|" + Settings.ExecutableSelectionKey + "|" + Settings.DisplayNamesKey, Settings.GameFolders, Settings.LibraryFolders);
     public IReadOnlyList<Game> CachedLibrary()
     {
         try { return LibraryGames(LibrarySnapshot.Read(SnapshotPath, SnapshotKey())); }
@@ -203,7 +203,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     {
         var key = SnapshotKey();
         // The library serves every mode; the installation review checks native FG for NR + MFG.
-        var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders, runtime_provider = Settings.RuntimeProvider, game_executables = Settings.GameExecutables }, cancel: cancel) as JsonArray ?? [];
+        var rows = await CallAsync("scan", new { folders = Settings.GameFolders, library_folders = Settings.LibraryFolders, runtime_provider = Settings.RuntimeProvider, game_executables = Settings.GameExecutables, game_names = Settings.GameNames }, cancel: cancel) as JsonArray ?? [];
         LibrarySnapshot.Write(SnapshotPath, key, rows);
         var games = LibraryGames(rows);
         if (!readOnly) foreach (var game in games.Where(g => g.TestActive)) MonitorTestHelper(game);

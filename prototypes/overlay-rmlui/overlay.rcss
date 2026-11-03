@@ -1021,3 +1021,6 @@ select selectbox { opacity: 0; }
 .glass .hint, .glass .setting-description, .glass .preview-note,
 .glass .metadata-line, .glass .status-chip, .glass .status-note,
 .glass .live-card-label, .glass .live-size { font-weight: 400; }
+
+.save-status { flex-shrink: 0; margin-top: 8dp; font-size: 12dp; line-height: 1.4; }
+.save-badge { display: inline-block; background-color: var(--control-fill); border-radius: 8dp; padding: 2dp 8dp; margin-right: 8dp; }

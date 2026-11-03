@@ -1123,7 +1123,7 @@ inline void EditControls(Config& cfg, float scale)
     ImGui::EndDisabled(); ImGui::SameLine();
     if(ImGui::Button("Defaults",ImVec2(width,0))) Defaults(cfg);
     if(!liveTuning) {
-        ImGui::TextWrapped("Tuning is saved for the next launch. Neural rendering switches now.");
+        ImGui::TextWrapped("Changes will take effect after restart");
         return;
     }
     if(!edits.comparing) {

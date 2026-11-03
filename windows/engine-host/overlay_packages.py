@@ -221,4 +221,5 @@ def prepare(e, state, params=None):
         except (t.Refusal, e.Stop, OSError, ValueError, KeyError, TypeError) as error:
             blocked.append({'title': name, 'detail': str(error), 'details': ''})
     more, failures, unchanged = routes.vulkan_plans(e, params, running)
-    return {'engine': e, 'plans': plans + more, 'blocked': blocked + failures, 'skipped': skipped + unchanged}
+    return {'engine': e, 'plans': plans + more, 'blocked': blocked + failures, 'skipped': skipped + unchanged,
+            'record_overlay_updates': True}

@@ -897,3 +897,8 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
   -webkit-text-stroke:0;
   text-shadow:none;
 }
+
+.detail-body .glass-section > :is(.section-heading,.panel-heading) + :is(.inner-card,.package-columns,.detail-action-row) {
+  margin-top:16px;
+}
+.detail-body .glass-section > .section-heading {margin-bottom:0}

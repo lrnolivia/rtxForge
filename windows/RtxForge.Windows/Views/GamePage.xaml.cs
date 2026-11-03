@@ -228,15 +228,15 @@ public sealed partial class GamePage : Page
                         Title = "Installed on Linux",
                         Message = GameOverview.LinuxNote,
                     });
-                var facts = new PresetColumns(240, 4) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
-                void FillOverview(IReadOnlyList<GameOverview.Fact> cards)
+                static PresetColumns OverviewGrid(IReadOnlyList<GameOverview.Fact> cards)
                 {
-                    facts.Children.Clear();
+                    var grid = new PresetColumns(240, cards.Count) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
                     foreach (var fact in cards)
-                        facts.Children.Add(Prefs.Row(fact.Title, fact.Value, glyph: fact.Glyph));
+                        grid.Children.Add(Prefs.Row(fact.Title, fact.Value, glyph: fact.Glyph));
+                    return grid;
                 }
                 var cachedFacts = GameOverview.Cards(g.EngineRow?["overview_cards"]);
-                FillOverview(cachedFacts.Count > 0 ? cachedFacts : GameOverview.Facts(g));
+                var facts = OverviewGrid(cachedFacts.Count > 0 ? cachedFacts : GameOverview.Facts(g));
                 PageHost.Children.Add(facts);
                 var overviewExtras = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0) };
                 PageHost.Children.Add(overviewExtras);
@@ -247,8 +247,13 @@ public sealed partial class GamePage : Page
                     try
                     {
                         var inspected = await engine.InspectOverviewAsync(g);
-                        if (!PageHost.Children.Contains(facts)) return;
-                        if (inspected.Cards.Count > 0) FillOverview(inspected.Cards);
+                        var index = PageHost.Children.IndexOf(facts);
+                        if (index < 0) return;
+                        if (inspected.Cards.Count > 0)
+                        {
+                            PageHost.Children.RemoveAt(index);
+                            PageHost.Children.Insert(index, OverviewGrid(inspected.Cards));
+                        }
                         if (inspected.Extras.Length > 0)
                         {
                             overviewExtras.Children.Add(Prefs.Row("Extras", string.Join(" · ", inspected.Extras), glyph: "\uE90F"));

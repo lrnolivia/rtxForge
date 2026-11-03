@@ -119,15 +119,17 @@ async function display(state:BackgroundSelection){
       fitScreenshot(scene,image);
       scene.dataset.backgroundWidth=String(image.width);scene.dataset.backgroundHeight=String(image.height);
       scene.dataset.screenshotId=id||'default';scene.querySelector('.scene-next')?.remove();state.current=state.appid+':'+(id||'default');
+      void updateBackgroundContrast();
+    };
+    const updateAccent=()=>{
       scene.dataset.adaptiveAccent=image.sample?signatureColor(image.sample.data)||'':'';
       window.dispatchEvent(new CustomEvent('rtxforge-background-ready'));
-      void updateBackgroundContrast();
     };
     clearTimeout(fade);scene.querySelector('.scene-next')?.remove();
     if(scene.style.backgroundImage!==source&&canFade()){
       const next=document.createElement('div');next.className='scene-next';next.dataset.quality=quality;next.style.backgroundImage=source;scene.append(next);fitScreenshot(next,image);
-      requestAnimationFrame(()=>requestAnimationFrame(()=>{if(next.isConnected)next.style.opacity='1';}));fade=setTimeout(commit,750);
-    }else commit();
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{if(next.isConnected){updateAccent();next.style.opacity='1';}}));fade=setTimeout(commit,750);
+    }else {updateAccent();commit();}
   }
 }
 /** One chosen screenshot per game; there is no rotation timer or background prefetch. */

@@ -127,13 +127,25 @@ def bundle(output, screening):
     for path in (APP / 'node_modules/@tauri-apps/api').glob('LICENSE*'):
         shutil.copy2(path, notices / path.name)
     cargo_home = Path(os.environ.get('CARGO_HOME') or Path.home() / '.cargo')
+    sdl_source_crate = None
     for package in tomllib.loads((APP / 'src-tauri/Cargo.lock').read_text())['package']:
         crate = package['name'] + '-' + package['version']
+        if package['name'] == 'sdl3-src':
+            sdl_source_crate = crate
         for path in (cargo_home / 'registry/src').glob('*/' + crate + '/*'):
             if path.is_file() and path.name.upper().startswith(('LICENSE','COPYING','NOTICE')):
                 destination = notices / 'rust' / crate
                 destination.mkdir(parents=True,exist_ok=True)
                 shutil.copy2(path,destination/path.name)
+    for crate in (cargo_home / 'registry/src').glob('*/' + sdl_source_crate) if sdl_source_crate else ():
+        for relative in ('SDL/LICENSE.txt', 'SDL/src/hidapi/LICENSE.txt',
+                         'SDL/src/hidapi/LICENSE-bsd.txt', 'SDL/src/hidapi/LICENSE-orig.txt',
+                         'SDL/src/video/yuv2rgb/LICENSE'):
+            path = crate / relative
+            if path.is_file():
+                destination = notices / 'rust' / crate.name / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, destination)
     dirty = bool(subprocess.check_output(['git', '-C', str(REPO), 'diff', '--name-only'], text=True).strip())
     files = {path.relative_to(output).as_posix(): digest(path) for path in sorted(output.rglob('*'))
              if path.is_file() and path.name != 'build.json' and not path.is_symlink()}

@@ -71,7 +71,7 @@ No existing game installs, Steam state or shared preferences were changed during
 - Tab / arrow keys: move. Enter: select. Escape: back. `[` / `]`: sections.
 - System reduced motion takes priority. The Motion option can also disable transitions.
 
-The Gamepad API requires the window to receive a controller interaction. Polling stops while the window is hidden or unfocused. Hardware controller acceptance remains separate from the synthetic standard-mapping checks.
+Native Game Mode uses SDL3 for mapped controllers and Steam Input virtual gamepads. When launching the non-Steam shortcut from Steam, choose a Gamepad layout if Steam Input is mapping the controller to keyboard and mouse. Native Game Mode consumes controller input only while focused. The browser preview uses the browser Gamepad API, which may require a controller button press before it reports the device. Hardware acceptance is separate from virtual controller checks.
 
 ## Checks
 

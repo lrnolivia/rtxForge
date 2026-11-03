@@ -93,6 +93,8 @@ class AppearanceSettings:
         preview.append(Adw.Clamp(child=frame, maximum_size=480, tightening_threshold=380))
         preview.append(preview_options)
         panel.append(preview)
+        panel.set_margin_top(12); panel.set_margin_bottom(12)
+        panel.set_margin_start(12); panel.set_margin_end(12)
         return Adw.PreferencesRow(child=panel)
 
     def build(self):
@@ -124,7 +126,7 @@ class AppearanceSettings:
         reset = Gtk.Button(label='Use default'); reset.connect('clicked', lambda *_: self.change('background', None))
         buttons.append(choose); buttons.append(reset); row.add_suffix(buttons); main.add(row)
         self.choice(main, 'Text size', 'text', [('standard', 'Standard'), ('large', 'Large')])
-        self.choice(preview_options, 'Navigation placement', 'navigation', [('top', 'Top'), ('bottom', 'Bottom')])
+        self.choice(main, 'Navigation placement', 'navigation', [('top', 'Top'), ('bottom', 'Bottom')])
         self.choice(preview_options, 'Interface scale', 'scale', [('auto', 'Automatic'), *[(number, str(number) + '%') for number in (100, 125, 130, 150, 175, 200)]], 'Automatic adapts to the display.')
         details = self.group('Game Details', "Surface Tint follows each game's saved color or artwork.")
         details_options = Adw.PreferencesGroup()

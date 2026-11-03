@@ -103,7 +103,7 @@ internal sealed class GameModeAppearanceView : UserControl
         backgroundButtons.Children.Add(Prefs.ActionButton("Use default",async (_, _) => await ChangeAsync("background",null)));
         main.Add(Prefs.Row("Background","PNG, JPEG or WebP for the main Game Mode interface.",backgroundButtons,"\uEB9F"));
         Choice(main,"Text size",null,"text",["Standard","Large"],["standard","large"]);
-        Choice(previewOptions,"Navigation placement",null,"navigation",["Top","Bottom"],["top","bottom"]);
+        Choice(main,"Navigation placement",null,"navigation",["Top","Bottom"],["top","bottom"]);
         Choice(previewOptions,"Interface scale","Automatic adapts to the display.","scale",["Automatic","100%","125%","130%","150%","175%","200%"],["auto","100","125","130","150","175","200"]);
 
         var details = new PreferencesGroup("Game Details", "Use a separate surface and adjust how each game’s accent appears.");
@@ -129,7 +129,7 @@ internal sealed class GameModeAppearanceView : UserControl
         IsEnabled=engine is { IsPreview:false }; Paint();
     }
 
-    static Grid PreviewPanel(FrameworkElement options, Canvas scene, string caption, FrameworkElement previewOptions)
+    static Border PreviewPanel(FrameworkElement options, Canvas scene, string caption, FrameworkElement previewOptions)
     {
         var layout = new Grid { ColumnSpacing=20, RowSpacing=16 };
         layout.ColumnDefinitions.Add(new());
@@ -149,7 +149,7 @@ internal sealed class GameModeAppearanceView : UserControl
             layout.ColumnDefinitions[1].Width=wide ? new GridLength(Math.Min(480,args.NewSize.Width*.44)) : new GridLength(0);
             Grid.SetColumn(preview,wide?1:0); Grid.SetRow(preview,wide?0:1);
         };
-        return layout;
+        return new Border { Style=Prefs.GetStyle("ForgeSettingsCardStyle"), Padding=new Thickness(16), Child=layout };
     }
 
     static Uri? Artwork(string? path)

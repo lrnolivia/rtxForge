@@ -112,6 +112,7 @@ async fn choose_path(app: tauri::AppHandle, kind: String) -> Result<Option<Strin
         let selected = match kind.as_str() {
             "folder" => dialog.blocking_pick_folder(),
             "package" => dialog.add_filter("Package archive", &["zip", "7z"]).blocking_pick_file(),
+            "renodx-addon" => dialog.add_filter("RenoDX add-on", &["addon32", "addon64"]).blocking_pick_file(),
             "addon" => dialog.add_filter("ReShade add-on", &["addon64"]).blocking_pick_file(),
             "executable" => dialog.add_filter("Game executable", &["exe"]).blocking_pick_file(),
             "image" => dialog.add_filter("Artwork image", &["png", "jpg", "jpeg"]).blocking_pick_file(),

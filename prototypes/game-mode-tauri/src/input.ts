@@ -52,7 +52,7 @@ export function installInput(back: () => void, switchTab: (delta: number) => voi
         else if (index === 4 || index === 5) switchTab(index === 4 ? -1 : 1);
         else if (index >= 12 && index <= 15) {
           const field = document.activeElement;
-          if(field instanceof HTMLElement&&field.matches('[data-focal-editor][aria-pressed=true],.artwork-sampler')){
+          if(field instanceof HTMLElement&&field.matches('[data-focal-editor][aria-pressed=true],.artwork-sampler[aria-pressed=true]')){
             field.dispatchEvent(new KeyboardEvent('keydown',{key:({12:'ArrowUp',13:'ArrowDown',14:'ArrowLeft',15:'ArrowRight'} as const)[index as 12],bubbles:true,cancelable:true}));
           } else if(field instanceof HTMLInputElement&&field.matches('[data-hero-focus]')&&(index===12||index===13)){
             document.querySelector<HTMLElement>(`[data-hero-focus="${index===13?1:0}"]`)?.focus();

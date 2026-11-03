@@ -136,7 +136,8 @@ public sealed partial class GamePage : Page
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
             : "Ready for Features";
         // Installed with rtxForge on Linux: Set Up for Windows adapts that install instead of reinstalling it.
-        InstallText.Text = game.InstallLabel;
+        InstallText.Text = game.Installed && !game.AdoptionAvailable && !game.InstalledOnLinux && !game.UsesFeeder
+            ? "Update Features" : game.InstallLabel;
         // Metadata pill beside STEAM / TESTED: which rtxForge installed the features.
         var oses = game.InstalledOses;
         OsBadge.Visibility = oses.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
@@ -177,7 +178,11 @@ public sealed partial class GamePage : Page
             SelectSection((string)item.Tag);
     }
 
-    void OnInstall(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", [game]);
+    void OnInstall(object sender, RoutedEventArgs e)
+    {
+        var update = game.Installed && !game.AdoptionAvailable && !game.InstalledOnLinux;
+        _ = shell.LaunchAction(update ? "repair" : "install", [game], update ? shell.GameTuning(game) : null);
+    }
     void OnRestore(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("uninstall", [game]);
     void OnBugReport(object sender, RoutedEventArgs e) => _ = shell.PrepareBetaReportsAsync([game]);
     void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", [game]);
@@ -228,8 +233,15 @@ public sealed partial class GamePage : Page
                         Title = "Installed on Linux",
                         Message = GameOverview.LinuxNote,
                     });
-                var overviewFacts = GameOverview.Facts(g);
-                var facts = new PresetColumns(280, overviewFacts.Count > 3 ? 4 : 3) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
+                var gameFacts = GameOverview.Facts(g);
+                var compatibility = gameFacts.FirstOrDefault(fact => fact.Title == "Compatibility")
+                    ?? new GameOverview.Fact("Compatibility", "No compatibility result", "\uE73E");
+                var featureFact = gameFacts.FirstOrDefault(fact => fact.Title == "Neural rendering" || fact.Title == "Available features")
+                    ?? new GameOverview.Fact("Features", g.Installed ? g.Profile ?? "Installed" : "Unavailable", "\uE9E9");
+                if (!g.IsFeeder && !string.IsNullOrWhiteSpace(g.DlssVersion))
+                    featureFact = featureFact with { Value = featureFact.Value + "\nDLSS " + g.DlssVersion };
+                var overviewFacts = new[] { gameFacts[0], compatibility, featureFact };
+                var facts = new PresetColumns(280, 3) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
                 foreach (var fact in overviewFacts)
                 {
                     var card = Prefs.Row(fact.Title, fact.Value, glyph: fact.Glyph);

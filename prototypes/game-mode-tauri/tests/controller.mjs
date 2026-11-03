@@ -5,7 +5,15 @@ await page.addInitScript(()=>{window.pad={id:'Xbox fixture',mapping:'standard',a
 await page.route('**/api/snapshot',async route=>{source=await(await route.fetch()).json();source.games=Array.from({length:24},(_,i)=>{const g=source.games[i%source.games.length];return {...g,id:i===0?g.id:`${g.id}-${i}`,localArtwork:[]};});source.defaults.runtime_provider='skynizz';source.preferences={...source.preferences,controller_glyphs:'auto'};source.defaults.default_profile='nr-mfg';await route.fulfill({json:source});});
 await page.route('**/api/engine/status',route=>route.fulfill({json:{enabled:true,reason:'Synthetic controller test only'}}));
 await page.route('**/api/engine',async route=>{const r=route.request().postDataJSON();calls.push(r);let result={};if(r.method==='scan_game')result=[{game:source.games[0].path,name:source.games[0].name,exe:'fixture.exe',runtime_provider:'skynizz',feature_mode:'nr-mfg',dynamic_mfg_available:true}];if(r.method==='prepare_routes')result={token:'controller-exact-review',title:'Review controller fixture',action:'Install Features',rows:[{game:source.games[0].path,name:source.games[0].name,detail:'Fixture only'}],trust:'Acknowledge fixture'};if(r.method==='execute_routes'){await new Promise(resolve=>finish=resolve);result={cancelled:true,message:'Stopped safely.'};}await route.fulfill({json:{result}});});
-const press=async index=>{await page.evaluate(i=>window.pad.buttons[i].pressed=true,index);await page.waitForTimeout(60);await page.evaluate(i=>window.pad.buttons[i].pressed=false,index);await page.waitForTimeout(50);};
+// Let the input poller sample both edges even when browser frames are slow.
+const press = async index => {
+  for (const pressed of [true, false]) {
+    await page.evaluate(({index, pressed}) => {
+      window.pad.buttons[index].pressed = pressed;
+      return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }, {index, pressed});
+  }
+};
 const padClick=async selector=>{await page.locator(selector).first().focus();await press(0);};
 try{
  await page.goto(process.env.RTXFORGE_TEST_URL||'http://127.0.0.1:1420');await page.waitForSelector('.game-card');await page.evaluate(()=>window.dispatchEvent(new Event('gamepadconnected')));

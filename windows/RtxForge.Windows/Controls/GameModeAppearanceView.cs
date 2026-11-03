@@ -102,8 +102,8 @@ internal sealed class GameModeAppearanceView : UserControl
         backgroundButtons.Children.Add(Prefs.ActionButton("Choose image",async (_, _) => await ChooseBackgroundAsync()));
         backgroundButtons.Children.Add(Prefs.ActionButton("Use default",async (_, _) => await ChangeAsync("background",null)));
         main.Add(Prefs.Row("Background","PNG, JPEG or WebP for the main Game Mode interface.",backgroundButtons,"\uEB9F"));
-        Choice(main,"Text size",null,"text",["Standard","Large"],["standard","large"]);
         Choice(main,"Navigation placement",null,"navigation",["Top","Bottom"],["top","bottom"]);
+        Choice(main,"Text size",null,"text",["Standard","Large"],["standard","large"]);
         Choice(previewOptions,"Interface scale","Automatic adapts to the display.","scale",["Automatic","100%","125%","130%","150%","175%","200%"],["auto","100","125","130","150","175","200"]);
 
         var details = new PreferencesGroup("Game Details", "Use a separate surface and adjust how each game’s accent appears.");

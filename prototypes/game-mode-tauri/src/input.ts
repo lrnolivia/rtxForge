@@ -1,6 +1,6 @@
 type Direction = 'left' | 'right' | 'up' | 'down';
 export function moveFocus(direction: Direction): void {
-  const scope=(document.querySelector('.select-menu') || document.querySelector('.library-size-control[data-open=true]') || document.querySelector('.shell-menu:not([hidden])') || document.querySelector('.game-menu:not([hidden])') || document.querySelector('.operation-flow'))||document;
+  const scope=(document.querySelector('.color-editor:not([hidden])') || document.querySelector('.select-menu') || document.querySelector('.library-size-control[data-open=true]') || document.querySelector('.shell-menu:not([hidden])') || document.querySelector('.game-menu:not([hidden])') || document.querySelector('.operation-flow'))||document;
   const targets = [...scope.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],summary')]
     .filter(node => node.getClientRects().length && !node.closest('[hidden]'));
   const active = document.activeElement as HTMLElement;
@@ -52,7 +52,7 @@ export function installInput(back: () => void, switchTab: (delta: number) => voi
         else if (index === 4 || index === 5) switchTab(index === 4 ? -1 : 1);
         else if (index >= 12 && index <= 15) {
           const field = document.activeElement;
-          if(field instanceof HTMLElement&&field.matches('[data-focal-editor][aria-pressed=true]')){
+          if(field instanceof HTMLElement&&field.matches('[data-focal-editor][aria-pressed=true],.artwork-sampler')){
             field.dispatchEvent(new KeyboardEvent('keydown',{key:({12:'ArrowUp',13:'ArrowDown',14:'ArrowLeft',15:'ArrowRight'} as const)[index as 12],bubbles:true,cancelable:true}));
           } else if(field instanceof HTMLInputElement&&field.matches('[data-hero-focus]')&&(index===12||index===13)){
             document.querySelector<HTMLElement>(`[data-hero-focus="${index===13?1:0}"]`)?.focus();

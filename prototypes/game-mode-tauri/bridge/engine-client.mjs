@@ -16,6 +16,7 @@ allowedMethods.add('executable_review');
 ['prepare_routes', 'execute_routes', 'cancel_routes', 'discard_routes'].forEach(method => allowedMethods.add(method));
 allowedMethods.add('cleanup_review');
 allowedMethods.add('open_game_folder');
+allowedMethods.add('overlay_status');
 const root = path.dirname(fileURLToPath(import.meta.url));
 export class EngineClient extends EventEmitter {
   child;

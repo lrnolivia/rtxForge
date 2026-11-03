@@ -17,7 +17,7 @@ ALLOWED = frozenset(('hello', 'hardware', 'scan', 'prepare', 'execute', 'cancel'
                      'prepare_dlss', 'update_dlss', 'packages', 'extras_list', 'extra_review',
                      'extra_restore_review', 'run', 'discard', 'steam_status', 'steam_review',
                      'steam_install', 'steam_remove', 'recoveries', 'recovery_review', 'cleanup_review', 'open_game_folder',
-                     'diagnose', 'dlss_inventory', 'dlss_restore_review', 'launch_game', 'settings_get', 'settings_review', 'notes_get', 'notes_save', 'package_inspect', 'package_use', 'scan_game', 'test_start', 'test_finish', 'hdr_status', 'hdr_review', 'report_draft', 'report_preview', 'global_review', 'overlay_ui_review', 'overlay_package_review', 'storage_inventory', 'storage_review', 'update_check', 'executable_review', 'sgdb_status', 'sgdb_connect', 'sgdb_disconnect', 'sgdb_search', 'sgdb_artwork', 'sgdb_download', 'art_store', 'art_reset', 'art_sync_review', 'art_profiles', 'art_set_profile', 'media', 'feeder_storage'))
+                     'diagnose', 'dlss_inventory', 'dlss_restore_review', 'launch_game', 'settings_get', 'settings_review', 'notes_get', 'notes_save', 'package_inspect', 'package_use', 'scan_game', 'test_start', 'test_finish', 'hdr_status', 'hdr_review', 'report_draft', 'report_preview', 'global_review', 'overlay_ui_review', 'overlay_package_review', 'storage_inventory', 'storage_review', 'update_check', 'executable_review', 'sgdb_status', 'sgdb_connect', 'sgdb_disconnect', 'sgdb_search', 'sgdb_artwork', 'sgdb_download', 'art_store', 'art_reset', 'art_sync_review', 'art_profiles', 'art_set_profile', 'media', 'feeder_storage', 'overlay_status'))
 
 
 def main():
@@ -140,6 +140,10 @@ def main():
         return features._review('prototype-executable', 'Review game executable', [features._item(row['name'], value['exe'], 'Use executable')], action='Use detected executable' if not params.get('path') else 'Save executable choice', payload={'game': row['game'], 'exe': value['exe'], 'reset': not bool(params.get('path'))}, note='The existing validator checks architecture, ownership and the selected installation before this choice is saved.')
     features.RUNNERS['prototype-settings'] = save_settings
     import game_notes
+    def overlay_status(params):
+        import overlay_status as status_inventory
+        return status_inventory.snapshot(host['service'].config)
+    host['METHODS']['overlay_status'] = overlay_status
     host['METHODS'].update(launch_game=launch_game, open_game_folder=open_game_folder, settings_get=lambda _p: media.load_settings(host['service'].config), settings_review=settings_review, scan_game=scan_game,
                            notes_get=lambda p: game_notes.load(host['service'].config, p['game']), executable_review=executable_review)
     original_prepare = host['METHODS']['prepare']

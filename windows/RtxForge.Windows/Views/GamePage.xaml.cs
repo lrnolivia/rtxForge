@@ -344,43 +344,33 @@ public sealed partial class GamePage : Page
                 }), ""));
                 tools.Add(locationTools);
                 PageHost.Children.Add(tools);
-                var hdr = new PreferencesGroup("RenoDX HDR", "The matching HDR mod and its dependencies, managed together.");
-                var hdrInstall = Prefs.ActionButton("Install HDR", async (_, _) => { await shell.ChangeHdrAsync(g); Build("Tools"); });
-                var hdrRemove = Prefs.ActionButton("Remove HDR", async (_, _) => { await shell.ChangeHdrAsync(g, true); Build("Tools"); });
+                tools.Add(Prefs.Row("Diagnose NR", "Read saved NR settings, runtime hashes and log evidence.",
+                    Prefs.ActionButton("Diagnose", async (_, _) => await shell.DiagnoseAsync(g)), "\uE9D9"));
+                var reshade = new PreferencesGroup("ReShade & add-ons", "Manage ReShade, RenoDX, shaders and presets for this game.");
+                var runtimeActions = new WrapRow { Spacing = 8, LineSpacing = 8 };
+                var installReShade = Prefs.ActionButton("Install ReShade", async (_, _) => await shell.InstallExtraAsync(g, "reshade"), accent: true);
+                var importReShade = Prefs.ActionButton("Import package\u2026", async (_, _) => await shell.InstallExtraAsync(g, "reshade-import"));
+                installReShade.IsEnabled = importReShade.IsEnabled = !shell.Service.IsPreview && !g.Blocked && !shell.Busy;
+                runtimeActions.Children.Add(installReShade); runtimeActions.Children.Add(importReShade);
+                reshade.Add(Prefs.Row("ReShade runtime", "Install the official runtime or import your own package, shaders or preset.", runtimeActions, "\uE896"));
+                var hdrInstall = Prefs.ActionButton("Install RenoDX", async (_, _) => { await shell.ChangeHdrAsync(g); Build("Tools"); });
+                var hdrRemove = Prefs.ActionButton("Remove RenoDX", async (_, _) => { await shell.ChangeHdrAsync(g, true); Build("Tools"); });
                 hdrInstall.IsEnabled = false;
                 hdrRemove.Visibility = Visibility.Collapsed;
                 var hdrActions = new WrapRow { Spacing = 8, LineSpacing = 8 };
                 hdrActions.Children.Add(hdrInstall); hdrActions.Children.Add(hdrRemove);
-                var hdrStatus = Prefs.Row("HDR enhancement", "Checking HDR support…", hdrActions, "");
-                hdr.Add(hdrStatus);
-                var customHdr = Prefs.ActionButton("Use custom package…", async (_, _) => { await shell.ChooseCustomHdrAsync(g); Build("Tools"); });
+                var customHdr = Prefs.ActionButton("Use custom add-on\u2026", async (_, _) => { await shell.ChooseCustomHdrAsync(g); Build("Tools"); });
                 customHdr.IsEnabled = !shell.Service.IsPreview && !shell.Busy;
-                hdr.Add(Prefs.Row("Custom HDR package", "Choose a RenoDX .addon64 or .addon32 file for this game. Its architecture and exact files are checked before installation; automatic updates keep your custom choice.", customHdr, "\uE8B7"));
-                PageHost.Children.Add(hdr);
+                hdrActions.Children.Add(customHdr);
+                var hdrStatus = Prefs.Row("RenoDX", "Checking the matching game add-on and required ReShade files\u2026", hdrActions, "\uE793");
+                reshade.Add(hdrStatus);
                 _ = FillHdrAsync(g, hdrStatus, hdrInstall, hdrRemove);
-                // populate_tools: NR diagnosis and ReShade / add-ons, each reviewed before it touches the game.
-                var extras = new PreferencesGroup("Graphics Tools", "Check NR or add ReShade to this game. Existing graphics files are kept safe.");
-                var graphicsTools = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
-                graphicsTools.Children.Add(DetailActionCard("Diagnose NR", "Read the saved NR settings, runtime hashes and log evidence.",
-                    Prefs.ActionButton("Diagnose", async (_, _) => await shell.DiagnoseAsync(g)), ""));
-                foreach (var (kind, title, subtitle) in new[]
-                {
-                    ("reshade", "Install ReShade", "Download and install the official ReShade runtime for this game."),
-                    ("reshade-import", "Import ReShade package", "Add a ZIP, custom runtime, add-on, shader or preset INI to this game. Review the exact files before importing."),
-                    ("addon", "Install Add-on", "Choose another .addon64 file. RenoDX HDR is managed above."),
-                })
-                {
-                    var install = Prefs.ActionButton(kind == "reshade" ? "Install" : "Choose…", async (_, _) => await shell.InstallExtraAsync(g, kind));
-                    install.IsEnabled = !shell.Service.IsPreview && !g.Blocked && !shell.Busy;
-                    graphicsTools.Children.Add(DetailActionCard(title, subtitle, install, ""));
-                }
-                graphicsTools.Children.Add(DetailActionCard("ReShade Downloads", "Get ReShade from its official site.",
-                    Prefs.ActionButton("Open", (_, _) => MainWindow.OpenUri("https://reshade.me/")), ""));
-                extras.Add(graphicsTools);
-                PageHost.Children.Add(extras);
-                var trustNote = Prefs.Label("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage.", "ForgeCaptionDimTextStyle");
-                trustNote.Margin = new Thickness(0, 12, 0, 0);
-                PageHost.Children.Add(trustNote);
+                var addOn = Prefs.ActionButton("Choose add-on\u2026", async (_, _) => await shell.InstallExtraAsync(g, "addon"));
+                addOn.IsEnabled = !shell.Service.IsPreview && !g.Blocked && !shell.Busy;
+                reshade.Add(Prefs.Row("Other add-ons", "Choose a ReShade .addon64 file.", addOn, "\uE7F8"));
+                reshade.Add(Prefs.Row("ReShade website", "Downloads and documentation from the official site.",
+                    Prefs.ActionButton("Open", (_, _) => MainWindow.OpenUri("https://reshade.me/")), "\uE774"));
+                PageHost.Children.Add(reshade);
                 _ = FillExtraRecordsAsync(g);
                 break;
 
@@ -460,13 +450,13 @@ public sealed partial class GamePage : Page
             var status = await shell.Service.HdrStatusAsync(g);
             if (g != game || section != "Tools") return;
             SetSubtitle(row, status.Message + (status.Notes.Length > 0 ? "\n" + status.Notes : ""));
-            install.Content = status.Installed ? "Update HDR" : "Install HDR";
+            install.Content = status.Installed ? "Update RenoDX" : "Install RenoDX";
             install.IsEnabled = status.Available && (!status.Installed || status.Update) && !shell.Busy;
             install.Visibility = status.Installed && !status.Update ? Visibility.Collapsed : Visibility.Visible;
             remove.Visibility = status.Installed ? Visibility.Visible : Visibility.Collapsed;
             remove.IsEnabled = !shell.Busy;
         }
-        catch (InvalidOperationException error) { SetSubtitle(row, "Couldn’t check HDR support. " + error.Message); }
+        catch (InvalidOperationException error) { SetSubtitle(row, "Couldn’t check RenoDX support. " + error.Message); }
     }
 
     async Task FillExtraRecordsAsync(Game g)

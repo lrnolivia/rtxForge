@@ -1,1 +1,4 @@
-fn main() { tauri_build::build() }
+fn main() {
+    println!("cargo:rerun-if-changed=../dist");
+    tauri_build::build()
+}

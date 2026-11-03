@@ -278,7 +278,11 @@ def bind(root, send):
         library = library_media.LibraryMedia(service.config, library_media.load_settings(service.config))
         return [dict(game=row['game'], **library.enrich(row, bool(params.get('refresh')))) for row in params['rows']]
 
-    methods = dict(hello=lambda _p: {'root': str(root), 'platform': 'Linux'}, hardware=lambda _p: service.hardware(), scan=scan,
+    def overlay_status(params):
+        import overlay_status as status_inventory
+        return status_inventory.snapshot(service.config)
+
+    methods = dict(overlay_status=overlay_status, hello=lambda _p: {'root': str(root), 'platform': 'Linux'}, hardware=lambda _p: service.hardware(), scan=scan,
                    prepare=prepare, execute=execute, cancel=cancel, discard_operation=discard, discard=discard, run=execute,
                    settings_get=lambda _p: library_media.load_settings(service.config), settings_review=settings_review,
                    packages=lambda _p: {'catalog': package_catalog.catalog(service.hardware())},

@@ -22,9 +22,9 @@ export function readGameAccents(): Map<string,string> {
     return new Map(Object.entries(saved).slice(0,1000).filter((entry): entry is [string,string] => typeof entry[1] === 'string' && /^#[0-9a-f]{6}$/i.test(entry[1])));
   } catch { return new Map(); }
 }
-export function readAppearance(): Appearance {
+export function readAppearance(saved?:unknown): Appearance {
   try {
-    const value = JSON.parse(localStorage.getItem('rtxforge-game-mode-prototype') || '{}');
+    const value: any = saved ?? JSON.parse(localStorage.getItem('rtxforge-game-mode-prototype') || '{}');
     return { libraryScale:typeof value.libraryScale==='number'&&value.libraryScale>=70&&value.libraryScale<=140?(value.libraryScaleVersion===1?value.libraryScale:Math.max(70,Math.min(140,Math.round(value.libraryScale/1.05/5)*5))):100, theme: ['clear', 'light', 'dark'].includes(value.theme) ? value.theme : 'clear',
       ...(typeof value.background==='string'&&value.background.length<1600000&&/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(value.background)?{background:value.background}:{}),
       tintStrength:typeof value.tintStrength==='number'?Math.max(0,Math.min(100,value.tintStrength)):50, accentMode:['theme','adaptive','custom'].includes(value.accentMode)?value.accentMode:value.appearanceDefaultsVersion===2&&value.tint===false?'theme':'custom',

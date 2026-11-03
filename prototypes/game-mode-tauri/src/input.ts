@@ -4,7 +4,7 @@ export function moveFocus(direction: Direction): void {
   const targets = [...scope.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],summary')]
     .filter(node => node.getClientRects().length && !node.closest('[hidden]'));
   const active = document.activeElement as HTMLElement;
-  if (!targets.includes(active)&&(!active?.closest('main')||!active.getClientRects().length)) { (targets.find(node=>node.closest('main'))||targets[0])?.focus(); return; }
+  if (!targets.includes(active)&&(!active?.closest('main')||!active.getClientRects().length||!scope.contains(active))) { (targets.find(node=>node.closest('main'))||targets[0])?.focus(); return; }
   const rect = active.getBoundingClientRect(), x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
   const horizontal = direction === 'left' || direction === 'right';
   const positive = direction === 'right' || direction === 'down';
@@ -32,21 +32,44 @@ export function installInput(back: () => void, switchTab: (delta: number) => voi
     if (directions[event.key]) { event.preventDefault(); moveFocus(directions[event.key]); }
     if (event.key === '[' || event.key === ']') { event.preventDefault(); switchTab(event.key === '[' ? -1 : 1); }
   });
-  let active = false, frame = 0, lastTime = 0;
+  let active = false, frame = 0, padIndex: number | undefined;
+  let heldDirection = 0, repeatAt = 0;
+  const directionKey = {12:'up',13:'down',14:'left',15:'right'} as const;
+  const readPads = () => Array.from(navigator.getGamepads?.() ?? []).filter((pad): pad is Gamepad =>
+    Boolean(pad && (pad.mapping === 'standard' || (!pad.mapping && pad.buttons.length >= 16 && pad.axes.length >= 2))));
+  const seedFocus = () => {
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused !== document.body && focused.getClientRects().length) return false;
+    const firstCard = document.querySelector<HTMLElement>('#game-results .game-card');
+    if (firstCard) firstCard.focus(); else moveFocus('down');
+    return true;
+  };
   const previous = new Set<number>();
   function poll(time: number) {
     if (!active) return;
-    const pad = [...navigator.getGamepads()].find(Boolean);
+    const pads = readPads();
+    const engaged = pads.find(pad => pad.buttons.some(button => button.pressed) || Math.max(Math.abs(pad.axes[0] ?? 0),Math.abs(pad.axes[1] ?? 0)) > .6);
+    const pad = engaged ?? pads.find(pad=>pad.index===padIndex) ?? pads[0];
     if (pad) {
+      if (pad.index !== padIndex) {
+        padIndex = pad.index; previous.clear(); heldDirection = 0;
+        connected(true,pad.id);
+      }
       const pressed = new Set(pad.buttons.map((button, i) => button.pressed ? i : -1).filter(i => i >= 0));
-      if (pad.axes[0] < -.55) pressed.add(14);
-      if (pad.axes[0] > .55) pressed.add(15);
-      if (pad.axes[1] < -.55) pressed.add(12);
-      if (pad.axes[1] > .55) pressed.add(13);
+      const x=pad.axes[0] ?? 0, y=pad.axes[1] ?? 0;
+      const dpad=[12,13,14,15].find(index=>pressed.has(index));
+      const threshold=heldDirection ? .43 : .6;
+      const stick=Math.abs(x)>=Math.abs(y) ? (Math.abs(x)>=threshold?(x<0?14:15):0) : (Math.abs(y)>=threshold?(y<0?12:13):0);
+      for (const index of [12,13,14,15]) pressed.delete(index);
+      const direction=dpad ?? stick;
+      if(direction)pressed.add(direction);
+      if(direction!==heldDirection){heldDirection=direction;repeatAt=time+320;}
       for (const index of pressed) {
-        const repeat = index >= 12 && time - lastTime > 180;
+        const repeat = index===direction && time>=repeatAt;
         if (previous.has(index) && !repeat) continue;
+        if (repeat) repeatAt=time+110;
         activity();
+        if ((index===0||index===direction) && seedFocus()) continue;
         if (index === 0) (document.activeElement as HTMLElement)?.click();
         else if (index === 1) back();
         else if (index === 4 || index === 5) switchTab(index === 4 ? -1 : 1);
@@ -61,21 +84,20 @@ export function installInput(back: () => void, switchTab: (delta: number) => voi
             field.dispatchEvent(new Event('change', { bubbles: true }));
           } else if(field instanceof HTMLInputElement&&field.type==='range'&&(index===14||index===15)){
             if(index===14)field.stepDown();else field.stepUp();field.dispatchEvent(new Event('input',{bubbles:true}));
-          } else moveFocus(({ 12: 'up', 13: 'down', 14: 'left', 15: 'right' } as const)[index as 12]);
+          } else moveFocus(directionKey[index as keyof typeof directionKey]);
         }
-        lastTime = time;
       }
       previous.clear(); pressed.forEach(index => previous.add(index));
     }
     frame = requestAnimationFrame(poll);
   }
   function sync() {
-    const selected = [...navigator.getGamepads?.() || []].find(Boolean);
+    const selected = readPads()[0];
     const hasPad = Boolean(selected);
     connected(hasPad, selected?.id);
     const shouldPoll = hasPad && !document.hidden && document.hasFocus();
     if (shouldPoll && !active) { active = true; frame = requestAnimationFrame(poll); }
-    if (!shouldPoll && active) { active = false; cancelAnimationFrame(frame); previous.clear(); }
+    if (!shouldPoll && active) { active = false; cancelAnimationFrame(frame); previous.clear(); heldDirection=0; padIndex=undefined; }
   }
   window.addEventListener('gamepadconnected', sync);
   window.addEventListener('gamepaddisconnected', sync);

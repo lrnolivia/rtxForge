@@ -9,7 +9,8 @@ const press=async index=>{await page.evaluate(i=>window.pad.buttons[i].pressed=t
 const padClick=async selector=>{await page.locator(selector).first().focus();await press(0);};
 try{
  await page.goto(process.env.RTXFORGE_TEST_URL||'http://127.0.0.1:1420');await page.waitForSelector('.game-card');await page.evaluate(()=>window.dispatchEvent(new Event('gamepadconnected')));
- await padClick('.game-card');await expect(page.locator('.details-page')).toBeVisible();await press(13);expect(await page.evaluate(()=>document.activeElement.closest('main')!==null)).toBe(true);
+ await page.evaluate(()=>document.activeElement?.blur());
+ await press(0);await expect(page.locator('.game-card').first()).toBeFocused();await press(0);await expect(page.locator('.details-page')).toBeVisible();await press(13);expect(await page.evaluate(()=>document.activeElement.closest('main')!==null)).toBe(true);
  await padClick('[data-operation=install]');await expect(page.locator('[data-action=startup-review]')).toBeVisible();await page.locator('#page-title').focus();await press(13);expect(await page.evaluate(()=>document.activeElement.closest('.operation-flow')!==null)).toBe(true);
  await padClick('#startup-mfg-enabled');await expect(page.getByRole('listbox')).toBeVisible();await press(13);await press(0);await expect(page.locator('#startup-mfg-enabled')).toHaveValue('false');await expect(page.locator('#startup-mfg-enabled')).toBeFocused();
  await padClick('#startup-mfg-enabled');await press(12);await press(0);await expect(page.locator('#startup-mfg-enabled')).toHaveValue('true');

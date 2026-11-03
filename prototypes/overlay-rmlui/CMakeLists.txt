@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 cmake_policy(SET CMP0091 NEW)
-project(OverlayRmlUiPrototype LANGUAGES CXX)
+project(OverlayRmlUiPrototype LANGUAGES CXX RC)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 if(NOT WIN32)
   message(FATAL_ERROR "This prototype evaluates the existing Windows DirectX 11 overlay boundary.")
@@ -17,7 +17,8 @@ set(RMLUI_LUA_BINDINGS OFF CACHE BOOL "" FORCE)
 set(RMLUI_SHELL OFF CACHE BOOL "" FORCE)
 set(RMLUI_PRECOMPILED_HEADERS ON CACHE BOOL "" FORCE)
 add_subdirectory("${RMLUI_SOURCE}" "${CMAKE_CURRENT_BINARY_DIR}/rmlui")
-add_executable(OverlayPrototype Prototype.cpp "${RMLUI_SOURCE}/Backends/RmlUi_Renderer_DX11.cpp")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PreviewIcon.rc" "101 ICON \"${CMAKE_CURRENT_SOURCE_DIR}/../game-mode-tauri/src-tauri/icons/icon.ico\"\n")
+add_executable(OverlayPrototype Prototype.cpp "${RMLUI_SOURCE}/Backends/RmlUi_Renderer_DX11.cpp" "${CMAKE_CURRENT_BINARY_DIR}/PreviewIcon.rc")
 find_program(PROTOTYPE_POWERSHELL NAMES pwsh powershell REQUIRED)
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/PrototypeControls.generated.h"
   COMMAND "${PROTOTYPE_POWERSHELL}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/Generate-Controls.ps1" -Output "${CMAKE_CURRENT_BINARY_DIR}/PrototypeControls.generated.h"

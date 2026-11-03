@@ -40,8 +40,51 @@ static void Require(bool ok,const char* message) { if(!ok) throw std::runtime_er
 static std::string Utf8(const std::wstring& value) { return fs::path(value).generic_string(); }
 static Rml::Context* inputContext=nullptr;
 static bool closed=false;
+static bool desktopPreviewWindow=false;
 struct ParentWatch { HANDLE handle{}; ~ParentWatch(){if(handle)CloseHandle(handle);} };
 static int pendingWidth=0,pendingHeight=0;
+static RECT PreviewBounds(const RECT& work,DWORD style,int& width,int& height,bool desktop)
+{
+    RECT frame{0,0,width,height};AdjustWindowRect(&frame,style,FALSE);
+    const int chromeWidth=frame.right-frame.left-width,chromeHeight=frame.bottom-frame.top-height;
+    const int availableWidth=work.right-work.left,availableHeight=work.bottom-work.top;
+    const int maxWidth=std::min(3840,availableWidth-chromeWidth-24),maxHeight=std::min(2160,availableHeight-chromeHeight-24);
+    if(desktop){width=std::clamp(int(availableWidth*.88f),std::min(960,maxWidth),maxWidth);height=std::clamp(int(availableHeight*.88f),std::min(640,maxHeight),maxHeight);}
+    else {width=std::min(width,maxWidth);height=std::min(height,maxHeight);}
+    frame={0,0,width,height};AdjustWindowRect(&frame,style,FALSE);
+    const int outerWidth=frame.right-frame.left,outerHeight=frame.bottom-frame.top;
+    const int x=work.left+(availableWidth-outerWidth)/2,y=work.top+(availableHeight-outerHeight)/2;
+    return {x,y,x+outerWidth,y+outerHeight};
+}
+static RECT PreviewWorkArea(DWORD parentProcess)
+{
+    POINT cursor{};GetCursorPos(&cursor);HMONITOR selected=MonitorFromPoint(cursor,MONITOR_DEFAULTTOPRIMARY);
+    if(parentProcess){struct Search {DWORD process;HWND window{};} search{parentProcess};EnumWindows([](HWND candidate,LPARAM data)->BOOL{auto& search=*reinterpret_cast<Search*>(data);DWORD process{};GetWindowThreadProcessId(candidate,&process);if(process==search.process&&IsWindowVisible(candidate)&&!GetWindow(candidate,GW_OWNER)){search.window=candidate;return FALSE;}return TRUE;},reinterpret_cast<LPARAM>(&search));if(search.window)selected=MonitorFromWindow(search.window,MONITOR_DEFAULTTONEAREST);}
+    MONITORINFO monitor{sizeof(MONITORINFO)};Require(GetMonitorInfoW(selected,&monitor)!=FALSE,"Preview monitor is unavailable");return monitor.rcWork;
+}
+static bool PreviewBackgroundAt(Rml::Vector2f point)
+{
+    if(!inputContext)return false;
+    auto* element=inputContext->GetElementAtPoint(point);
+    for(auto* at=element;at;at=at->GetParentNode())if(at->GetTagName()=="paint-root")return false;
+    return element!=nullptr;
+}
+static void TestPreviewWindow(Rml::ElementDocument* document)
+{
+    for(const auto work:{RECT{0,0,1920,1040},RECT{-3840,-100,0,1980},RECT{1920,0,3200,680}}){
+        int width=2560,height=1440;const auto bounds=PreviewBounds(work,WS_POPUP|WS_THICKFRAME,width,height,true);
+        Require(bounds.left>=work.left&&bounds.top>=work.top&&bounds.right<=work.right&&bounds.bottom<=work.bottom,"Preview escaped the monitor work area");
+        Require(std::abs(bounds.left+bounds.right-work.left-work.right)<=1&&std::abs(bounds.top+bounds.bottom-work.top-work.bottom)<=1,"Preview did not start centered");
+        if(work.right-work.left==3840)Require(width>3000&&height>1700,"Desktop preview did not use the larger display");
+    }
+    Require(LoadIconW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(101))!=nullptr,"Preview executable lacks the rtxForge icon");
+    auto* panel=document->GetElementById("main-panel");const auto at=panel->GetAbsoluteOffset(Rml::BoxArea::Border),size=panel->GetBox().GetSize(Rml::BoxArea::Border);
+    Require(!PreviewBackgroundAt({at.x+size.x*.5f,at.y+30}),"Native window dragging stole the overlay panel's drag region");
+    bool background=false;const auto viewport=inputContext->GetDimensions();
+    for(int y=10;y<viewport.y&&!background;y+=40)for(int x=10;x<viewport.x&&!background;x+=40)background=PreviewBackgroundAt({float(x),float(y)});
+    Require(background,"Preview has no draggable scene background");
+    std::cout<<"native_preview_window_placement_icon_and_drag_checks=passed\n";
+}
 static int Modifiers() { return (GetKeyState(VK_CONTROL)<0 ? Rml::Input::KM_CTRL:0) | (GetKeyState(VK_SHIFT)<0 ? Rml::Input::KM_SHIFT:0) | (GetKeyState(VK_MENU)<0 ? Rml::Input::KM_ALT:0); }
 static Rml::Input::KeyIdentifier Key(WPARAM code)
 {
@@ -62,6 +105,7 @@ static LRESULT CALLBACK WindowProc(HWND window,UINT message,WPARAM w,LPARAM l)
     if(message==WM_CLOSE || message==WM_DESTROY) { closed=true; return 0; }
     if(message==WM_SIZE){if(w!=SIZE_MINIMIZED){pendingWidth=LOWORD(l);pendingHeight=HIWORD(l);}return 0;}
     if(message==WM_GETMINMAXINFO){RECT client{0,0,960,640};AdjustWindowRect(&client,DWORD(GetWindowLongPtrW(window,GWL_STYLE)),FALSE);auto* limits=reinterpret_cast<MINMAXINFO*>(l);limits->ptMinTrackSize={client.right-client.left,client.bottom-client.top};return 0;}
+    if(message==WM_NCHITTEST&&desktopPreviewWindow){const auto native=DefWindowProcW(window,message,w,l);if(native!=HTCLIENT)return native;POINT point{short(LOWORD(l)),short(HIWORD(l))};ScreenToClient(window,&point);if(PreviewBackgroundAt({float(point.x),float(point.y)}))return HTCAPTION;return HTCLIENT;}
     if(inputContext) switch(message) {
         case WM_MOUSEMOVE:inputContext->ProcessMouseMove(short(LOWORD(l)),short(HIWORD(l)),Modifiers());return 0;
         case WM_LBUTTONDOWN:SetCapture(window);inputContext->ProcessMouseButtonDown(0,Modifiers());return 0;
@@ -467,14 +511,13 @@ int wmain(int argc,wchar_t** argv)
         Require(requestedCopy>=20&&requestedCopy<=24&&requestedScale>=70&&requestedScale<=150,"Invalid text or overlay scale");
         Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));
         HWND window=nullptr;
+        desktopPreviewWindow=desktopPreview;
         if(output.empty()) {
-            SetProcessDPIAware();WNDCLASSW wc{};wc.lpfnWndProc=WindowProc;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"RtxForgeRmlPreview";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);RegisterClassW(&wc);
-            const DWORD style=desktopPreview?WS_POPUP|WS_THICKFRAME:WS_OVERLAPPEDWINDOW;RECT rectangle{0,0,width,height};AdjustWindowRect(&rectangle,style,FALSE);
-            MONITORINFO monitor{sizeof(MONITORINFO)};GetMonitorInfoW(MonitorFromPoint({12,12},MONITOR_DEFAULTTOPRIMARY),&monitor);
-            const int chromeWidth=rectangle.right-rectangle.left-width,chromeHeight=rectangle.bottom-rectangle.top-height;
-            width=std::min(width,int(monitor.rcWork.right-monitor.rcWork.left)-chromeWidth-24);height=std::min(height,int(monitor.rcWork.bottom-monitor.rcWork.top)-chromeHeight-24);
-            rectangle={0,0,width,height};AdjustWindowRect(&rectangle,style,FALSE);
-            window=CreateWindowW(wc.lpszClassName,L"rtxForge \u00b7 Overlay prototype",style,12,12,rectangle.right-rectangle.left,rectangle.bottom-rectangle.top,nullptr,nullptr,wc.hInstance,nullptr);Require(window!=nullptr,"Could not create preview window");
+            SetProcessDPIAware();WNDCLASSW wc{};wc.lpfnWndProc=WindowProc;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"RtxForgeRmlPreview";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hIcon=LoadIconW(wc.hInstance,MAKEINTRESOURCEW(101));RegisterClassW(&wc);
+            const DWORD style=desktopPreview?WS_POPUP|WS_THICKFRAME|WS_MINIMIZEBOX|WS_MAXIMIZEBOX|WS_SYSMENU:WS_OVERLAPPEDWINDOW;
+            const auto rectangle=PreviewBounds(PreviewWorkArea(parentProcess),style,width,height,desktopPreview);
+            window=CreateWindowW(wc.lpszClassName,L"rtxForge \u00b7 Overlay prototype",style,rectangle.left,rectangle.top,rectangle.right-rectangle.left,rectangle.bottom-rectangle.top,nullptr,nullptr,wc.hInstance,nullptr);Require(window!=nullptr,"Could not create preview window");
+            for(const auto kind:{ICON_BIG,ICON_SMALL}){const int edge=GetSystemMetrics(kind==ICON_BIG?SM_CXICON:SM_CXSMICON);const auto icon=LoadImageW(wc.hInstance,MAKEINTRESOURCEW(101),IMAGE_ICON,edge,edge,LR_SHARED);Require(icon!=nullptr,"Preview icon is unavailable");SendMessageW(window,WM_SETICON,kind,reinterpret_cast<LPARAM>(icon));}
         }
         ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> immediate;ComPtr<IDXGISwapChain> swapchain;
         DXGI_SWAP_CHAIN_DESC swap{};swap.BufferCount=2;swap.BufferDesc.Width=width;swap.BufferDesc.Height=height;swap.BufferDesc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;swap.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;swap.OutputWindow=window;swap.SampleDesc.Count=1;swap.Windowed=TRUE;swap.SwapEffect=DXGI_SWAP_EFFECT_DISCARD;
@@ -573,7 +616,7 @@ int wmain(int argc,wchar_t** argv)
             if(window && system.GetElapsedTime()>nextStyleCheck) {nextStyleCheck=system.GetElapsedTime()+.5;const auto stamp=fs::last_write_time(assets/L"overlay.rcss");if(stamp!=lastStyle){document->ReloadStyleSheet();lastStyle=stamp;}}
             if(!output.empty())system.frameTime=frames/60.;
             if((layoutTest||selfTest)&&frames==8)TestLayout(controller,context);
-            if(selfTest && frames==8){TestPreviewPicker(controller,context);TestController(controller,context);}
+            if(selfTest && frames==8){TestPreviewPicker(controller,context);TestController(controller,context);TestPreviewWindow(document);}
             controller.PollColorPick();
             if(controller.sceneRequest>=0&&!library.names.empty()){library.Choose(controller.sceneRequest);controller.sceneRequest=-1;document->QuerySelector(".preview-label")->SetInnerRML("Loading…");}
             if(controller.sceneRequest>=0){const int chosen=controller.sceneRequest;controller.sceneRequest=-1;if(chosen!=selectedScene)try{

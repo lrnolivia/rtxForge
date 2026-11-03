@@ -888,3 +888,6 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .dlss-file-card li + li {border-top:1px solid var(--rim)}
 .dlss-file-card .path {min-width:0;overflow-wrap:anywhere;font-size:.8rem;color:var(--muted)}
 .dlss-file-card .hero-pill {white-space:nowrap}
+
+.native-facts .overview-heading > .icon{display:inline-flex;align-items:center;line-height:1;margin:0}
+.native-facts .overview-pills .hero-pill{margin:0}

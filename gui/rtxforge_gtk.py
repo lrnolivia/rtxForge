@@ -9524,6 +9524,13 @@ class Window(Adw.ApplicationWindow):
         """Installed with rtxForge on Windows, not yet set up (adapted) to run under Proton."""
         return game.get('installed_on')=='windows' and bool(game.get('adaptable') or not game.get('linux_ready'))
 
+    def game_feature_action(self,game):
+        if self.needs_linux_setup(game):
+            return action_labels.ADAPT,'install'
+        if game.get('installed') and game.get('installed_on')!='windows':
+            return 'Update Features','repair'
+        return action_labels.INSTALL,'install'
+
     def pending_linux_setup(self):
         """Every game installed with rtxForge on Windows that still needs Linux setup, whatever the filter."""
         return [game for game in self.games if not game.get('blocked') and self.needs_linux_setup(game)]
@@ -9571,7 +9578,8 @@ class Window(Adw.ApplicationWindow):
             else:add(action_labels.REMOVE_ADAPT,lambda:self.launch_action('uninstall',targets=[game]),not self.busy)
         else:
             # A Windows install with shared state is adapted for Linux (Set Up) or restored right here.
-            add(action_labels.game(self.needs_linux_setup(game))[0],lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
+            feature_label,feature_op=self.game_feature_action(game)
+            add(feature_label,lambda:self.launch_action(feature_op,targets=[game]),not game.get('blocked') and not self.busy)
             add('Restore Original Files',lambda:self.launch_action('uninstall',targets=[game]),bool(game.get('installed')) and not self.busy)
         add('Open Folder',lambda:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None),not self.options.demo)
         if self.adoptable(game):add('Adopt Existing Setup…',lambda:self.choose_adoption([game]),not self.busy)
@@ -10270,7 +10278,8 @@ class Window(Adw.ApplicationWindow):
         if not game.get('blocked') and game.get('installed') and game.get('installed_on')=='windows':
             banner=Adw.Banner(title=overview_facts.WINDOWS_NOTE,revealed=True)
             banner.add_css_class('overview-banner');box.append(banner)
-        facts=overview_facts.facts(game)
+        import compat_list
+        facts=overview_facts.overview_cards(game,compat_list.verdict(game))
         if facts:
             flow=Gtk.Grid(column_spacing=12,row_spacing=12,column_homogeneous=True,hexpand=True,valign=Gtk.Align.START)
             flow.add_css_class('overview-facts')
@@ -10280,8 +10289,8 @@ class Window(Adw.ApplicationWindow):
                 card.set_hexpand(True);cards.append(card)
             layout={'columns':0}
             def arrange_facts(widget,_clock):
-                count=min(len(cards),4,max(1,(widget.get_width()+12)//292))
-                if len(cards)>3 and count==3:count=2
+                count=min(len(cards),max(1,(widget.get_width()+12)//292))
+                if len(cards)==4 and count==3:count=2
                 if count!=layout['columns']:
                     layout['columns']=count
                     for card in cards:
@@ -10292,6 +10301,18 @@ class Window(Adw.ApplicationWindow):
                 return True
             flow.add_tick_callback(arrange_facts)
             box.append(flow)
+        if not self.options.demo:
+            extras=fact_row('Extras','','applications-graphics-symbolic')
+            extras.set_visible(False)
+            box.append(extras)
+            def show_extras(installed):
+                if installed:
+                    extras.get_row_at_index(0).set_subtitle(' · '.join(installed))
+                    extras.set_visible(True)
+                return False
+            def load_extras():
+                GLib.idle_add(show_extras,overview_facts.installed_extras(game))
+            threading.Thread(target=load_extras,daemon=True,name='overview-extras').start()
         path=overview_facts.folder(game)
         if path:
             open_button=button('Open folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(path).as_uri(),None))
@@ -12920,8 +12941,8 @@ class Window(Adw.ApplicationWindow):
         # Wraps instead of running off a narrow details window (Adw ≥ 1.7).
         hero_actions=Adw.WrapBox(child_spacing=8,line_spacing=8,align=1.0,valign=Gtk.Align.END,halign=Gtk.Align.END)
         hero_actions.add_css_class('detail-hero-actions')
-        install_label=action_labels.game(self.needs_linux_setup(game))[0]
-        hero_install=icon_button(install_label,'folder-download-symbolic',lambda *_:self.launch_action('install',targets=[game]),'hero-install')
+        feature_label,feature_op=self.game_feature_action(game)
+        hero_install=icon_button(feature_label,'folder-download-symbolic',lambda *_:self.launch_action(feature_op,targets=[game]),'hero-install')
         # Same rule as the Installation rows below (demo reviews never write).
         hero_install.set_sensitive(not game.get('blocked') and not self.busy and bool(self.hardware_info and self.hardware_info['ready']))
         hero_restore=icon_button('Restore Original Files','edit-undo-symbolic',lambda *_:self.launch_action('uninstall',targets=[game]),'hero-restore')
@@ -13233,14 +13254,10 @@ class Window(Adw.ApplicationWindow):
 
         for title,subtitle,op in [
             (
-                'Install Features',
-                'Add or update the selected feature mode.',
-                'install',
-            ),
-            (
-                'Repair Feature Files',
-                'Replace missing or damaged feature files while preserving your presets.',
-                'repair',
+                feature_label,
+                'Review updates for the installed package and keep your presets.'
+                if feature_op=='repair' else 'Review the selected feature package.',
+                feature_op,
             ),
             (
                 'Restore Original Files',
@@ -13252,13 +13269,8 @@ class Window(Adw.ApplicationWindow):
             maintenance.add(maintenance_row)
 
             action=button(
-                'Install'
-                if op=='install'
-                else 'Repair'
-                if op=='repair'
-                else 'Reset'
-                if op=='reset'
-                else 'Restore',
+                ('Update' if op=='repair' else 'Adapt' if feature_label==action_labels.ADAPT else 'Install')
+                if op!='uninstall' else 'Restore',
                 lambda _,o=op:self.launch_action(
                     o,
                     targets=[game],
@@ -14424,13 +14436,14 @@ class Window(Adw.ApplicationWindow):
             return
         applying_strength=operation=='reset' and entire and self.defaults_changed()
         title={'install':'Install Features','repair':'Repair Feature Files','uninstall':'Restore Original Files','reset':'Reset Presets'}[operation]
+        if operation=='repair' and targets and len(rows)==1:title='Update Features'
         if applying_strength:title='Apply Settings to Library'
         elif operation=='reset' and visual_settings is not None:title='Apply Presets'
         self.operation_previous=targets[0] if targets and len(targets)==1 else None
 
         self.operation_cancel=threading.Event();self.operation_executing=False
         self.operation_games=rows
-        flow=_flow if _flow is not None and not _flow.closed else self.new_operation_flow(operation,rows)
+        flow=_flow if _flow is not None and not _flow.closed else self.new_operation_flow(operation,rows,title if operation=='repair' else None)
         flow.games=rows
         flow.show_checking()
 
@@ -15460,19 +15473,44 @@ class Window(Adw.ApplicationWindow):
         item=row('Library Reports','View test notes and export a support report.');action=button('Open',self.show_reports);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);library_reports.add(item)
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup())]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        # Windows SettingsPage section order.
-        icons={'Graphics':'video-display-symbolic','Overlay':'view-reveal-symbolic','Global':'emblem-system-symbolic',
-               'Appearance':'applications-graphics-symbolic','Library':'input-gaming-symbolic','Game Mode':'input-gaming-symbolic',
-               'System':'computer-symbolic','Recovery':'edit-undo-symbolic','About':'help-about-symbolic'}
-        sections=[('Appearance',[appearance,window_style]),('Library',[library_layout,artwork,steam_artwork,library_reports]),
-                  ('Game Mode',[*game_mode_appearance_groups,controls,controller_options,steam_launcher]),
-                  ('Graphics',[graphics,defaults,*global_groups]),('Overlay',[overlay_groups[1],overlay_groups[0],*overlay_groups[2:]]),
-                  ('System',[system]),('Recovery',[app_storage,recovery]),('About',[app])]
+        icons={'Graphics':'video-display-symbolic','Overlay':'view-reveal-symbolic',
+               'Appearance':'applications-graphics-symbolic','Library':'input-gaming-symbolic',
+               'Game Mode':'input-gaming-symbolic','System':'computer-symbolic',
+               'Recovery':'edit-undo-symbolic','About':'help-about-symbolic'}
+        sections={
+            'Appearance':[appearance,window_style],
+            'Library':[library_layout,artwork,steam_artwork,library_reports],
+            'Graphics':[graphics,defaults,*global_groups],
+            'Game Mode':[*game_mode_appearance_groups,controls,controller_options,steam_launcher],
+            'Overlay':[overlay_groups[1],overlay_groups[0],*overlay_groups[2:]],
+            'About':[app],
+            'System':[system],
+            'Recovery':[app_storage,recovery],
+        }
+        navigation=(
+            ('General', ('Appearance','Library','Graphics')),
+            ('Interfaces', ('Game Mode','Overlay')),
+            ('App & support', ('About','System','Recovery')),
+        )
+        index=Adw.PreferencesPage(title='Settings')
+        d.add(index)
         self.settings_pages={}
-        for section,groups in sections:
-            page=Adw.PreferencesPage(title=section,icon_name=icons[section],name=section)
-            for group in groups:page.add(group)
-            d.add(page);self.settings_pages[section]=page
+        for title,destinations in navigation:
+            category=Adw.PreferencesGroup(title=title)
+            index.add(category)
+            for section in destinations:
+                page=Adw.PreferencesPage(title=section,name=section)
+                for group in sections[section]:
+                    page.add(group)
+                toolbar=Adw.ToolbarView(content=page)
+                toolbar.add_top_bar(Adw.HeaderBar())
+                destination=Adw.NavigationPage(title=section,child=toolbar)
+                self.settings_pages[section]=destination
+                item=Adw.ActionRow(title=section,activatable=True)
+                item.add_prefix(Gtk.Image(icon_name=icons[section]))
+                item.add_suffix(Gtk.Image(icon_name='go-next-symbolic'))
+                item.connect('activated',lambda _row,target=destination:d.push_subpage(target))
+                category.add(item)
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return False

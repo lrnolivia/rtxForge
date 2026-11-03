@@ -38,6 +38,11 @@ public sealed partial class SettingsPage : Page
     {
         if (sender.SelectedItem?.Tag is not string name || !sections.TryGetValue(name, out var groups)) return;
         selectedSection = name;
+        foreach (var other in SectionGroups.Children.OfType<StackPanel>()
+                     .SelectMany(group => group.Children.OfType<SelectorBar>()))
+        {
+            if (other != sender) other.SelectedItem = null;
+        }
         foreach(var previous in PageHost.Children.OfType<PresetColumns>().ToArray())previous.Children.Clear();
         PageHost.Children.Clear();
         var cards = new PresetColumns(680, 2) { ColumnSpacing = 24, RowSpacing = 24 };
@@ -259,8 +264,34 @@ public sealed partial class SettingsPage : Page
         sections["System"] = [system];
         sections["Recovery"] = [cleanup];
         sections["About"] = [about];
-        foreach (var name in sections.Keys)
-            Sections.Items.Add(new SelectorBarItem { Text = name, Tag = name });
-        Sections.SelectedItem = Sections.Items.FirstOrDefault(i => (string)i.Tag == selectedSection) ?? Sections.Items[0];
+        SelectorBarItem? initialItem = null;
+        SelectorBar? initialBar = null;
+        (string Title, string[] Destinations)[] categoryNavigation =
+        [
+            ("General", ["Appearance", "Library", "Graphics"]),
+            ("Interfaces", ["Game Mode", "Overlay"]),
+            ("App & support", ["About", "System", "Recovery"]),
+        ];
+        foreach (var (title, destinations) in categoryNavigation)
+        {
+            var bar = new SelectorBar();
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(bar, title);
+            foreach (var destination in destinations)
+            {
+                var item = new SelectorBarItem { Text = destination, Tag = destination };
+                bar.Items.Add(item);
+                if (destination == selectedSection)
+                {
+                    initialItem = item;
+                    initialBar = bar;
+                }
+            }
+            bar.SelectionChanged += OnSectionChanged;
+            var group = new StackPanel();
+            group.Children.Add(new TextBlock { Text = title, Margin = new Thickness(8, 0, 0, 0) });
+            group.Children.Add(bar);
+            SectionGroups.Children.Add(group);
+        }
+        if (initialBar is not null) initialBar.SelectedItem = initialItem;
     }
 }

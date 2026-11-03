@@ -247,6 +247,42 @@ def inspect(config, games, snapshot=None):
     return rows
 
 
+def display_inventory(config, game):
+    """Inventory for display, including package-managed DLLs excluded from updates."""
+    row = inspect(config, [game])[0]
+    import cross_os
+    names = COMPONENTS | {
+        'nvngx_dlssnr.dll': 'Neural Rendering',
+        'nvngx.dll_dlssnr.dll': 'Neural Rendering',
+    }
+    try:
+        root = t.safe(game['game'])
+        directory = t.safe(root / t.relative(game['exe'])).parent
+        marker = t.safe(directory / cross_os.MARKER)
+        receipt = cross_os.read(directory) if marker.is_file() and marker.stat().st_size <= 1024**2 else None
+        candidates = {directory / name for name in names}
+        if receipt:
+            for relative in receipt['files']:
+                if Path(relative).name.casefold() in names:
+                    candidates.add(directory / t.relative(relative))
+        known = {item['path'].casefold() for item in row['files']}
+        for path in sorted(candidates):
+            try:
+                path = t.safe(path)
+                relative = path.relative_to(root).as_posix()
+                if relative.casefold() in known or not path.is_file() or path.stat().st_size > MAX_DLL:
+                    continue
+                row['files'].append({'path': relative, 'component': path.name.casefold(),
+                                     'current': version(path) or 'Unknown', 'provenance': 'Installed · read-only inventory'})
+            except (OSError, ValueError, t.Refusal):
+                continue
+    except (KeyError, OSError, TypeError, ValueError, t.Refusal):
+        pass
+    for item in row['files']:
+        item['title'] = names.get(item['component'], item['component'])
+    return row
+
+
 def prepare(config, snapshot, selected):
     """Download selected components and build exact, read-only game plans."""
     engine = engine_bridge.module(config)

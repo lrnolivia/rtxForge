@@ -582,9 +582,9 @@ def diagnose(params):
 
 def dlss_inventory(params):
     row = params["row"]
-    found = runtime_updates.inspect(_config(), [row])[0]
+    found = runtime_updates.display_inventory(_config(), row)
     backups = runtime_updates.game_recoveries(_config(), row["game"])
-    files = [{**f, "title": runtime_updates.COMPONENTS.get(f["component"], f["component"])} for f in found["files"]]
+    files = [{**f, "title": f.get("title") or runtime_updates.COMPONENTS.get(f["component"], f["component"])} for f in found["files"]]
     return {"files": files, "blocked": found["blocked"], "backups": backups}
 
 

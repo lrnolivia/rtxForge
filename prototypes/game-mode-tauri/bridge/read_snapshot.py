@@ -201,10 +201,12 @@ def local_artwork(game_id, role, *, settings_file=None):
 
 def collect(root, *, settings_file=None, roots=None):
     discovery = load_discovery(root)
-    sys.path.insert(0, str(root / "scripts"))
-    import overview_summary
-    import compat_list
-    listed_compatibility = compat_list.shipped()
+    has_overview = (root / 'scripts/overview_summary.py').is_file()
+    if has_overview:
+        sys.path.insert(0, str(root / 'scripts'))
+        import overview_summary
+        import compat_list
+        listed_compatibility = compat_list.shipped()
     warnings = []
     settings_file = settings_file or settings_path()
     try:
@@ -320,11 +322,12 @@ def collect(root, *, settings_file=None, roots=None):
             runtime = saved_row.get('nr_runtime')
             if isinstance(runtime, dict) and isinstance(runtime.get('version'), str):
                 game['savedRecord']['nr_runtime'] = {'version': runtime['version']}
-            lookup = dict(saved_row, appid=game.get('appid') or saved_row.get('appid'))
-            lookup['compat'] = compat_list.verdict(lookup, listed=listed_compatibility)
-            if lookup.get('installed') is True:
-                lookup = overview_summary.installed_details(lookup)
-            game['overviewCards'] = overview_summary.cards(lookup)
+            if has_overview:
+                lookup = dict(saved_row, appid=game.get('appid') or saved_row.get('appid'))
+                lookup['compat'] = compat_list.verdict(lookup, listed=listed_compatibility)
+                if lookup.get('installed') is True:
+                    lookup = overview_summary.installed_details(lookup)
+                game['overviewCards'] = overview_summary.cards(lookup)
             test = saved_row.get('test_record') or {}
             if isinstance(test, dict) and test.get('status') in ('Untested','Working','Problem','Bench'):
                 game['testStatus'] = test['status']

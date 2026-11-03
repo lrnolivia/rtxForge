@@ -7,7 +7,7 @@ import re
 import sys
 import tempfile
 
-DEFAULTS = dict(theme='clear', tint=True, tintStrength=50, accentMode='custom',
+DEFAULTS = dict(theme='clear', detailsTheme='same', tint=True, tintStrength=50, accentMode='custom',
                 accent='#d8d5ce', motion=True, text='standard', navigation='top',
                 detailsNavigation='sidebar', scale='auto', libraryScale=100,
                 appearanceDefaultsVersion=2, libraryScaleVersion=1, detailsNavigationVersion=1)
@@ -34,6 +34,7 @@ def normalize(value):
         raise ValueError('Unsupported Game Mode appearance option.')
     result = DEFAULTS | value
     for key, choices in {'theme': ('light', 'clear', 'dark'),
+                         'detailsTheme': ('same', 'light', 'clear', 'dark'),
                          'accentMode': ('theme', 'adaptive', 'custom'),
                          'text': ('standard', 'large'), 'navigation': ('top', 'bottom'),
                          'detailsNavigation': ('tabs', 'sidebar')}.items():

@@ -289,7 +289,7 @@ def bind(root, send):
                    packages=lambda _p: {'catalog': package_catalog.catalog(service.hardware())},
                    extras_list=lambda p: extra_tools.recoveries(service.config, p['row']), extra_review=extra_review,
                    extra_restore_review=extra_restore, prepare_dlss=prepare_dlss, update_dlss=execute, dlss_restore_review=restore_dlss,
-                   dlss_inventory=lambda p: runtime_updates.inspect(service.config, [p['row']]), diagnose=lambda p: runtime_diagnostics.inspect(p['row']),
+                   dlss_inventory=lambda p: runtime_updates.display_inventory(service.config, p['row']), diagnose=lambda p: runtime_diagnostics.inspect(p['row']),
                    recoveries=lambda _p: service.recoveries(), recovery_review=recover, cleanup_review=cleanup_review, launch_game=launch, open_game_folder=open_game_folder, notes_save=notes,
                    steam_review=steam_review, steam_status=steam_status, steam_install=execute, steam_remove=execute,
                    scan_game=lambda p: compat_list.apply(service.config, service.scan(None, [p['folder']]), engine_bridge.module(service.config)), package_inspect=inspect_package, package_use=use_package,

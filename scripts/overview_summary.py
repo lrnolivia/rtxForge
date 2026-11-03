@@ -49,7 +49,7 @@ def cards(row):
         else:
             setting = 'Setting not recorded'
         out.append(('Multi-Frame Generation', [route if route and route != 'Not installed' else package,
-            setting]))
+            f'Package {version}' if version and (not route or version not in route) else None, setting]))
     return [dict(title=title, values=[str(value) for value in values if value]) for title, values in out]
 
 

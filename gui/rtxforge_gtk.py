@@ -6795,7 +6795,7 @@ class Window(Adw.ApplicationWindow):
             review={'operation':'tool-restore' if remove else 'tool','rows':[{'name':game['name'],'game':game['game'],'detail':changes}],'blocked':[]}
             self.review_write(review['operation'],review,
                 run=lambda _:renodx_hdr.apply(self.service.config,plan),
-                details=['Remove HDR' if remove else 'Install HDR','Keep NR, MFG and unrelated tuning.'],
+                details=['Remove RenoDX' if remove else 'Install RenoDX','Keep NR, MFG and unrelated tuning.'],
                 note=' '.join(plan.get('notes',[renodx_hdr.NOTICE])),
                 trust='I trust the source of this exact file' if plan.get('custom') else None,
                 done=lambda result:result['message'])
@@ -13357,10 +13357,17 @@ class Window(Adw.ApplicationWindow):
                 inventory.add(self.technical_details(found['blocked']))
             elif not found['files']:
                 inventory.add(row('No supported DLSS files','No separate DLSS files were found outside the installed feature stack.'))
-            for item in found['files']:
-                inventory.add(row(runtime_updates.COMPONENTS[item['component']],item['path']+' · '+item['current']+' · '+item['provenance']))
-            file_buttons[False].set_sensitive(bool(found['files']) and not found['blocked'])
-            replace_button.set_sensitive(bool(found['files']) and not found['blocked'])
+            if found['files']:
+                tiles=Adw.WrapBox(child_spacing=12,line_spacing=12,hexpand=True)
+                for item in found['files']:
+                    card=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+                    card.add_css_class('boxed-list');card.set_size_request(245,-1)
+                    file_row=Adw.ActionRow(title=item['title'],subtitle=item['path']+' · '+item['current'])
+                    file_row.add_prefix(Gtk.Image(icon_name='x-office-document-symbolic',pixel_size=20))
+                    card.append(file_row);tiles.append(card)
+                inventory.add(Adw.PreferencesRow(child=tiles))
+            file_buttons[False].set_sensitive(any(item.get('before') for item in found['files']) and not found['blocked'])
+            replace_button.set_sensitive(any(item.get('before') for item in found['files']) and not found['blocked'])
             file_buttons[True].set_sensitive(bool(backups))
             if backups:
                 files.add(row('Latest backup',backups[0]['date']))
@@ -13378,7 +13385,7 @@ class Window(Adw.ApplicationWindow):
             import runtime_updates
             loaded['value']=True
             self.start('Checking native DLSS files',lambda:(
-                runtime_updates.inspect(self.service.config,[game])[0],
+                runtime_updates.display_inventory(self.service.config,game),
                 runtime_updates.game_recoveries(self.service.config,game['game'])),show_inventory)
             return False
         pages.connect('notify::visible-child-name',load_inventory)

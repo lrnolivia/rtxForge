@@ -19,6 +19,7 @@ internal sealed class GameModeAppearanceView : UserControl
     readonly SemaphoreSlim edits = new(1, 1);
     readonly TextBlock feedback = new() { FontSize=12, TextWrapping=TextWrapping.Wrap, Visibility=Visibility.Collapsed };
     readonly Canvas sample = new() { Width=480, Height=270, IsHitTestVisible=false };
+    readonly Canvas detailsSample = new() { Width=480, Height=270, IsHitTestVisible=false };
     JsonObject appearance = GameModeAppearance.Defaults;
     bool ready;
     Border? tintRow;
@@ -62,6 +63,7 @@ internal sealed class GameModeAppearanceView : UserControl
     void Build()
     {
         if(sample.Parent is Viewbox previous)previous.Child=null;
+        if(detailsSample.Parent is Viewbox previousDetails)previousDetails.Child=null;
         if(feedback.Parent is Panel feedbackParent)feedbackParent.Children.Remove(feedback);
         Children.Clear(); Groups.Clear();
         var surface = new PreferencesGroup("Game Mode appearance", "The same preferences as Game Mode, saved automatically.");
@@ -99,6 +101,9 @@ internal sealed class GameModeAppearanceView : UserControl
         Choice(main,"Interface scale","Automatic adapts to the display.","scale",["Automatic","100%","125%","130%","150%","175%","200%"],["auto","100","125","130","150","175","200"]);
 
         var details = new PreferencesGroup("Game Details", "Surface Tint follows each game's saved color or artwork.");
+        details.Add(Prefs.Label("Game Details preview"));
+        details.Add(new Viewbox { Child=detailsSample, Stretch=Stretch.Uniform, MaxHeight=220 });
+        Choice(details,"Surface",null,"detailsTheme",["Match Game Mode","Light","Clear","Dark"],["same","light","clear","dark"]);
         Choice(details,"Accent",null,"accentMode",["None","Adaptive","Game"],["theme","adaptive","custom"]);
         var tint = new Slider { Minimum=0,Maximum=100,Value=Number("tintStrength",50),StepFrequency=5,Width=200 };
         var strength=Prefs.Row("Surface Tint","Tint strength for Game Details.",tint,"\uE790");tintRow=strength;
@@ -188,6 +193,40 @@ internal sealed class GameModeAppearanceView : UserControl
             if(index<games.Length)card.Child=new Image { Source=new BitmapImage(new Uri(games[index].PosterPath!)),Stretch=Stretch.UniformToFill };
             Place(card,25+index*72,libraryTop+52);
         }
+        PaintDetails();
+    }
+
+    void PaintDetails()
+    {
+        detailsSample.Children.Clear();
+        var theme = Text("detailsTheme") is "light" or "clear" or "dark" ? Text("detailsTheme") : Text("theme");
+        var light = theme == "light";
+        var game = App.Main?.Games.FirstOrDefault(item => item.HeroPath is { } path && File.Exists(path));
+        var accent = ArtAccent.TryParse(Text("accent"), out var color) ? color : ArtAccent.NoArtwork;
+        var ink = new SolidColorBrush(light ? global::Windows.UI.Color.FromArgb(255,30,30,29) : global::Windows.UI.Color.FromArgb(255,246,243,238));
+        void Place(UIElement element, double x, double y)
+        {
+            Canvas.SetLeft(element,x); Canvas.SetTop(element,y); detailsSample.Children.Add(element);
+        }
+        var neutral = light ? global::Windows.UI.Color.FromArgb(255,235,230,225) : global::Windows.UI.Color.FromArgb(255,40,40,42);
+        Place(new Border { Width=480,Height=270,CornerRadius=new CornerRadius(12),Background=new SolidColorBrush(neutral) },0,0);
+        if (game?.HeroPath is { } hero)
+            Place(new Border { Width=480,Height=132,Background=new ImageBrush
+            {
+                ImageSource=new BitmapImage(new Uri(hero)) { DecodePixelWidth=480 },
+                Stretch=Stretch.UniformToFill,Opacity=.55,
+            } },0,0);
+        var tint=(Number("tintStrength",50)/100)*.55;
+        if(Text("accentMode")=="theme")tint=0;
+        byte Blend(byte channel,byte hue)=>(byte)(channel+(hue-channel)*tint);
+        var glass=new SolidColorBrush(global::Windows.UI.Color.FromArgb(theme=="clear"?(byte)170:(byte)238,
+            Blend(neutral.R,accent.R),Blend(neutral.G,accent.G),Blend(neutral.B,accent.B)));
+        Place(new TextBlock { Text=game?.Name??"Game Details",Foreground=ink,FontSize=20,MaxWidth=420,
+            TextTrimming=TextTrimming.CharacterEllipsis,FontWeight=Microsoft.UI.Text.FontWeights.Bold },24,83);
+        var tabs=Text("detailsNavigation")=="tabs";
+        Place(new Border { Width=442,Height=114,CornerRadius=new CornerRadius(11),Background=glass },19,140);
+        Place(new TextBlock { Text=tabs?"Overview     Features     DLSS Files":"Overview\nFeatures\nDLSS Files",Foreground=ink,FontSize=12 },31,153);
+        Place(new TextBlock { Text="Features     Compatibility",Foreground=ink,FontSize=12 },tabs?31:143,tabs?194:153);
     }
 
     async Task PaintBackgroundAsync(Border background,string data)

@@ -7,7 +7,7 @@ namespace RtxForge.Windows.Services;
 /// <summary>The same validated preference file used by the native Game Mode UI.</summary>
 internal sealed class GameModeAppearance(string engineRoot)
 {
-    public static JsonObject Defaults => new() { ["theme"]="clear", ["tint"]=true, ["tintStrength"]=50,
+    public static JsonObject Defaults => new() { ["theme"]="clear", ["detailsTheme"]="same", ["tint"]=true, ["tintStrength"]=50,
         ["accentMode"]="custom", ["accent"]="#d8d5ce", ["motion"]=true, ["text"]="standard",
         ["navigation"]="top", ["detailsNavigation"]="sidebar", ["scale"]="auto", ["libraryScale"]=100,
         ["appearanceDefaultsVersion"]=2, ["libraryScaleVersion"]=1, ["detailsNavigationVersion"]=1 };

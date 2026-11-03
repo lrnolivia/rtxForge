@@ -31,6 +31,8 @@ class AppearanceSettings:
                 break
         self.preview = Gtk.DrawingArea(content_width=480, content_height=270, hexpand=True)
         self.preview.set_draw_func(self.draw)
+        self.details_preview = Gtk.DrawingArea(content_width=480, content_height=270, hexpand=True)
+        self.details_preview.set_draw_func(self.draw_details)
         self.feedback = Gtk.Label(xalign=0, wrap=True, visible=False)
         self.feedback.add_css_class('dim-label')
         self.tint_row = None
@@ -56,6 +58,7 @@ class AppearanceSettings:
             if self.tint_row:
                 self.tint_row.set_visible(self.value['accentMode'] != 'theme')
             self.preview.queue_draw()
+            self.details_preview.queue_draw()
         except Exception as error:
             self.value = before
             self.message(str(error))
@@ -112,6 +115,9 @@ class AppearanceSettings:
         self.choice(main, 'Navigation placement', 'navigation', [('top', 'Top'), ('bottom', 'Bottom')])
         self.choice(main, 'Interface scale', 'scale', [('auto', 'Automatic'), *[(number, str(number) + '%') for number in (100, 125, 130, 150, 175, 200)]], 'Automatic adapts to the display.')
         details = self.group('Game Details', "Surface Tint follows each game's saved color or artwork.")
+        details.add(Adw.PreferencesRow(child=Adw.Clamp(child=Gtk.AspectFrame(ratio=16 / 9, obey_child=False,
+                    child=self.details_preview), maximum_size=480, tightening_threshold=380)))
+        self.choice(details, 'Surface', 'detailsTheme', [('same', 'Match Game Mode'), ('light', 'Light'), ('clear', 'Clear'), ('dark', 'Dark')])
         self.choice(details, 'Accent', 'accentMode', [('theme', 'None'), ('adaptive', 'Adaptive'), ('custom', 'Game')])
         self.tint_row = Adw.SpinRow.new_with_range(0, 100, 5)
         self.tint_row.set_title('Surface Tint'); self.tint_row.set_subtitle('Tint strength for Game Details.')
@@ -223,6 +229,30 @@ class AppearanceSettings:
         for index, (_game, poster) in enumerate(self.posters):
             cr.save(); cr.translate(25 + index * 72, top); cr.scale(63 / poster.get_width(), 96 / poster.get_height())
             Gdk.cairo_set_source_pixbuf(cr, poster, 0, 0); cr.paint(); cr.restore()
+
+    def draw_details(self, _widget, cr, width, height):
+        cr.scale(width / 480, height / 270)
+        theme = self.value['detailsTheme']
+        if theme == 'same':
+            theme = self.value['theme']
+        light = theme == 'light'
+        base = (.92, .90, .87) if light else (.16, .16, .17)
+        ink = (.12, .12, .12) if light else (.97, .96, .94)
+        cr.set_source_rgb(*base); cr.paint()
+        accent = Gdk.RGBA(); accent.parse(self.value['accent'])
+        tint = 0 if self.value['accentMode'] == 'theme' else self.value['tintStrength'] / 180
+        tinted = tuple(channel + (hue-channel)*tint for channel, hue in zip(base, (accent.red,accent.green,accent.blue)))
+        cr.set_source_rgb(*tinted); cr.rectangle(18, 132, 444, 116); cr.fill()
+        cr.set_source_rgb(*ink); cr.set_font_size(20)
+        cr.move_to(24, 96); cr.show_text('Game Details')
+        cr.set_font_size(12)
+        if self.value['detailsNavigation'] == 'tabs':
+            cr.move_to(31, 156); cr.show_text('Overview     Features     DLSS Files')
+            cr.move_to(31, 190); cr.show_text('Features     Compatibility')
+        else:
+            for i, label in enumerate(('Overview','Features','DLSS Files')):
+                cr.move_to(31, 156+20*i); cr.show_text(label)
+            cr.move_to(140, 156); cr.show_text('Features     Compatibility')
 
 
 def build(owner):

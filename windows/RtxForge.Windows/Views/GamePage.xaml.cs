@@ -240,8 +240,17 @@ public sealed partial class GamePage : Page
                     ?? new GameOverview.Fact("Features", g.Installed ? g.Profile ?? "Installed" : "Unavailable", "\uE9E9");
                 if (!g.IsFeeder && !string.IsNullOrWhiteSpace(g.DlssVersion))
                     featureFact = featureFact with { Value = featureFact.Value + "\nDLSS " + g.DlssVersion };
-                var overviewFacts = new[] { gameFacts[0], compatibility, featureFact };
-                var facts = new PresetColumns(280, 3) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
+                var overviewFacts = new List<GameOverview.Fact> { gameFacts[0], compatibility, featureFact };
+                var mfg = g.EngineRow?["mfg_enabled"] is System.Text.Json.Nodes.JsonValue mfgFlag && mfgFlag.TryGetValue<bool>(out var mfgEnabled)
+                    ? mfgEnabled : (bool?)null;
+                if (mfg == true || (g.Installed && g.Profile?.Contains("MFG", StringComparison.OrdinalIgnoreCase) == true))
+                {
+                    var multiplier = g.EngineRow?["mfg_multiplier"]?.ToString();
+                    var mfgState = mfg == false || multiplier == "0" ? "Off" : int.TryParse(multiplier, out var ratio) && ratio >= 2
+                        ? (g.EngineRow?["dynamic_mfg"]?.ToString() == "1" ? $"Dynamic · up to {ratio}×" : $"{ratio}×") : multiplier == "auto" ? "Automatic" : "Configured";
+                    overviewFacts.Add(new("Multi-Frame Generation", mfgState, "\uE7FC"));
+                }
+                var facts = new PresetColumns(240, overviewFacts.Count) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
                 foreach (var fact in overviewFacts)
                 {
                     var card = Prefs.Row(fact.Title, fact.Value, glyph: fact.Glyph);
@@ -249,6 +258,11 @@ public sealed partial class GamePage : Page
                     facts.Children.Add(card);
                 }
                 PageHost.Children.Add(facts);
+                var extraSummary = Prefs.Row("Extras", "", glyph: "\uE90F");
+                extraSummary.Visibility = Visibility.Collapsed;
+                extraSummary.Margin = new Thickness(0, 12, 0, 0);
+                PageHost.Children.Add(extraSummary);
+                if (!shell.Service.IsPreview) _ = FillOverviewExtrasAsync(g, extraSummary);
                 var openFolder = Prefs.ActionButton("Open folder", (_, _) => _ = shell.OpenGameFolderAsync(g));
                 openFolder.IsEnabled = !shell.Service.IsPreview && Directory.Exists(g.Location);
                 var folder = Prefs.Row("Game folder", g.Location, openFolder, "\uE838");
@@ -453,6 +467,25 @@ public sealed partial class GamePage : Page
             files.Add(Prefs.Row(file.Title, $"{file.Path} · {file.Current} · {file.Provenance}", glyph: ""));
         SetSubtitle(backupRow, inventory.LatestBackup is { } date ? "Latest backup " + date : "No DLSS file backups for this game.");
         restore.IsEnabled = inventory.LatestBackup is not null && !shell.Busy;
+    }
+
+    async Task FillOverviewExtrasAsync(Game g, Border row)
+    {
+        var names = new List<string>();
+        try { if ((await shell.Service.HdrStatusAsync(g)).Installed) names.Add("RenoDX"); }
+        catch (InvalidOperationException) { }
+        try
+        {
+            foreach (var tool in await shell.Service.ExtraRecordsAsync(g))
+            {
+                var name = tool.Kind switch { "reshade" => "ReShade", "reshade-import" => "ReShade filters and presets", "addon" => "ReShade add-ons", _ => null };
+                if (name is not null && !names.Contains(name)) names.Add(name);
+            }
+        }
+        catch (InvalidOperationException) { }
+        if (g != game || section != "Overview" || !PageHost.Children.Contains(row) || names.Count == 0) return;
+        SetSubtitle(row, string.Join(" · ", names));
+        row.Visibility = Visibility.Visible;
     }
 
     async Task FillHdrAsync(Game g, Border row, Button install, Button remove)

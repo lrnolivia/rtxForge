@@ -18,15 +18,26 @@ await page.route('**/api/snapshot',route=>route.fulfill({json:{schema:1,platform
 await page.route('**/api/engine/status',route=>route.fulfill({json:{enabled:true}}));
 await page.route('**/api/engine',async route=>{
  const request=route.request().postDataJSON();calls.push(request);let result={};
+ if(request.method==='extras_list')result=installed?[{kind:'reshade'},{kind:'reshade-import'},{kind:'addon'}]:[];
+ if(request.method==='hdr_status')result={installed};
  if(request.method==='settings_get')result={game_accents:colors};
- if(request.method==='scan_game')result=[{game:'C:/fixture',name:'Fixture game',installed,runtime_provider:installed?'skynizz':undefined}];
+ if(request.method==='scan_game')result=[{game:'C:/fixture',name:'Fixture game',installed,runtime_provider:installed?'skynizz':undefined,profile:installed?'NR + MFG':undefined,mfg_multiplier:installed?4:undefined}];
  if(request.method==='settings_review'){pending=request.params.changes.game_accents;result={token:'appearance-only'};}
  if(request.method==='run'){if(fail){fail=false;return route.fulfill({status:400,json:{error:'Save fixture failed. Try again.'}});}colors=pending;}
  await route.fulfill({json:{result}});
 });
 try{
  await page.goto(process.env.RTXFORGE_TEST_URL||'http://127.0.0.1:1420');
+ await expect(page.locator('[data-select-game]')).toHaveCount(0);
+ await page.getByRole('button',{name:'Select games',exact:true}).click();
+ await expect(page.locator('[data-select-game]')).toHaveCount(1);
+ await page.getByRole('button',{name:'Done selecting',exact:true}).click();
+ await expect(page.locator('[data-select-game]')).toHaveCount(0);
+ await page.getByRole('button',{name:'Game list',exact:true}).click();
+ await expect(page.locator('[data-select-game]')).toHaveCount(1);
  await page.locator('.game-card').first().click();
+ await expect(page.locator('.native-facts article')).toHaveCount(3);
+ await expect(page.locator('#overview-extras')).toBeHidden();
  await page.locator('[data-detail-section="appearance"]').click();
  await expect(page.getByRole('button',{name:'Review accent color',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Choose accent color',exact:true}).click();
@@ -77,12 +88,16 @@ try{
  await expect(page.getByRole('button',{name:'Install RenoDX',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Remove RenoDX',exact:true})).toBeVisible();
  installed=true;await page.reload();await page.locator('.game-card').first().click();
- await expect(page.locator('.native-facts article')).toHaveCount(3);
+ await expect(page.locator('.native-facts article')).toHaveCount(4);
+ await expect(page.locator('.native-facts article').last()).toContainText('4×');
+ await expect(page.locator('#overview-extras')).toContainText('RenoDX · ReShade · ReShade filters and presets · ReShade add-ons');
  await expect(page.getByRole('button',{name:'Update Features',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Install Features',exact:true})).toHaveCount(0);
  const update=page.waitForRequest(r=>r.url().endsWith('/api/engine')&&r.postDataJSON()?.method==='prepare_routes');
  await page.getByRole('button',{name:'Update Features',exact:true}).click();
  expect((await update).postDataJSON().params.operation).toBe('repair');
+ await expect(page.getByRole('dialog')).toBeVisible();
+ await expect(page.locator('.shell')).toHaveAttribute('inert','');
  expect(errors).toEqual([]);
  if(process.env.RTXFORGE_UI_CAPTURE)await page.locator('.reshade-tools').screenshot({path:process.env.RTXFORGE_UI_CAPTURE});
  console.log(JSON.stringify({passed:true,checks:['live preview','cancel rollback','invalid input','failed save retry','other games preserved','persisted color after reload','controller artwork sampling and save','unified ReShade actions']}));

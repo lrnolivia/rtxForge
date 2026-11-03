@@ -784,3 +784,12 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 @media(max-width:760px){.details-page .detail-body .field{gap:14px;flex-wrap:wrap}.details-page .detail-body .field>.select-shell{width:100%;max-width:100%}.tool-options .operation-actions{justify-content:flex-start}.color-picker:has(.color-editor:not([hidden])){width:100%}}
 
 .game-item[data-art-visible=false]>.artwork-glow{display:none}
+
+.operation-backdrop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:clamp(12px,4vw,56px);background:rgb(16 18 20 / .52)}
+.operation-modal{width:min(100%,1120px);height:min(100%,850px);min-height:0;overflow:auto;padding:clamp(12px,2.5vw,30px);background:color-mix(in srgb,var(--glass) 82%,var(--ink));backdrop-filter:blur(20px);box-shadow:0 24px 80px #0005,inset 0 0 0 1px var(--rim)}
+.operation-modal .operation-flow{max-width:100%}
+
+.library-view-controls{display:flex;align-items:center;gap:8px;justify-content:flex-end}.library-view-controls>[data-action=bulk-select]{white-space:nowrap;min-height:40px;padding:8px 14px}
+@media(max-width:760px){.library-view-controls{grid-column:-2/-1;flex-wrap:wrap}}
+
+.native-facts[data-facts="4"]{grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr))}.overview-extras:not([hidden]){display:flex;gap:18px;align-items:baseline;flex-wrap:wrap}.overview-extras p{margin:0}

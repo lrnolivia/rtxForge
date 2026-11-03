@@ -45,7 +45,11 @@ export function installInput(back: () => void, switchTab: (delta: number) => voi
     if(pane) pane.scrollTop += Math.sign(axis) * Math.max(1, speed * elapsed / 1000);
   };
   const directionKey = {12:'up',13:'down',14:'left',15:'right'} as const;
-  const readPads = () => Array.from(navigator.getGamepads?.() ?? []).filter((pad): pad is Gamepad =>
+  type NativePad = { index:number; id:string; axes:number[]; buttons:boolean[] };
+  type Pad = NativePad | Gamepad;
+  let nativePads: NativePad[] | undefined;
+  const pressedButton = (button: boolean | GamepadButton) => typeof button === 'boolean' ? button : button.pressed;
+  const readPads = (): Pad[] => nativePads ?? Array.from(navigator.getGamepads?.() ?? []).filter((pad): pad is Gamepad =>
     Boolean(pad && (pad.mapping === 'standard' || (!pad.mapping && pad.buttons.length >= 16 && pad.axes.length >= 2))));
   const seedFocus = () => {
     const focused = document.activeElement;
@@ -59,14 +63,14 @@ export function installInput(back: () => void, switchTab: (delta: number) => voi
     if (!active) return;
     const elapsed=lastFrame ? Math.min(time-lastFrame,40) : 16; lastFrame=time;
     const pads = readPads();
-    const engaged = pads.find(pad => pad.buttons.some(button => button.pressed) || Math.max(Math.abs(pad.axes[0] ?? 0),Math.abs(pad.axes[1] ?? 0),Math.abs(pad.axes[3] ?? 0)) > .6);
+    const engaged = pads.find(pad => pad.buttons.some(pressedButton) || Math.max(Math.abs(pad.axes[0] ?? 0),Math.abs(pad.axes[1] ?? 0),Math.abs(pad.axes[3] ?? 0)) > .6);
     const pad = engaged ?? pads.find(pad=>pad.index===padIndex) ?? pads[0];
     if (pad) {
       if (pad.index !== padIndex) {
         padIndex = pad.index; previous.clear(); heldDirection = 0;
         connected(true,pad.id);
       }
-      const pressed = new Set(pad.buttons.map((button, i) => button.pressed ? i : -1).filter(i => i >= 0));
+      const pressed = new Set(Array.from<boolean | GamepadButton, number>(pad.buttons, (button, i) => pressedButton(button) ? i : -1).filter(i => i >= 0));
       const x=pad.axes[0] ?? 0, y=pad.axes[1] ?? 0;
       const dpad=[12,13,14,15].find(index=>pressed.has(index));
       const threshold=heldDirection ? .43 : .6;
@@ -117,5 +121,25 @@ export function installInput(back: () => void, switchTab: (delta: number) => voi
   window.addEventListener('blur', sync);
   window.addEventListener('pointerdown', activity);
   document.addEventListener('visibilitychange', sync);
+  if ('__TAURI_INTERNALS__' in window) {
+    // Only one backend may drive focus. Fall back to the browser API if SDL
+    // cannot initialize; never consume both copies of a Steam virtual pad.
+    nativePads = [];
+    void (async () => {
+      const [{listen}, {invoke}] = await Promise.all([import('@tauri-apps/api/event'), import('@tauri-apps/api/core')]);
+      const unlisten = await listen<NativePad[]>('native-controller-state', ({payload}) => {
+        const before = nativePads?.map(pad => pad.index).join(',');
+        nativePads = payload;
+        if (before !== payload.map(pad => pad.index).join(',')) sync();
+      });
+      try { await invoke('start_native_controller'); }
+      catch (error) { unlisten(); throw error; }
+      window.addEventListener('pagehide', unlisten, {once:true});
+    })().catch(error => {
+      console.warn('Native controller input unavailable; using webview input.',error);
+      nativePads = undefined;
+      sync();
+    });
+  }
   sync();
 }

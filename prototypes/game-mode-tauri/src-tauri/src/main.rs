@@ -7,6 +7,7 @@ use std::sync::atomic::Ordering;
 mod engine;
 mod runtime;
 mod desktop_parent;
+mod controller;
 
 fn appearance_command(app: tauri::AppHandle, value: Option<serde_json::Value>) -> Result<serde_json::Value,String> {
     let root=runtime::root(&app)?;
@@ -183,6 +184,7 @@ fn main() {
             if let Some(window) = app.get_webview_window("main") { let _ = window.show(); let _ = window.unminimize(); let _ = window.set_focus(); }
         }))
         .manage(desktop_parent::DesktopParent(std::sync::Mutex::new(desktop_parent::from_args(&args))))
+        .manage(controller::ControllerState::default())
         .setup(move |app| {
             if args.iter().any(|arg|arg=="--desktop-mode") {
                 close_safely(app.handle());
@@ -201,11 +203,14 @@ fn main() {
             }
             Ok(())
         })
-        .plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![appearance_read, appearance_write, snapshot, artwork, store_background, store_screenshots, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
+        .plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![controller::start_native_controller, appearance_read, appearance_write, snapshot, artwork, store_background, store_screenshots, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
         .build(tauri::generate_context!()).expect("Could not build Game Mode")
         .run(|app, event| match event {
             tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::CloseRequested { api, .. }, .. } => {
                 api.prevent_close(); close_safely(app);
+            },
+            tauri::RunEvent::WindowEvent { label, event: tauri::WindowEvent::Focused(focused), .. } if label == "main" => {
+                app.state::<controller::ControllerState>().focus(focused);
             },
             tauri::RunEvent::ExitRequested { api, .. } => {
                 if !app.state::<engine::EngineState>().drained.load(Ordering::SeqCst) {

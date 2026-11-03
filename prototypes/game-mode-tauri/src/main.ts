@@ -1,3 +1,4 @@
+import {surfaceCards} from './surface-cards';
 import {overlayStatusView,type OverlayStatus} from './overlay-status';
 import {setupViewportArtwork} from './viewport-artwork';
 import {surfaceTintControls} from './surface-tint';
@@ -6,7 +7,7 @@ import './style.css';
 import { captureArrival, arrive } from './motion';
 import { bindArtworkFailures, hydrateArtwork, clearArtworkCache, prioritizeArtwork } from './artwork';
 // Artwork sources remain exact library identities.
-import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type Snapshot, type View } from './model';
+import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type OverviewCard, type Snapshot, type View } from './model';
 import { operationFlow,operationStep,flowGame } from './operation-ui';
 import { installInput } from './input';
 import { setupLibraryLayout } from './library-layout';
@@ -26,7 +27,7 @@ import { engineRequest, engineStatus, type EngineRow, type EngineStatus, type Re
 const symbols: Record<string, number> = { plus:58324, minus:58154, dots: 57854, books: 59224, package: 58256, wrench: 58836, gear: 57968, search: 58124,
   refresh: 57492, controller: 57966, arrow: 57432, check: 57730, folder: 57930, info: 58062, warning: 58592,
   palette: 59080, sliders: 58420, cpu: 58896, grid: 58006, list: 58096, keyboard: 58072, eye: 57888, download: 57868 };
-const icon = (name: string, cls = '') => name==='posters'||name==='capsules' ? `<svg class="icon layout-icon ${cls}" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">${name==='posters'?'<rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="18" rx="1.5"/>':'<rect x="3" y="3" width="18" height="7" rx="1.5"/><rect x="3" y="14" width="18" height="7" rx="1.5"/>'}</svg>` : `<span class="icon ${cls}" aria-hidden="true">${String.fromCodePoint(symbols[name] || symbols.info)}</span>`;
+const icon = (name: string, cls = '') => name==="file" ? `<svg class="icon ${cls}" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h4"/></svg>` : name==='posters'||name==='capsules' ? `<svg class="icon layout-icon ${cls}" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">${name==='posters'?'<rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="18" rx="1.5"/>':'<rect x="3" y="3" width="18" height="7" rx="1.5"/><rect x="3" y="14" width="18" height="7" rx="1.5"/>'}</svg>` : `<span class="icon ${cls}" aria-hidden="true">${String.fromCodePoint(symbols[name] || symbols.info)}</span>`;
 const tabs: { id: View; label: string; icon: string }[] = [
   { id: 'library', label: 'Library', icon: 'books' }, { id: 'presets', label: 'Presets', icon: 'sliders' }, { id: 'packages', label: 'Packages', icon: 'package' },
   { id: 'extras', label: 'Extras', icon: 'wrench' }, { id: 'settings', label: 'Settings', icon: 'gear' },
@@ -44,7 +45,7 @@ const preferenceChanges: Record<string, unknown> = {};
 let extraSource = '', extraRecords: Record<string, unknown>[] = [], packageSource = '';
 let liveCatalog: (Record<string, unknown> & { id: string; name: string; version: string })[] | null = null;
 const batchSelection = new Set<string>();
-const overviewExtras = new Map<string,string[]>();
+const overviewChecks = new Map<string,{cards:OverviewCard[]; extras:string[]}>();
 let modalOrigin: {view:View; content:number; details:number; results:number; focus:string|null} | undefined;
 function focusSelector(node:HTMLElement|null){
   return node ? (node.id ? '#' + CSS.escape(node.id) : [...node.attributes].filter(a=>a.name.startsWith('data-')).map(a=>`[${a.name}="${CSS.escape(a.value)}"]`).join('')) : null;
@@ -336,45 +337,36 @@ function details() {
   return `<div class="details-page"><header class="details-hero">${game.hero ? `<div class="hero-artwork"><img class="details-hero-image" crossorigin="anonymous" src="${e(game.hero)}" alt="" /></div>` : ''}<button class="back quiet" data-route="library" aria-label="Back to Library" title="Back to Library">${icon('arrow')}<span>Back to Library</span></button><div class="details-identity">${poster}<div class="details-title-copy"><div class="details-name">${status ? `<span class="hero-status" title="${row?'Current engine check':'Saved library check'}">${e(status)}</span>` : ''}<h1 id="page-title" class="game-title ${game.name.length > 28 ? 'long-title' : ''}" title="${e(game.name)}" tabindex="-1">${e(game.name)}</h1><div class="hero-metadata hero-compact-metadata">${metadata}</div></div><div class="details-hero-bottom"><div class="details-hero-meta hero-info-card"><div class="hero-metadata">${metadata}</div>${game.description ? `<p class="hero-description">${e(game.description.replace(/<[^>]*>/g,''))}</p>` : ''}</div><div class="operation-actions hero-actions"><button class="primary" data-operation="${record?.installed ? 'repair' : 'install'}" ${!backend.enabled ? 'disabled' : ''}>${icon('download')}${record?.installed ? 'Update Features' : 'Install Features'}</button><button class="quiet" data-operation="uninstall" ${!backend.enabled || !row?.installed ? 'disabled' : ''}>${icon('refresh')}Restore Original Files</button><button class="quiet" data-contract="report_draft" ${!backend.enabled ? 'disabled' : ''}>${icon('warning')}Bug Report</button><div class="hero-more"><button class="quiet" data-action="game-menu" aria-label="More game options" aria-haspopup="menu" aria-expanded="${detailsMenuOpen}">${icon('dots')}</button><div class="game-menu glass-section" role="menu" ${detailsMenuOpen?'':'hidden'}><button role="menuitem" data-operation="update-dlss" ${!backend.enabled?'disabled':''}>${icon('download')}Update DLSS</button>${row?.adoption_available?`<button role="menuitem" data-operation="adopt">${icon('check')}Adopt with rtxForge</button><button role="menuitem" data-operation="adopt-clean">${icon('refresh')}Back up and clean install</button>`:''}<button role="menuitem" data-action="launch" ${!backend.enabled||!game.appid?'disabled':''}>${icon('controller')}Launch in Steam</button><button role="menuitem" data-action="open-game-folder" ${!backend.enabled?'disabled':''}>${icon('folder')}Open Folder</button><button role="menuitem" data-action="remove-current-entry" ${!backend.enabled?'disabled':''}>${icon('minus')}Remove from library</button></div></div></div></div></div></div></header><div class="details-layout"><nav class="detail-nav glass-section" aria-label="Game details">${sections.map(([key,label,glyph])=>`<button data-detail-section="${key}" aria-pressed="${detailsSection===key}">${icon(glyph)}<span>${label}</span></button>`).join('')}</nav><div class="details-scroll"><div class="hero-spacer" aria-hidden="true"></div><div class="detail-body">${body}</div></div></div></div>`;
 }
 async function loadOverviewExtras(game: Game, row: EngineRow) {
-  const [hdr,tools]=await Promise.allSettled([
-    engineRequest<{installed?:boolean}>('hdr_status',{row}),
-    engineRequest<{kind?:string}[]>('extras_list',{row}),
-  ]);
-  const names=new Set<string>();
-  if(hdr.status==='fulfilled'&&hdr.value?.installed)names.add('RenoDX');
-  if(tools.status==='fulfilled'&&Array.isArray(tools.value)){
-    const labels:Record<string,string>={'reshade':'ReShade','reshade-import':'ReShade filters and presets','addon':'ReShade add-ons'};
-    for(const tool of tools.value)if(tool.kind&&labels[tool.kind])names.add(labels[tool.kind]);
+  try {
+    const result = await engineRequest<{cards:OverviewCard[];extras:string[]}>('overview_inspect',{row});
+    overviewChecks.set(game.id,result);
+    if(view==='details' && selectedId===game.id && detailsSection==='overview'){
+      const facts = app.querySelector('#overview-facts');
+      if(facts) facts.outerHTML=overviewFacts(result.cards,result.extras);
+    }
+  } catch {
+    // Saved facts remain available when the optional live inspection fails.
   }
-  overviewExtras.set(game.id,[...names]);
-  if(view==='details'&&selectedId===game.id&&detailsSection==='overview'){
-    const extras=app.querySelector<HTMLElement>('#overview-extras');const items=extras?.querySelector('p');
-    if(extras&&items){extras.hidden=!names.size;items.textContent=[...names].join(' · ');}
-  }
+}
+function overviewFacts(cards: OverviewCard[], extras: string[]) {
+  const glyphs:Record<string,string>={Features:"package",Compatibility:"check","Neural rendering":"cpu","Multi-Frame Generation":"sliders"};
+  const pills=(values:string[])=>values.map(value=>`<span class="hero-pill">${e(value)}</span>`).join('');
+  return `<div id="overview-facts"><div class="fact-grid native-facts" data-facts="${cards.length}">
+    ${cards.map(({title,values})=>`<article class="glass-section overview-fact"><div class="overview-heading">${icon(glyphs[title]||"info")}<strong>${e(title)}</strong></div><div class="overview-pills">${pills(values)}</div></article>`).join('')}
+    </div>${extras.length?`<div class="inner-card overview-location overview-extras">${icon("wrench")}<div><strong>Extras</strong><div class="overview-pills">${pills(extras)}</div></div></div>`:''}</div>`;
 }
 function overviewDetails(game: Game, row?: EngineRow) {
   const saved = row || game.savedRecord;
-  const provider = saved?.installed ? saved.runtime_provider : saved?.install_provider;
-  const packageNames: Record<string,string>={skynizz:'Skynizz',y4my:'y4my Multipass','dlss-unlocked':'DLSS-Unlocked',feeder:'Feeder NR','vulkan-native':'Native Vulkan',custom:'Custom package'};
-  const packageName = typeof provider==='string' ? snapshot?.catalog?.find(item=>item.id===provider)?.name || packageNames[provider] || provider : '';
-  const capabilities = saved?.features as {nr?:boolean;mfg?:boolean}|undefined;
-  const available = capabilities?.nr ? (capabilities.mfg?'NR + MFG':'NR only') : capabilities?.mfg ? 'MFG only' : '';
-  const compat = saved?.compat as Record<string,unknown> | undefined;
-  const nr = saved?.nr_runtime as Record<string,unknown> | undefined;
-  const features = saved?.installed ? String(saved.profile || 'Installed') : saved?.blocked ? 'Unavailable' : available || String(saved?.profile || 'Not checked');
-  const facts = [
-    ['Feature package', saved?.installed ? packageName || 'Package not identified' : saved?.installed === false ? (packageName ? 'Available · '+packageName : 'Not installed') : 'Not checked'],
-    ['Compatibility', compat?.verdict ? String(compat.verdict)+(compat.source==='list'?' · rtxForge list':' · your result') : 'No compatibility result'],
-    saved?.installed && (provider==='feeder'||Boolean(nr?.version))
-      ? ['Neural rendering', [nr?.version ? 'Model '+nr.version : '', typeof saved.nr_enabled==='boolean' ? (saved.nr_enabled?'Enabled in saved settings':'Disabled in saved settings') : 'Saved state unavailable', provider==='feeder'?'NR only':''].filter(Boolean).join(' · ')]
-      : ['Features', features+(saved?.dlss_version?' · DLSS '+saved.dlss_version:'')],
-  ];
-  if(saved?.mfg_enabled===true || saved?.installed && /mfg/i.test(String(saved.profile||saved.feature_mode||''))){
-    const multiplier=saved.mfg_multiplier;
-    facts.push(['Multi-Frame Generation',saved.mfg_enabled===false||multiplier===0?'Off':typeof multiplier==='number'&&multiplier>=2?(saved.dynamic_mfg?`Dynamic · up to ${multiplier}×`:`${multiplier}×`):multiplier==='auto'?'Automatic':'Configured']);
-  }
-  const extras=overviewExtras.get(game.id)||[];
-  return `${facts.length?`<div class="fact-grid native-facts" data-facts="${facts.length}">${facts.map(([label,value])=>`<article class="glass-section"><span>${label}</span><strong>${e(value)}</strong></article>`).join('')}</div>`:''}<section class="glass-section overview-extras" id="overview-extras" ${extras.length?'':'hidden'}><h2>Extras</h2><p>${e(extras.join(' · '))}</p></section><section class="glass-section"><h2>Game folder</h2><div class="inner-card detail-action-row"><span class="path">${e(game.path)}</span><button class="quiet" data-action="copy-game-path" ${!backend.enabled?'disabled':''}>Copy location</button></div><label class="field"><span><strong>Game executable</strong><small>${saved?.exe?e(saved.exe):'No saved executable information'}</small></span><input id="executable-source" type="text" placeholder="Full or game-relative EXE path" ${!backend.enabled?'disabled':''}/></label><div class="operation-actions extra-actions"><button class="quiet" data-action="executable-review" ${!backend.enabled||snapshot?.platform!=='Windows'?'disabled':''}>Choose EXE…</button><button class="quiet" data-action="executable-reset" ${!backend.enabled||snapshot?.platform!=='Windows'?'disabled':''}>Use detected</button></div></section><section class="glass-section"><h2>Testing</h2><p>How this game runs with rtxForge. Something wrong? Prepare a bug report.</p><div class="inner-card"><label class="field"><span><strong>Test result</strong><small>Bench keeps this game out of bulk installs and repairs.</small></span><select id="test-result" ${!backend.enabled?'disabled':''}>${!game.testStatus?'<option value="">No saved result</option>':''}${['Untested','Working','Problem','Bench'].map(value=>`<option ${game.testStatus===value?'selected':''}>${value}</option>`).join('')}</select></label><div class="detail-action-row"><div><strong>${game.testActive?'Test running':'Test session'}</strong><p>${game.testActive?'Play for a minute, then finish here to check each component.':'Check package files, NR, MFG, the panel and helper, with evidence and suggested fixes.'}</p></div><div class="operation-actions"><button class="quiet" data-contract="${game.testActive?'test_finish':'test_start'}" ${!backend.enabled?'disabled':''}>${game.testActive?'Finish Test':'Start Test'}</button><button class="quiet" data-contract="report_draft" ${!backend.enabled?'disabled':''}>Bug Report</button></div></div></div></section>`;
+  const current = overviewChecks.get(game.id);
+  const cards = current?.cards || game.overviewCards || [{title:'Features',values:['Not checked']},{title:'Compatibility',values:['No compatibility result']}];
+  const chooseExe = backend.enabled && snapshot?.platform==='Windows';
+  return `${overviewFacts(cards,current?.extras||[])}
+    <div class="overview-locations">
+      <div class="inner-card overview-location">${icon('folder')}<div><strong>Game folder</strong><small class="path">${e(game.path)}</small></div><button class="quiet" data-action="open-game-folder" ${!backend.enabled?'disabled':''}>Open folder</button></div>
+      <div class="inner-card overview-location">${icon('file')}<div><strong>Game executable</strong><small>${saved?.exe?e(saved.exe)+(saved.executable_selected?' · Selected by you':' · Detected automatically'):'No executable detected'}</small></div>
+        <div class="operation-actions"><button class="quiet" data-action="executable-review" ${chooseExe?'':'disabled'}>Choose EXE…</button>${chooseExe&&saved?.executable_selected?`<button class="quiet" data-action="executable-reset">Use detected</button>`:''}</div>
+      </div>
+    </div><section class="glass-section"><h2>Testing</h2><p>How this game runs with rtxForge. Something wrong? Prepare a bug report.</p><div class="inner-card"><label class="field"><span><strong>Test result</strong><small>Bench keeps this game out of bulk installs and repairs.</small></span><select id="test-result" ${!backend.enabled?'disabled':''}>${!game.testStatus?'<option value="">No saved result</option>':''}${['Untested','Working','Problem','Bench'].map(value=>`<option ${game.testStatus===value?'selected':''}>${value}</option>`).join('')}</select></label><div class="detail-action-row"><div><strong>${game.testActive?'Test running':'Test session'}</strong><p>${game.testActive?'Play for a minute, then finish here to check each component.':'Check package files, NR, MFG, the panel and helper, with evidence and suggested fixes.'}</p></div><div class="operation-actions"><button class="quiet" data-contract="${game.testActive?'test_finish':'test_start'}" ${!backend.enabled?'disabled':''}>${game.testActive?'Finish Test':'Start Test'}</button><button class="quiet" data-contract="report_draft" ${!backend.enabled?'disabled':''}>Bug Report</button></div></div></div></section>`;
 }
 
 function detailFeatures(game: Game, row?: EngineRow) {
@@ -594,7 +586,7 @@ function gameOverlaySettings(game: Game) {
   const overrides = (sharedPreferences?.game_overlay_settings || {}) as Record<string, Record<string, unknown>>;
   const identity = Object.keys(overrides).find(key => pathKey(key) === pathKey(game.path)) || game.path;
   const current = mergeOverlay({...snapshot?.preferences,...sharedPreferences},overrides[identity],gameOverlayDrafts.get(game.id));
-  return `<section class="glass-section"><h2>Overlay for this game</h2><p>${overrides[identity] ? 'This game has its own overlay choices.' : 'This game currently inherits app settings.'} Changes are reviewed before saving. Restart the game after applying an overlay update.</p>${!sharedPreferences ? '<button class="quiet" data-action="load-settings">Load current overlay settings</button>' : ''}</section>${settingsContent({category:'overlay',preferences:current,changes:{},glassDefaults:snapshot?.overlayDefaults||{},enabled:backend.enabled&&Boolean(sharedPreferences),platform:snapshot?.platform,icon,gridConnected,games:snapshot?.games||[],game,reportSelection:supportSelection})}${current.overlay_renderer==='optiscaler'?`<section class="glass-section"><h3>Use native menus for this game</h3><p>The review will keep the original menus available. Other games keep their choices.</p><label><input id="overlay-make-default" type="checkbox"/> Make this my default</label></section>`:''}<div class="operation-actions extra-actions"><button class="primary" data-action="save-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review this game's preferences</button><button class="quiet" data-action="inherit-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Use app settings</button><button class="quiet" data-action="apply-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review overlay update</button></div>`;
+  return `<div class="overlay-game-note"><p>${overrides[identity] ? 'This game has its own overlay settings.' : 'This game uses the app’s overlay settings.'}</p>${!sharedPreferences&&backend.enabled ? '<button class="quiet" data-action="load-settings">Load settings</button>' : ''}</div>${settingsContent({category:'overlay',preferences:current,changes:{},glassDefaults:snapshot?.overlayDefaults||{},enabled:backend.enabled&&Boolean(sharedPreferences),platform:snapshot?.platform,icon,gridConnected,games:snapshot?.games||[],game,reportSelection:supportSelection})}${current.overlay_renderer==='optiscaler'?`<section class="glass-section"><h3>Use native menus for this game</h3><p>The review will keep the original menus available. Other games keep their choices.</p><label><input id="overlay-make-default" type="checkbox"/> Make this my default</label></section>`:''}<div class="operation-actions extra-actions"><button class="primary" data-action="save-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review this game's preferences</button><button class="quiet" data-action="inherit-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Use app settings</button><button class="quiet" data-action="apply-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review overlay update</button></div>`;
 }
 function startupSettingsView() {
   if(!pendingInstall)return '';
@@ -749,7 +741,7 @@ function originalSettings() {
 function appearanceSettings() {
   const group=(title:string,copy:string,body:string,extra='')=>`<section class="glass-section setting-group ${extra}"><h2>${title}</h2>${copy?`<p>${copy}</p>`:''}${body}</section>`;
   const select=(id:string,title:string,copy:string,options:[string,string][],value:string)=>`<label class="field"><span><strong>${title}</strong>${copy?`<small>${copy}</small>`:''}</span><select id="${id}">${options.map(([key,label])=>`<option value="${key}" ${value===key?'selected':''}>${label}</option>`).join('')}</select></label>`;
-  const themes=`<div class="theme-options" role="group" aria-label="Color theme">${(['light','clear','dark'] as const).map(theme=>`<button class="theme-choice theme-${theme}" data-theme-choice="${theme}" aria-pressed="${appearance.theme===theme}"><span class="material-sample" aria-hidden="true"><i></i><i></i></span><span>${theme[0].toUpperCase()+theme.slice(1)}</span>${appearance.theme===theme?icon('check'):''}</button>`).join('')}</div>`;
+  const themes=surfaceCards(appearance.theme, "theme-choice", "Color theme", icon);
   const scale='__TAURI_INTERNALS__' in window?select('display-scale','Interface scale','Size of the interface on this display.',[['auto','Automatic'],...[100,125,130,150,175,200].map(n=>[String(n),n+'%'] as [string,string])],String(appearance.scale)):'';
   return `<div class="settings-groups appearance-groups">${group('Surface','Choose the glass material for Game Mode.',themes,'appearance')}${group('Main interface','Color for the main navigation, buttons and focus.',`<div class="inner-card"><label class="field color-field"><span><strong>Accent color</strong><small>Independent of each game’s artwork color.</small></span><input type="color" id="accent-color" value="${appearance.accent}" aria-label="Accent color" /></label><div class="background-field"><span><strong>Background</strong><small>Your image for the main Game Mode interface.</small></span><div class="background-picker"><div class="background-preview"><img src="${e(appearance.background||(appearance.theme==='light'?'/app-hero-light.png':'/app-hero-dark.png'))}" alt="Current Game Mode background"/></div><div class="background-actions"><button class="quiet" data-action="choose-background">Choose image…</button><button class="quiet" data-action="reset-background" ${appearance.background?'':'disabled'}>Use default</button></div><input type="file" id="background-image-file" accept="image/png,image/jpeg,image/webp" hidden /></div></div></div>`)}${group('Game Details','Uses the color saved in your library for each game.',`<div class="inner-card">${surfaceTintControls(appearance.accentMode,appearance.tintStrength)}${select('details-navigation','Game Details navigation','',['sidebar','tabs'].map(key=>[key,key==='sidebar'?'Sidebar':'Tabs']),appearance.detailsNavigation)}</div>`)}${group('Reading and motion','',`<div class="inner-card">${select('text-size','Text size','',[['standard','Standard'],['large','Large']],appearance.text)}${toggle('motion','Motion','Follows your system’s reduced-motion preference.',appearance.motion)}</div>`)}${group('Layout','',`<div class="inner-card">${select('navigation-position','Navigation placement','Main sections at the top or bottom.',[['top','Top'],['bottom','Bottom']],appearance.navigation)}${scale}</div>`)}${group('Controls','',controlGuide())}${group('Library reader','',`<dl class="reader-facts"><dt>Connection</dt><dd>${loading?'Reading…':snapshot?'Connected · read-only':'Unavailable'}</dd><dt>Platform</dt><dd>${e(snapshot?.platform||'Not reported')}</dd><dt>Steam libraries</dt><dd>${snapshot?.libraryCount??'Not reported'}</dd><dt>Last snapshot</dt><dd>${snapshot?e(new Date(snapshot.capturedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})):'Not reported'}</dd></dl><button class="quiet" data-action="refresh" ${loading?'disabled':''}>${icon('refresh')}Refresh reader</button>${error?`<p class="reader-error">${e(error)}</p>`:''}`)}<div class="appearance-reset"><span class="subtle">Appearance changes are saved automatically.</span><button class="quiet" data-action="reset-appearance">Reset appearance</button></div></div>`;
 }
@@ -894,7 +886,37 @@ function hints() {
   const glyph=(index:number)=>controllerGlyph(controllerFamily(),index);
   return controller ? `<span>${glyph(0)} Select</span><span>${glyph(1)} Back</span><span>${glyph(2)}${glyph(3)} Sections</span>` : '<span><kbd>Enter</kbd> Select</span><span><kbd>Esc</kbd> Back</span><span><kbd>Tab</kbd> Navigate</span>';
 }
+const glyphRules: [RegExp, string][] = [
+  [/restore|reset|recovery|refresh|reload|use detected|load settings/i,'refresh'],
+  [/compatibility|verify|confirm|apply|save|done|use color/i,'check'],
+  [/install|update|download/i,'download'],
+  [/reshade|renodx|add-ons?|extras|tools|cleanup/i,'wrench'],
+  [/uninstall|remove|clear selection|disable/i,'minus'],
+  [/executable|files|notes|report|copy/i,'file'],
+  [/open folder|storage|folders?/i,'folder'],
+  [/appearance|theme|surface|accent|color|artwork|background/i,'palette'],
+  [/controller|steam|launch|play/i,'controller'],
+  [/features|presets|tuning|frame generation|graphics|controls/i,'sliders'],
+  [/neural rendering|hardware|system/i,'cpu'],
+  [/package|import/i,'package'],
+  [/add |new |choose|browse/i,'plus'],
+  [/about|guide|testing|details/i,'info'],
+  [/back|cancel|close/i,'arrow'],
+  [/library|layout/i,'grid'],
+];
+function consistentGlyph(label: string, fallback: string) {
+  return glyphRules.find(([match])=>match.test(label))?.[1] || fallback;
+}
 function enhanceActionLabels() {
+  for(const heading of app.querySelectorAll<HTMLElement>('#content :is(.glass-section,.inner-card,.action-card,.extra-detail) :is(h2,h3,h4), #content .glass-section>h2, #content .action-card>h3')) {
+    if(heading.querySelector('.icon'))continue;
+    heading.classList.add('panel-heading');
+    heading.insertAdjacentHTML('afterbegin',icon(consistentGlyph(heading.textContent||'', 'info')));
+  }
+  for(const button of app.querySelectorAll<HTMLButtonElement>('#content :is(.primary,.quiet,.setting-action), .operation-actions button')) {
+    if(button.querySelector('.icon') || !button.textContent?.trim())continue;
+    button.insertAdjacentHTML('afterbegin',icon(consistentGlyph(button.textContent,'arrow'),'button-glyph'));
+  }
   const selector='.operation-actions button,.library-operation-actions button,.selection-bar button,.page-heading>button,.shortcut-actions button,button.extra-actions,.detail-nav button,.app-header nav button,.settings-tabs button';
   for(const button of app.querySelectorAll<HTMLButtonElement>(selector)) {
     button.classList.add('accent-label-control');if(button.closest('nav'))button.classList.add('accent-nav-control');
@@ -1016,7 +1038,7 @@ function bind() {
   app.querySelectorAll<HTMLElement>('[data-provider-default]').forEach(node => node.addEventListener('click', () => void withOperation('Review default package', 'settings_review', { changes: { runtime_provider: node.dataset.providerDefault } })));
   app.querySelectorAll<HTMLElement>('[data-mfg-default]').forEach(node => node.addEventListener('click', () => void withOperation('Review MFG package', 'settings_review', { changes: { mfg_provider: node.dataset.mfgDefault } })));
   if ('__TAURI_INTERNALS__' in window) {
-    for (const [id, kind] of [['package-source', 'package'], ['extra-source', extraKind==='hdr-custom' ? 'renodx-addon' : extraKind==='addon' ? 'addon' : 'tool'], ['executable-source', 'executable'], ['artwork-source', 'image']]) {
+    for (const [id, kind] of [['package-source', 'package'], ['extra-source', extraKind==='hdr-custom' ? 'renodx-addon' : extraKind==='addon' ? 'addon' : 'tool'], ['artwork-source', 'image']]) {
       const field = app.querySelector<HTMLInputElement>('#' + id);
       if (!field) continue;
       const browse = document.createElement('button'); browse.className = 'quiet'; browse.textContent = 'Browse…'; browse.type = 'button'; browse.disabled = !backend.enabled;
@@ -1024,7 +1046,7 @@ function bind() {
       field.parentElement?.append(browse);
     }
   }
-  if (!backend.enabled) app.querySelectorAll<HTMLInputElement>('#package-source,#extra-source,#executable-source').forEach(field => { field.disabled = true; });
+  if (!backend.enabled) app.querySelectorAll<HTMLInputElement>('#package-source,#extra-source').forEach(field => { field.disabled = true; });
   bindSelections();
 }
 function bindResults() {
@@ -1126,7 +1148,19 @@ function action(name: string) {
   if (name === 'check-packages') void engineRequest<{catalog: typeof liveCatalog}>('packages').then(result => { liveCatalog = result.catalog; render(); announce('Engine package availability loaded.'); }).catch(problem => announce(problem.message));
   if (name === 'feeder-status') void withOperation('Managed Feeder files', 'feeder_storage', {}, 'inspect');
   if (name === 'feeder-legacy') void withOperation('Get managed DirectX support', 'feeder_storage', { legacy: true }, 'inspect');
-  if (name === 'executable-review' || name === 'executable-reset') { const path = name === 'executable-reset' ? null : app.querySelector<HTMLInputElement>('#executable-source')?.value; void getEngineRows().then(rows => { if (!rows[0]) throw new Error('This game could not be inspected.'); return withOperation('Review game executable', 'executable_review', { row: rows[0], path }); }).catch(problem => announce(problem.message)); }
+  if (name === 'executable-review' || name === 'executable-reset') {
+    const game = selectedGame();
+    if(!game) return;
+    void (async()=>{
+      const path = name === 'executable-reset' ? null : '__TAURI_INTERNALS__' in window
+        ? await (await import('@tauri-apps/api/core')).invoke<string|null>('choose_path',{kind:'executable'})
+        : window.prompt('Game executable path');
+      if(name==='executable-review' && !path?.trim()) return;
+      const rows = await getEngineRows(game);
+      if(!rows[0]) throw new Error('This game could not be inspected.');
+      await withOperation('Review game executable','executable_review',{row:rows[0],path});
+    })().catch(problem=>announce(problem.message));
+  }
   if (['save-game-overlay', 'inherit-game-overlay', 'apply-game-overlay'].includes(name)) {
     const game = selectedGame(); if (!game || !sharedPreferences) return;
     const overrides = { ...(sharedPreferences.game_overlay_settings || {}) as Record<string, Record<string, unknown>> };

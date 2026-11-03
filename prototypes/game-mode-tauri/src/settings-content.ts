@@ -1,16 +1,17 @@
 import {surfaceTintControls,type AccentMode} from './surface-tint';
+import {surfaceCards} from './surface-cards';
 import {overlaySurface} from './overlay-settings';
 import { escape as e, type Game } from './model';
 
 export const settingsGroups = [
   ['General', [
-    ['appearance','Appearance','palette'], ['library','Library','books'], ['graphics','Graphics','cpu'],
+    ['appearance','Appearance','palette'], ['library','Library','books'], ['graphics','Game Features','cpu'],
   ]],
   ['Interfaces', [
     ['gaming','Game Mode','controller'], ['overlay','Overlay','sliders'],
   ]],
   ['App & support', [
-    ['about','About','info'], ['system','System','gear'], ['recovery','Recovery','refresh'],
+    ['system','System','gear'], ['recovery','Recovery','refresh'], ['about','About','info'],
   ]],
 ] as const;
 
@@ -84,10 +85,12 @@ export function settingsContent(c: Context) {
       ? choice('SidePanelSide','Side Panel position',[['left','Left'],['right','Right']],'Choose which edge the Side Panel opens on.','data-glass',glass.SidePanelSide||'left')
       : glass.Layout==='bar' && Object.hasOwn(c.glassDefaults,'BarPosition')
         ? choice('BarPosition','Bar position',[['bottom','Bottom'],['top','Top']],'Open the Bar at the top or bottom of the screen.','data-glass',glass.BarPosition||'bottom') : '';
-    body=group('rtxForge panel',c.game?'Changes apply to this game.':'Defaults for new and inheriting games.',`<div class="overlay-presentation"><div>`+choice('overlay_renderer','Primary overlay',[['game','rtxForge'],['optiscaler','Native']],'Use the rtxForge panel in compatible packages, or the original OptiScaler, Feeder or ReShade menus.')+layoutPicker+position+`</div>${preview}</div>`,true)+
-      group('Appearance','',`<div class="field"><span><strong>Surface</strong><small>Material and accent tint are independent.</small></span><div class="overlay-theme-segments" role="group" aria-label="Overlay surface">${['light','clear','dark'].map(mode=>`<button data-overlay-surface="${mode}" aria-pressed="${theme===mode}" ${disabled}>${mode[0].toUpperCase()+mode.slice(1)}</button>`).join('')}</div></div>`+
-        surfaceTintControls(String(glass.AccentMode||'adaptive') as AccentMode,Number(glass.AccentTint??26),true,!c.enabled)+
-        glassChoice('TextSize','Text size',[[18,'Aa Smaller'],[22,'Aa Default'],[26,'Aa Larger']])+glassChoice('Motion','Motion effects',onOff))+
+    const appearance=`<div class="layout-picker"><strong>Surface</strong><p>Material and accent tint are independent.</p>${surfaceCards(theme, "overlay-surface", "Overlay surface", c.icon, !c.enabled)}</div>`+
+      surfaceTintControls(String(glass.AccentMode||'adaptive') as AccentMode,Number(glass.AccentTint??26),true,!c.enabled);
+    body=group('Layout and appearance',c.game?'Changes apply to this game.':'Defaults for new and inheriting games.',`<div class="overlay-presentation"><div>`+
+      choice('overlay_renderer','Primary overlay',[['game','rtxForge'],['optiscaler','Native']],'Use the rtxForge panel in compatible packages, or the original OptiScaler, Feeder or ReShade menus.')+
+      layoutPicker+position+appearance+`</div>${preview}</div>`,true)+
+      group('Controls','',glassChoice('TextSize','Text size',[[18,'Aa Smaller'],[22,'Aa Default'],[26,'Aa Larger']])+glassChoice('Motion','Motion effects',onOff))+
       group('Status and notifications','',glassChoice('ShowNotifications','Hotkey notifications',onOff)+toggle('overlay_live_stats','Live feature statistics','Measured activity beside NR and frame generation controls.')+toggle('overlay_welcome','Welcome message','Show the rtxForge logo and assigned shortcut at game startup.')+choice('overlay_welcome_position','Welcome position',[['top-center','Top center'],['top-left','Top left'],['top-right','Top right'],['bottom-left','Bottom left'],['bottom-right','Bottom right']],'Applies when the game starts.'))+
       group(c.game?'Shortcuts':'Shortcuts and helper','',`<label class="field"><span><strong>rtxForge shortcut</strong><small>Choose an unused key or combination. Other overlays keep their shortcuts.</small></span><input id="panel-shortcut" aria-label="Panel shortcut" value="${e(values.panel_hotkey)}" ${disabled}/></label><div class="shortcut-actions"><button class="quiet" data-action="reset-panel-shortcut" ${disabled}>Reset</button><button class="quiet" data-action="disable-panel-shortcut" ${disabled}>Disable</button></div>`+(c.game?'':toggle('overlay_helper','Background overlay helper','Keep saved presets and panel settings available after closing the manager.')+(c.platform==='Windows'?toggle('overlay_start_with_windows','Start helper with Windows','Starts the helper for the rtxForge panel.'):'') ))+
       group('OptiScaler','Menu access and the welcome message are independent.',toggle('optiscaler_ui','OptiScaler menu','Keep NR and MFG installed when the menu is off.')+choice('optiscaler_hotkey','OptiScaler shortcut',[['Insert','Insert'],['F8','F8'],['Disabled','Disabled']],'Applies next game launch.')+toggle('optiscaler_intro','OptiScaler intro','Startup message only.'))+

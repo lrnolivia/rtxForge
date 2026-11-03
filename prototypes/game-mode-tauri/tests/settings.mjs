@@ -14,18 +14,22 @@ await page.route('**/api/engine',async route=>{
   if(request.method==='settings_get')result={...source.preferences,overlay_appearance:{...source.overlayDefaults,Layout:'bar',TextSize:26},overlay_helper:true};
   else if(request.method==='settings_review'){reviewed=request.params.changes;result={token:'settings-exact-fixture',title:'Exact settings fixture',rows:Object.entries(reviewed).map(([name,value])=>({name,detail:JSON.stringify(value)}))};}
   else if(request.method==='run'){expect(request.params.token).toBe('settings-exact-fixture');result={message:'Fixture settings confirmed; no files written.'};}
+  else if(request.method==='steam_status')result={installed:false};
   else if(request.method==='discard')result={};
   else throw new Error('Unexpected fixture request: '+request.method);
   await route.fulfill({json:{result}});
 });
 try{
- await page.goto('http://127.0.0.1:1420');await page.waitForSelector('.game-card');await nav('Settings').click();
- expect(await page.locator('[data-settings-category]>span:not(.icon)').allTextContents()).toEqual(['Appearance','Library','Graphics','Game Mode','Overlay','About','System','Recovery']);
+ await page.goto(process.env.RTXFORGE_PREVIEW_URL || 'http://127.0.0.1:1420');await page.waitForSelector('.game-card');await nav('Settings').click();
+ expect(await page.locator('[data-settings-category]>span:not(.icon)').allTextContents()).toEqual(['Appearance','Library','Game Features','Game Mode','Overlay','System','Recovery','About']);
  await expect(page.getByRole('group',{name:'Color theme'})).toBeVisible();
- await section('Graphics').click();await expect(page.getByRole('switch',{name:'Recognize existing features',exact:true})).toBeEnabled();
+ await section('Game Features').click();await expect(page.getByRole('switch',{name:'Recognize existing features',exact:true})).toBeEnabled();
  await expect(page.getByRole('switch',{name:'Borderless on install',exact:true})).toBeVisible();
  await expect(page.getByRole('combobox',{name:'Default mode',exact:true})).toBeVisible();
  await section('Overlay').click();
+ const surfaces=page.getByRole('group',{name:'Overlay surface'});
+ expect(await surfaces.getByRole('button').allTextContents()).toHaveLength(3);
+ await expect(surfaces.locator('.material-sample')).toHaveCount(3);
  for(const caption of ['Side Panel','Advanced','Bar'])await expect(page.getByRole('button',{name:caption,exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Bar',exact:true})).toHaveAttribute('aria-pressed','true');
  expect(await page.locator('.layout-choice svg').count()).toBe(3);
@@ -54,12 +58,12 @@ try{
  await expect(page.getByRole('button',{name:'Back to game',exact:true})).toBeVisible();
  expect(calls.filter(call=>call.method==='run')).toHaveLength(1);
  await page.getByRole('button',{name:'Back to game',exact:true}).click();
- for(const name of ['Library','Gaming Mode','System','Recovery','About']){await section(name).click();await expect(section(name)).toHaveAttribute('aria-pressed','true');}
+ for(const name of ['Library','Game Mode','System','Recovery','About']){await section(name).click();await expect(section(name)).toHaveAttribute('aria-pressed','true');}
  await section('Recovery').click();await expect(page.getByRole('button',{name:/Old NR files/})).toBeVisible();
  await section('Overlay').click();await page.screenshot({path:'.impeccable/review/settings-overlay-desktop.png'});
  for(const width of [1440,960,390]){
   await page.setViewportSize({width,height:width===390?844:990});
-  for(const name of ['Graphics','Overlay','Library','Gaming Mode','System','Recovery','About']){
+  for(const name of ['Game Features','Overlay','Library','Game Mode','System','Recovery','About']){
    await section(name).click();
    const overflow=await page.evaluate(()=>[...document.querySelectorAll('main,section,.inner-card,.field,.settings-groups,.settings-tabs,.overlay-layout-choices')].filter(n=>n.scrollWidth>n.clientWidth+2).map(n=>n.className));
    expect(overflow,`${name} at ${width}px`).toEqual([]);

@@ -865,6 +865,12 @@ def _run_hdr(plan):
     return renodx_hdr.apply(_config(), plan)
 
 
+def overview_inspect(params):
+    import overview_summary
+    import engine_bridge
+    return overview_summary.inspect(params["row"], engine_bridge.module(_config()))
+
+
 def extras_list(params):
     return [{**r, "title": extra_tools.KINDS[r["kind"]]} for r in extra_tools.recoveries(_config(), params["row"])]
 
@@ -1064,7 +1070,7 @@ METHODS = {
     "report_outline": report_outline, "report_send": report_send,
     "try_anyway": try_anyway, "compat_share": compat_share,
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
-    "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
+    "overview_inspect": overview_inspect, "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
     'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush,
     "packages": packages, "package_inspect": package_inspect, "package_use": package_use,
     "update_check": update_check, "update_stage": update_stage, "update_apply": update_apply,

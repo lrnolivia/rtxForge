@@ -1,7 +1,8 @@
 import { completeArtwork } from './artwork';
 export type View = 'library' | 'presets' | 'details' | 'packages' | 'extras' | 'settings' | 'operation';
 export type Theme = 'clear' | 'light' | 'dark';
-export interface Game { id: string; name: string; path: string; appid: string | null; source: string; status: string; art: string | null; hero?: string | null; capsule?: string | null; description?: string; developers?: string[] | string; release?: string; accent?: string; artworkAccent?: string | null; artworkAccentReady?: boolean; localArtwork?: string[]; heroFocus?: [number,number]; testStatus?: string; notes?: string; testActive?: boolean; savedRecord?: Record<string,unknown> }
+export interface OverviewCard { title: string; values: string[] }
+export interface Game { overviewCards?: OverviewCard[]; id: string; name: string; path: string; appid: string | null; source: string; status: string; art: string | null; hero?: string | null; capsule?: string | null; description?: string; developers?: string[] | string; release?: string; accent?: string; artworkAccent?: string | null; artworkAccentReady?: boolean; localArtwork?: string[]; heroFocus?: [number,number]; testStatus?: string; notes?: string; testActive?: boolean; savedRecord?: Record<string,unknown> }
 export interface Package { id: string; name: string; version: string; repository: string; sha256: string; status: string }
 export interface Snapshot {
   schema: number; source: string; platform: string; readOnly: boolean; capturedAt: string;

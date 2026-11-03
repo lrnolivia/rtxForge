@@ -201,6 +201,10 @@ def local_artwork(game_id, role, *, settings_file=None):
 
 def collect(root, *, settings_file=None, roots=None):
     discovery = load_discovery(root)
+    sys.path.insert(0, str(root / "scripts"))
+    import overview_summary
+    import compat_list
+    listed_compatibility = compat_list.shipped()
     warnings = []
     settings_file = settings_file or settings_path()
     try:
@@ -312,10 +316,15 @@ def collect(root, *, settings_file=None, roots=None):
                 game['art'] = art_for(metadata_id, roots, art_budget)
                 game['hero'] = art_for(metadata_id, roots, art_budget, 'hero')
                 game['capsule'] = art_for(metadata_id, roots, art_budget, 'capsule')
-            game['savedRecord'] = {key: saved_row[key] for key in ('installed', 'profile', 'runtime_provider', 'install_provider', 'features', 'mfg_enabled', 'mfg_route', 'installed_on', 'installed_oses', 'dlss_version', 'compat', 'exe', 'blocked', 'nr_on_launch', 'nr_enabled', 'nr_strength', 'sharpening_strength', 'mfg_multiplier', 'dynamic_mfg', 'mfg_saved_mode', 'mfg_saved_multiplier', 'feature_controls', 'feature_mode', 'dynamic_mfg_available') if key in saved_row}
+            game['savedRecord'] = {key: saved_row[key] for key in ('installed', 'profile', 'runtime_provider', 'install_provider', 'features', 'mfg_enabled', 'mfg_route', 'installed_on', 'installed_oses', 'dlss_version', 'compat', 'exe', 'executable_selected', 'blocked', 'nr_on_launch', 'nr_enabled', 'nr_strength', 'sharpening_strength', 'mfg_multiplier', 'dynamic_mfg', 'mfg_saved_mode', 'mfg_saved_multiplier', 'feature_controls', 'feature_mode', 'dynamic_mfg_available') if key in saved_row}
             runtime = saved_row.get('nr_runtime')
             if isinstance(runtime, dict) and isinstance(runtime.get('version'), str):
                 game['savedRecord']['nr_runtime'] = {'version': runtime['version']}
+            lookup = dict(saved_row, appid=game.get('appid') or saved_row.get('appid'))
+            lookup['compat'] = compat_list.verdict(lookup, listed=listed_compatibility)
+            if lookup.get('installed') is True:
+                lookup = overview_summary.installed_details(lookup)
+            game['overviewCards'] = overview_summary.cards(lookup)
             test = saved_row.get('test_record') or {}
             if isinstance(test, dict) and test.get('status') in ('Untested','Working','Problem','Bench'):
                 game['testStatus'] = test['status']

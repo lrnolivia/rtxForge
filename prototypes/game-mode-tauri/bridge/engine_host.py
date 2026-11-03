@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 ALLOWED = frozenset(('hello', 'hardware', 'scan', 'prepare', 'execute', 'cancel', 'discard_operation',
                      'prepare_routes', 'execute_routes', 'cancel_routes', 'discard_routes',
-                     'prepare_dlss', 'update_dlss', 'packages', 'extras_list', 'extra_review',
+                     'prepare_dlss', 'update_dlss', 'packages', 'overview_inspect', 'extras_list', 'extra_review',
                      'extra_restore_review', 'run', 'discard', 'steam_status', 'steam_review',
                      'steam_install', 'steam_remove', 'recoveries', 'recovery_review', 'cleanup_review', 'open_game_folder',
                      'diagnose', 'dlss_inventory', 'dlss_restore_review', 'launch_game', 'settings_get', 'settings_review', 'notes_get', 'notes_save', 'package_inspect', 'package_use', 'scan_game', 'test_start', 'test_finish', 'hdr_status', 'hdr_review', 'report_draft', 'report_preview', 'global_review', 'overlay_ui_review', 'overlay_package_review', 'storage_inventory', 'storage_review', 'update_check', 'executable_review', 'sgdb_status', 'sgdb_connect', 'sgdb_disconnect', 'sgdb_search', 'sgdb_artwork', 'sgdb_download', 'art_store', 'art_reset', 'art_sync_review', 'art_profiles', 'art_set_profile', 'media', 'feeder_storage', 'overlay_status'))
@@ -121,6 +121,8 @@ def main():
             if params.get('runtime_provider') == 'skynizz':
                 row.update(verdict)
         features.decorate(rows)
+        import compat_list
+        compat_list.apply(service.config, rows, engine)
         return rows
     import executable_selection
     def executable_review(params):

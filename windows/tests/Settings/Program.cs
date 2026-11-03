@@ -158,7 +158,7 @@ foreach (var raw in new[] { "false", "null", "true", "\"unknown\"" })
     if (raw == "true" && game.InstallLabel != "Install Feeder NR") throw new Exception("Fresh Feeder target has an update-only action");
 }
 var installedFeeder = new Game { Id = "managed-feeder", Name = "Installed Feeder", Installed = true, RuntimeProvider = "feeder" };
-if (!installedFeeder.UsesFeeder || installedFeeder.InstallLabel != "Update Feeder NR") throw new Exception("Existing Feeder update route changed");
+if (!installedFeeder.UsesFeeder || installedFeeder.InstallLabel != "Update Features") throw new Exception("Installed Feeder should keep its provider and use the shared update label");
 Console.WriteLine("PASS: fresh Feeder capability stays separate from installation ownership and labels.");
 
 var mfgValues = FeatureControlSchema.Resolve(new Tuning(1.25, .4, "auto"));

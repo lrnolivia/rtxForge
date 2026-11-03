@@ -9,6 +9,16 @@
  #include <framegen/IFGFeature_Dx12.h>
  #include <proxies/Streamline_Proxy.h>
  #include <framegen/dlssg/Companion.h>
+@@ -9075,7 +9077,7 @@
+     ForgePanelChannel::Visible(ForgePanel::selected && _isVisible);
+-    if (ctx.newFrame) ForgePanel::Welcome(ForgePanel::selected && _isVisible);
+     if (!ForgePanel::selected) RenderMainMenuWindow(ctx);
+-    else if (ctx.newFrame) ForgePanel::Draw(_isVisible, ctx.menuResScale);
++    else if (ctx.newFrame && ForgePanel::useGlass) ForgePanel::Draw(_isVisible, ctx.menuResScale);
++    else if (!ForgePanel::useGlass) _isVisible = false;
+ 
+     if (ctx.newFrame)
+         ImGui::EndFrame();
 @@ -9168,6 +9170,8 @@
      }
  

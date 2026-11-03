@@ -127,26 +127,18 @@ bool Draw(const Frame &frame)
 
     ImGui_ImplDX11_NewFrame();
     ImGui::NewFrame();
-    if(ForgeGlassPanel::loader.Ready()) {
-        if(ForgePanelChannel::needsHello&&!ForgePanelChannel::pending&&ForgePanelChannel::Send({{"op","hello"}}))ForgePanelChannel::needsHello=false;
-        const bool drawn=ForgeGlassPanel::Draw(device,frame.target,visible);
-        if(drawn){
-            ImGui::Render();ID3D11RenderTargetView* previous=nullptr;ID3D11DepthStencilView* depth=nullptr;immediate->OMGetRenderTargets(1,&previous,&depth);immediate->OMSetRenderTargets(1,&frame.target,nullptr);ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());immediate->OMSetRenderTargets(1,&previous,depth);if(previous)previous->Release();if(depth)depth->Release();return visible;
-        }
-        ImGui::EndFrame();ImGui::NewFrame();
+    bool drawn = false;
+    if (ForgeGlassPanel::loader.Ready()) {
+        if (ForgePanelChannel::needsHello && !ForgePanelChannel::pending
+            && ForgePanelChannel::Send({{"op","hello"}}))
+            ForgePanelChannel::needsHello = false;
+        drawn = ForgeGlassPanel::Draw(device, frame.target, visible);
     }
-    ForgePanel::Welcome(visible);
-    ForgePanel::Draw(visible, frame.height / 1080.0f);
-    ImGui::Render();
-
-    ID3D11RenderTargetView *previous = nullptr;
-    ID3D11DepthStencilView *depth = nullptr;
-    immediate->OMGetRenderTargets(1, &previous, &depth);
-    immediate->OMSetRenderTargets(1, &frame.target, nullptr);
-    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-    immediate->OMSetRenderTargets(1, &previous, depth);
-    if (previous) previous->Release();
-    if (depth) depth->Release();
+    ImGui::EndFrame();
+    if (!drawn) {
+        visible = false;
+        ForgePanelChannel::Visible(false);
+    }
     return visible;
 }
 

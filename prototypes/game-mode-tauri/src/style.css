@@ -856,3 +856,16 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
   .overview-location {grid-template-columns:auto minmax(0,1fr)}
   .overview-location > button,.overview-location > .operation-actions {grid-column:2;justify-self:start}
 }
+
+.content .panel-heading,
+.content .overview-heading,
+.content .overview-location strong,
+.content .overview-location > .icon {
+  color: var(--section-heading-color,var(--ink));
+}
+.content .panel-heading > .icon,
+.content .overview-heading > .icon {color:inherit}
+
+.app-header .brand{gap:10px;line-height:1}
+.app-header .brand img{flex:none;transform:translateY(-2px)}
+.app-header .brand>span{display:block;transform:translateY(-1px)}

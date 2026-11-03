@@ -240,7 +240,7 @@ public sealed partial class GamePage : Page
                 PageHost.Children.Add(facts);
                 var overviewExtras = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0) };
                 PageHost.Children.Add(overviewExtras);
-                if (shell.Service is Services.EngineForgeService engine && !engine.IsPreview && g.EngineRow is not null)
+                if (shell.Service is Services.EngineForgeService engine && g.EngineRow is not null)
                     _ = RefreshOverviewAsync(engine);
                 async Task RefreshOverviewAsync(Services.EngineForgeService engine)
                 {
@@ -334,7 +334,7 @@ public sealed partial class GamePage : Page
 
             case "DLSS Files":
                 var files = new PreferencesGroup("Installed DLSS Files");
-                files.Add(Prefs.Row("nvngx_dlss.dll", g.DlssVersion is null ? "Not detected" : "Version " + g.DlssVersion, glyph: ""));
+
                 var manage = new PreferencesGroup("File Management");
                 var fileActions = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
                 var update = Prefs.ActionButton("Update", (_, _) => _ = shell.LaunchAction("update-dlss", [g]));

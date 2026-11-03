@@ -250,7 +250,13 @@ def inspect(config, games, snapshot=None):
 def display_inventory(config, game):
     """Inventory for display, including package-managed DLLs excluded from updates."""
     row = inspect(config, [game])[0]
+    row['files'] = present_dlls(game, row['files'])
+    return row
+
+
+def present_dlls(game, native=()):
     import cross_os
+    files = list(native)
     names = COMPONENTS | {
         'nvngx_dlssnr.dll': 'Neural Rendering',
         'nvngx.dll_dlssnr.dll': 'Neural Rendering',
@@ -265,22 +271,22 @@ def display_inventory(config, game):
             for relative in receipt['files']:
                 if Path(relative).name.casefold() in names:
                     candidates.add(directory / t.relative(relative))
-        known = {item['path'].casefold() for item in row['files']}
+        known = {item['path'].casefold() for item in files}
         for path in sorted(candidates):
             try:
                 path = t.safe(path)
                 relative = path.relative_to(root).as_posix()
                 if relative.casefold() in known or not path.is_file() or path.stat().st_size > MAX_DLL:
                     continue
-                row['files'].append({'path': relative, 'component': path.name.casefold(),
+                files.append({'path': relative, 'component': path.name.casefold(),
                                      'current': version(path) or 'Unknown', 'provenance': 'Installed · read-only inventory'})
             except (OSError, ValueError, t.Refusal):
                 continue
     except (KeyError, OSError, TypeError, ValueError, t.Refusal):
         pass
-    for item in row['files']:
+    for item in files:
         item['title'] = names.get(item['component'], item['component'])
-    return row
+    return files
 
 
 def prepare(config, snapshot, selected):

@@ -31,8 +31,17 @@ internal sealed class GameModeAppearanceView : UserControl
     {
         engine=service; store=engine is null?null:new(engine.EngineRoot); Content=body;
         Children.Add(Prefs.Label("Loading Game Mode appearance…"));
-        Loaded += async (_, _) => { if (ready) return; ready=true; await LoadAsync(); };
+        Loaded += async (_, _) =>
+        {
+            if (App.Main is { } shell) shell.GamesChanged += RepaintWhenReady;
+            if (ready) { Paint(); return; }
+            ready=true;
+            await LoadAsync();
+        };
+        Unloaded += (_, _) => { if (App.Main is { } shell) shell.GamesChanged -= RepaintWhenReady; };
     }
+
+    void RepaintWhenReady() { if (ready) Paint(); }
 
     async Task LoadAsync()
     {
@@ -67,19 +76,16 @@ internal sealed class GameModeAppearanceView : UserControl
         if(feedback.Parent is Panel feedbackParent)feedbackParent.Children.Remove(feedback);
         Children.Clear(); Groups.Clear();
         var surface = new PreferencesGroup("Game Mode appearance", "The same preferences as Game Mode, saved automatically.");
-        var layout = new Grid { ColumnSpacing=24, RowSpacing=16 };
-        layout.ColumnDefinitions.Add(new()); layout.ColumnDefinitions.Add(new() { Width=new GridLength(440) });
-        layout.RowDefinitions.Add(new() { Height=GridLength.Auto }); layout.RowDefinitions.Add(new() { Height=GridLength.Auto });
         var material = new StackPanel { Spacing=12 };
         var themes = new OverlayThemePicker(Text("theme"));
-        themes.SelectionChanged += async (_, _) => { if(themes.SelectedIndex>=0) await ChangeAsync("theme",JsonValue.Create(new[] {"light","clear","dark"}[themes.SelectedIndex])); };
-        material.Children.Add(themes); layout.Children.Add(material);
-        var preview = new StackPanel { Spacing=12 };
-        preview.Children.Add(Prefs.Label("Library preview"));
-        preview.Children.Add(new Viewbox { Child=sample, Stretch=Stretch.Uniform, MaxHeight=248 });
-        Grid.SetColumn(preview,1); layout.Children.Add(preview);
-        layout.SizeChanged += (_, eventArgs) => { var wide=eventArgs.NewSize.Width>=820; layout.ColumnDefinitions[1].Width=wide?new GridLength(440):new GridLength(0);Grid.SetColumn(preview,wide?1:0);Grid.SetRow(preview,wide?0:1); };
-        surface.Add(new Border { Style=Prefs.GetStyle("ForgeSettingsCardStyle"), Child=layout }); Groups.Add(surface);
+        themes.SelectionChanged += async (_, _) =>
+        {
+            if(themes.SelectedIndex>=0) await ChangeAsync("theme",JsonValue.Create(new[] {"light","clear","dark"}[themes.SelectedIndex]));
+        };
+        material.Children.Add(themes);
+        var previewOptions = new PreferencesGroup(null);
+        surface.Add(PreviewPanel(material, sample, "Library preview", previewOptions.Root));
+        Groups.Add(surface);
 
         var main = new PreferencesGroup(null);
         material.Children.Add(main.Root);
@@ -97,30 +103,60 @@ internal sealed class GameModeAppearanceView : UserControl
         backgroundButtons.Children.Add(Prefs.ActionButton("Use default",async (_, _) => await ChangeAsync("background",null)));
         main.Add(Prefs.Row("Background","PNG, JPEG or WebP for the main Game Mode interface.",backgroundButtons,"\uEB9F"));
         Choice(main,"Text size",null,"text",["Standard","Large"],["standard","large"]);
-        Choice(main,"Navigation placement",null,"navigation",["Top","Bottom"],["top","bottom"]);
-        Choice(main,"Interface scale","Automatic adapts to the display.","scale",["Automatic","100%","125%","130%","150%","175%","200%"],["auto","100","125","130","150","175","200"]);
+        Choice(previewOptions,"Navigation placement",null,"navigation",["Top","Bottom"],["top","bottom"]);
+        Choice(previewOptions,"Interface scale","Automatic adapts to the display.","scale",["Automatic","100%","125%","130%","150%","175%","200%"],["auto","100","125","130","150","175","200"]);
 
-        var details = new PreferencesGroup("Game Details", "Surface Tint follows each game's saved color or artwork.");
-        details.Add(Prefs.Label("Game Details preview"));
-        details.Add(new Viewbox { Child=detailsSample, Stretch=Stretch.Uniform, MaxHeight=220 });
-        Choice(details,"Surface",null,"detailsTheme",["Match Game Mode","Light","Clear","Dark"],["same","light","clear","dark"]);
-        Choice(details,"Accent",null,"accentMode",["None","Adaptive","Game"],["theme","adaptive","custom"]);
+        var details = new PreferencesGroup("Game Details", "Use a separate surface and adjust how each game’s accent appears.");
+        var detailsOptions = new PreferencesGroup(null);
+        Choice(detailsOptions,"Surface",null,"detailsTheme",["Match Game Mode","Light","Clear","Dark"],["same","light","clear","dark"]);
+        Choice(detailsOptions,"Accent source",null,"accentMode",["None","Adaptive","Game"],["theme","adaptive","custom"]);
         var tint = new Slider { Minimum=0,Maximum=100,Value=Number("tintStrength",50),StepFrequency=5,Width=200 };
         var strength=Prefs.Row("Surface Tint","Tint strength for Game Details.",tint,"\uE790");tintRow=strength;
         strength.Visibility=Text("accentMode")=="theme"?Visibility.Collapsed:Visibility.Visible;
         tint.ValueChanged += async (_, args) => { if(ready)await ChangeAsync("tintStrength",JsonValue.Create((int)args.NewValue)); };
-        details.Add(strength);
-        Choice(details,"Game Details navigation",null,"detailsNavigation",["Sidebar","Tabs"],["sidebar","tabs"]); Groups.Add(details);
+        detailsOptions.Add(strength);
+        var detailsPreviewOptions = new PreferencesGroup(null);
+        Choice(detailsPreviewOptions,"Game Details navigation",null,"detailsNavigation",["Sidebar","Tabs"],["sidebar","tabs"]);
+        details.Add(PreviewPanel(detailsOptions.Root, detailsSample, "Game Details preview", detailsPreviewOptions.Root));
+        Groups.Add(details);
         var reading = new PreferencesGroup("Motion and reset");
         var (row,motion)=Prefs.SwitchRow("Motion","Follows your system's reduced-motion preference.",On("motion"),"\uE768");
         motion.Toggled += async (_, _) => await ChangeAsync("motion",JsonValue.Create(motion.IsOn));reading.Add(row);Groups.Add(reading);
         reading.Add(Prefs.Row("Reset appearance", "Restore the Game Mode appearance defaults.", Prefs.ActionButton("Reset", async (_, _) =>
         { try { if(store is null)return; appearance=await store.WriteAsync(GameModeAppearance.Defaults); Build(); ShowFeedback("Appearance reset"); } catch(Exception error){ShowFeedback(error.Message);} }),"\uE777"));
         reading.Add(feedback);
-        Children.Add(Groups[0].Root);
-        var columns=new PresetColumns(480,2) {ColumnSpacing=24,RowSpacing=16};
-        foreach(var group in Groups.Skip(1))columns.Children.Add(group.Root);Children.Add(columns);
+        foreach(var group in Groups) Children.Add(group.Root);
         IsEnabled=engine is { IsPreview:false }; Paint();
+    }
+
+    static Grid PreviewPanel(FrameworkElement options, Canvas scene, string caption, FrameworkElement previewOptions)
+    {
+        var layout = new Grid { ColumnSpacing=20, RowSpacing=16 };
+        layout.ColumnDefinitions.Add(new());
+        layout.ColumnDefinitions.Add(new() { Width=new GridLength(0) });
+        layout.RowDefinitions.Add(new() { Height=GridLength.Auto });
+        layout.RowDefinitions.Add(new() { Height=GridLength.Auto });
+        layout.Children.Add(options);
+        var preview = new StackPanel { Spacing=10, MaxWidth=480, HorizontalAlignment=HorizontalAlignment.Stretch };
+        preview.Children.Add(Prefs.Label(caption, "ForgeCaptionDimTextStyle"));
+        preview.Children.Add(new Viewbox { Child=scene, Stretch=Stretch.Uniform });
+        preview.Children.Add(previewOptions);
+        Grid.SetRow(preview,1);
+        layout.Children.Add(preview);
+        layout.SizeChanged += (_, args) =>
+        {
+            var wide=args.NewSize.Width>=780;
+            layout.ColumnDefinitions[1].Width=wide ? new GridLength(Math.Min(480,args.NewSize.Width*.44)) : new GridLength(0);
+            Grid.SetColumn(preview,wide?1:0); Grid.SetRow(preview,wide?0:1);
+        };
+        return layout;
+    }
+
+    static Uri? Artwork(string? path)
+    {
+        if (!Uri.TryCreate(path, UriKind.Absolute, out var uri)) return null;
+        return uri.IsFile ? File.Exists(uri.LocalPath) ? uri : null
+            : uri.Scheme == Uri.UriSchemeHttps ? uri : null;
     }
 
     void Choice(PreferencesGroup group,string title,string? copy,string key,string[] labels,string[] values)
@@ -185,12 +221,12 @@ internal sealed class GameModeAppearanceView : UserControl
             global::Windows.UI.Color.FromArgb(55,255,255,255)),BorderThickness=new Thickness(1) },12,libraryTop);
         Place(new TextBlock { Text="LIBRARY",FontSize=Text("text")=="large"?19:16,FontWeight=Microsoft.UI.Text.FontWeights.Bold,Foreground=ink },24,libraryTop+10);
 
-        var games=App.Main?.Games.Where(game=>game.PosterPath is not null&&File.Exists(game.PosterPath)).Take(6).ToArray()??[];
+        var posters=App.Main?.Games.Select(game=>Artwork(game.PosterPath)).OfType<Uri>().Take(6).ToArray()??[];
         for(var index=0;index<6;index++)
         {
             var card=new Border { Width=63,Height=96,CornerRadius=new CornerRadius(6),Background=glass,
                 BorderBrush=new SolidColorBrush(accent),BorderThickness=new Thickness(index==0?2:0) };
-            if(index<games.Length)card.Child=new Image { Source=new BitmapImage(new Uri(games[index].PosterPath!)),Stretch=Stretch.UniformToFill };
+            if(index<posters.Length)card.Child=new Image { Source=new BitmapImage(posters[index]) { DecodePixelWidth=110 },Stretch=Stretch.UniformToFill };
             Place(card,25+index*72,libraryTop+52);
         }
         PaintDetails();
@@ -201,7 +237,7 @@ internal sealed class GameModeAppearanceView : UserControl
         detailsSample.Children.Clear();
         var theme = Text("detailsTheme") is "light" or "clear" or "dark" ? Text("detailsTheme") : Text("theme");
         var light = theme == "light";
-        var game = App.Main?.Games.FirstOrDefault(item => item.HeroPath is { } path && File.Exists(path));
+        var game = App.Main?.Games.FirstOrDefault(item => Artwork(item.HeroPath) is not null);
         var accent = ArtAccent.TryParse(Text("accent"), out var color) ? color : ArtAccent.NoArtwork;
         var ink = new SolidColorBrush(light ? global::Windows.UI.Color.FromArgb(255,30,30,29) : global::Windows.UI.Color.FromArgb(255,246,243,238));
         void Place(UIElement element, double x, double y)
@@ -210,19 +246,24 @@ internal sealed class GameModeAppearanceView : UserControl
         }
         var neutral = light ? global::Windows.UI.Color.FromArgb(255,235,230,225) : global::Windows.UI.Color.FromArgb(255,40,40,42);
         Place(new Border { Width=480,Height=270,CornerRadius=new CornerRadius(12),Background=new SolidColorBrush(neutral) },0,0);
-        if (game?.HeroPath is { } hero)
-            Place(new Border { Width=480,Height=132,Background=new ImageBrush
+        var hero = Artwork(game?.HeroPath) ?? new Uri(Path.Combine(AppContext.BaseDirectory,"Assets","GameMode",light?"app-hero-light.png":"app-hero-dark.png"));
+        Place(new Border { Width=480,Height=132,CornerRadius=new CornerRadius(12,12,0,0),Background=new ImageBrush
+        {
+            ImageSource=new BitmapImage(hero) { DecodePixelWidth=480 },
+            Stretch=Stretch.UniformToFill,Opacity=light?.36:.58,
+        } },0,0);
+        if (Artwork(game?.PosterPath) is { } poster)
+            Place(new Border { Width=48,Height=68,CornerRadius=new CornerRadius(5),Background=new ImageBrush
             {
-                ImageSource=new BitmapImage(new Uri(hero)) { DecodePixelWidth=480 },
-                Stretch=Stretch.UniformToFill,Opacity=.55,
-            } },0,0);
+                ImageSource=new BitmapImage(poster) { DecodePixelWidth=96 },Stretch=Stretch.UniformToFill,
+            } },22,56);
         var tint=(Number("tintStrength",50)/100)*.55;
         if(Text("accentMode")=="theme")tint=0;
         byte Blend(byte channel,byte hue)=>(byte)(channel+(hue-channel)*tint);
         var glass=new SolidColorBrush(global::Windows.UI.Color.FromArgb(theme=="clear"?(byte)170:(byte)238,
             Blend(neutral.R,accent.R),Blend(neutral.G,accent.G),Blend(neutral.B,accent.B)));
-        Place(new TextBlock { Text=game?.Name??"Game Details",Foreground=ink,FontSize=20,MaxWidth=420,
-            TextTrimming=TextTrimming.CharacterEllipsis,FontWeight=Microsoft.UI.Text.FontWeights.Bold },24,83);
+        Place(new TextBlock { Text=game?.Name??"Game Details",Foreground=ink,FontSize=19,MaxWidth=380,
+            TextTrimming=TextTrimming.CharacterEllipsis,FontWeight=Microsoft.UI.Text.FontWeights.Bold },Artwork(game?.PosterPath) is null?24:82,83);
         var tabs=Text("detailsNavigation")=="tabs";
         Place(new Border { Width=442,Height=114,CornerRadius=new CornerRadius(11),Background=glass },19,140);
         Place(new TextBlock { Text=tabs?"Overview     Features     DLSS Files":"Overview\nFeatures\nDLSS Files",Foreground=ink,FontSize=12 },31,153);

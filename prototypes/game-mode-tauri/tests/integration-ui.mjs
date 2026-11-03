@@ -28,11 +28,13 @@ try{
     }
   }
   await page.locator('.game-card').first().click();
-  const sections=await page.locator('.detail-body .glass-section>h2').allTextContents();
-  expect(sections.at(-1)).toBe('Testing');expect(sections.indexOf('Game folder')).toBeLessThan(sections.indexOf('Testing'));
+  const detailBody=page.locator('.detail-body');
+  await expect(detailBody.locator(':scope > :last-child').getByRole('heading',{name:'Testing',exact:true})).toBeVisible();
+  await expect(detailBody.getByText('Game folder',{exact:true})).toBeVisible();
+  await expect(detailBody.getByText('Game executable',{exact:true})).toBeVisible();
   await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Settings',exact:true}).click();
   const settings=page.getByRole('navigation',{name:'Settings sections'});
-  for(const [group,labels] of [['General',['Appearance','Library','Graphics']],['Interfaces',['Game Mode','Overlay']],['App & support',['About','System','Recovery']]]){
+  for(const [group,labels] of [['General',['Appearance','Library','Game Features']],['Interfaces',['Game Mode','Overlay']],['App & support',['System','Recovery','About']]]){
     expect(await settings.getByRole('group',{name:group,exact:true}).getByRole('button').allTextContents())
       .toEqual(labels.map(label=>expect.stringContaining(label)));
   }

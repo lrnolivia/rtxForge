@@ -405,6 +405,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--artwork')
+    parser.add_argument('--dll-inventory')
     parser.add_argument('--role', choices=('poster','hero','capsule'))
     parser.add_argument('--background')
     parser.add_argument('--background-list')
@@ -414,6 +415,12 @@ if __name__ == '__main__':
         if args.background_list:
             from store_background import gallery
             snapshot = {'screenshots': gallery(args.background_list, settings_path().parent / 'state/game-mode/store-backgrounds')}
+        elif args.dll_inventory:
+            root = args.root.resolve()
+            game = next((game for game in collect(root)['games'] if game['id'] == args.dll_inventory), None)
+            from runtime_updates import present_dlls
+            saved = (game or {}).get('savedRecord') or {}
+            snapshot = {'files': present_dlls(dict(saved, game=game['path'])) if game and saved.get('exe') else []}
         elif args.background:
             from store_background import background
             snapshot = background(args.background, settings_path().parent / 'state/game-mode/store-backgrounds', screenshot=args.screenshot)

@@ -676,7 +676,7 @@ def handle(request: dict) -> None:
             send({"event": "progress", "id": rid, "label": str(event["text"]).strip()})
 
     try:
-        if os.environ.get('RTXFORGE_READ_ONLY') == '1' and request['method'] not in {'hello', 'hardware', 'scan', 'settings'}:
+        if os.environ.get('RTXFORGE_READ_ONLY') == '1' and request['method'] not in {'hello', 'hardware', 'scan', 'settings', 'overview_inspect', 'dlss_inventory', 'overlay_status'}:
             raise RuntimeError('This library preview cannot change games or packages.')
         method = METHODS[request["method"]]
         if request["method"] == "execute":

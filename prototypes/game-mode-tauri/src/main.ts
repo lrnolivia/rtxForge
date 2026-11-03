@@ -106,6 +106,7 @@ function applyAppearance() {
   root.dataset.detailsNavigation = appearance.detailsNavigation;
   root.dataset.buttonGlyphs = String(currentPreferences().button_glyphs !== false);
   root.style.setProperty('--accent', appearance.accent);
+  root.style.setProperty('--section-heading-color',sectionHeadingColor(appearance.accent,root.dataset.theme==='light'));
   root.style.setProperty('--shell-accent', appearance.accent);
   root.style.setProperty('--primary-ink',selectionInk(appearance.accent));
   root.dataset.customBackground=String(Boolean(appearance.background));
@@ -342,6 +343,7 @@ function details() {
 async function loadOverviewExtras(game: Game, row: EngineRow) {
   try {
     const result = await engineRequest<{cards:OverviewCard[];extras:string[]}>('overview_inspect',{row});
+    if(!Array.isArray(result?.cards) || !Array.isArray(result?.extras))return;
     overviewChecks.set(game.id,result);
     if(view==='details' && selectedId===game.id && detailsSection==='overview'){
       const facts = app.querySelector('#overview-facts');
@@ -353,9 +355,16 @@ async function loadOverviewExtras(game: Game, row: EngineRow) {
 }
 async function loadDlssFiles(game: Game) {
   try {
-    const rows=await getEngineRows(game);
-    if(!rows[0])throw new Error('This installation is unavailable to the engine.');
-    const result=await engineRequest<DlssInventory|DlssInventory[]>('dlss_inventory',{row:rows[0]});
+    let result: DlssInventory | DlssInventory[];
+    if(backend.enabled){
+      const rows=await getEngineRows(game);
+      if(!rows[0])throw new Error('This installation is unavailable to the engine.');
+      result=await engineRequest<DlssInventory|DlssInventory[]>('dlss_inventory',{row:rows[0]});
+    } else if(!('__TAURI_INTERNALS__' in window)){
+      const response=await fetch('/api/dll-inventory?id='+encodeURIComponent(game.id));
+      if(!response.ok)throw new Error('File inventory is unavailable in this preview.');
+      result=await response.json();
+    } else return;
     fileInventories.set(game.id,Array.isArray(result)?result[0]:result);
   }catch(problem){
     fileInventories.set(game.id,{files:[],blocked:problem instanceof Error?problem.message:String(problem)});
@@ -421,7 +430,7 @@ function applyDetailsAccent() {
   const colors=heroColors(accent||'#d8d5ce',appearance.theme==='light',sampled||undefined,cardSample||undefined,appearance.tint);
   const badgeColors=heroBadge(image&&badge?sampleHero(image,badge.getBoundingClientRect())||undefined:undefined);
   content.style.setProperty('--game-title-color',colors.title);
-  content.style.setProperty('--section-heading-color',sectionHeadingColor(accent||'#d8d5ce',appearance.theme==='light'));
+  content.style.setProperty('--section-heading-color',sectionHeadingColor(accent||'#d8d5ce',document.documentElement.dataset.theme==='light'));
   content.style.setProperty('--title-veil',String(colors.titleVeil));
   content.style.setProperty('--hero-card-color',colors.card);
   content.style.setProperty('--hero-card-ink',colors.ink);
@@ -583,7 +592,7 @@ function detailTools(game: Game, row?: EngineRow) {
     const inventory=fileInventories.get(game.id);
     const files=inventory?.files || [];
     return `<section class="glass-section"><h2>Installed DLSS Files</h2>
-      ${files.length?`<div class="fact-grid native-facts">${files.map(file=>`<article class="glass-section overview-fact"><div class="overview-heading">${icon('file')}<strong>${e(file.title)}</strong></div><p class="path">${e(file.path)}</p><div class="overview-pills"><span class="hero-pill">${e(file.current==='Unknown'?'Version unavailable':file.current)}</span></div></article>`).join('')}</div>`:`<p>${e(inventory?.blocked || (inventory ? 'No supported DLSS DLLs were found.' : backend.enabled ? 'Checking installed DLLs…' : 'File inventory is available in the installed app.'))}</p>`}</section>
+      ${files.length?`<div class="fact-grid native-facts">${files.map(file=>`<article class="glass-section overview-fact"><div class="overview-heading">${icon('file')}<strong>${e(file.title)}</strong></div><p class="path">${e(file.path)}</p><div class="overview-pills"><span class="hero-pill">${e(file.current==='Unknown'?'Version unavailable':file.current)}</span></div></article>`).join('')}</div>`:`<p>${e(inventory?.blocked || (inventory ? 'No supported DLSS DLLs were found.' : backend.enabled || !('__TAURI_INTERNALS__' in window) ? 'Checking installed DLLs…' : 'File inventory is available in the installed app.'))}</p>`}</section>
       <section class="glass-section"><h2>File Management</h2><div class="package-columns detail-card-row">${actionCard('Update DLSS','Update older DLSS files. Backups are kept for restoration.','data-operation="update-dlss"','Update')}${actionCard('Restore original DLSS files','Review the existing updater backups for this game.','data-contract="dlss_restore_review"','Restore')}</div></section>`;
   }
   if (detailsSection === 'notes') return `<section class="glass-section"><h2>Your Notes</h2><p>Kept with this game in rtxForge. Included in bug reports when you choose.</p><label class="notes-field"><span>Notes</span><textarea id="game-notes" rows="10" ${!backend.enabled||!notesLoaded.has(game.id)?'disabled':''}>${e(noteDrafts.get(game.id) ?? game.notes ?? '')}</textarea></label><button class="primary extra-actions" data-action="save-notes" ${!backend.enabled||!notesLoaded.has(game.id)?'disabled':''}>Save Notes</button></section>`;
@@ -737,7 +746,7 @@ function packages() {
 }
 
 function extras() {
-  const tool = (title:string,copy:string,action:string,caption:string,glyph:string) => `<article class="glass-section tool-card"><div class="tool-heading">${icon(glyph)}<h2>${title}</h2></div><p>${copy}</p><button class="quiet" data-action="${action}" ${!backend.enabled?'disabled':''}>${caption}</button></article>`;
+  const tool = (title:string,copy:string,action:string,caption:string,glyph:string) => `<article class="glass-section tool-card"><div class="tool-heading"><h2 class="panel-heading">${icon(glyph)}${title}</h2></div><p>${copy}</p><button class="quiet" data-action="${action}" ${!backend.enabled?'disabled':''}>${caption}</button></article>`;
   return heading('Extras','Tools for your whole library. Every game change is reviewed before it is applied.')+`<div class="extra-top-tools">${tool('Update the rtxForge Overlay','Bring the in-game overlay in your installed games up to date. Tuning and restore backups are kept.','overlay-package-review','Review overlay updates','sliders')}${tool('Update DLSS files','Replace older DLSS files across your library. Originals are backed up.','extras-dlss','Review games','download')}${tool('Undo previous changes','Restore the files from an earlier install, update or restore.','recoveries','Show changes','refresh')}</div>${tool('RenoDX','Install the matching RenoDX add-on, or choose a custom add-on for a game.','extras-hdr','Choose game','palette')}<div class="package-columns extras-bottom"><section class="glass-section"><h2>Global Settings</h2><p>Turn neural rendering or frame generation on or off, or set the multiplier, in every game with a package installed. Defaults for future installs stay the same.</p><div class="inner-card"><label class="field"><span><strong>Neural rendering</strong></span><select id="global-nr" ${!backend.enabled?'disabled':''}><option value="keep">Leave as is</option><option value="false">Off</option><option value="true">On</option></select></label><label class="field"><span><strong>Multi-Frame Generation</strong></span><select id="global-mfg" ${!backend.enabled?'disabled':''}><option value="keep">Leave as is</option><option value="0">Off</option>${[2,3,4,5,6].map(value=>`<option value="${value}">${value}×</option>`).join('')}<option value="-1">Follow game</option></select></label></div><button class="primary extra-actions" data-action="global-review" ${!backend.enabled?'disabled':''}>Review changes</button></section>${tool('App storage','Downloads, backups and caches rtxForge keeps. Clean up what no game needs.','storage-inventory','View usage','folder')}</div>`;
 }
 function toggle(id: string, title: string, description: string, on: boolean) {
@@ -874,7 +883,7 @@ function render() {
   const pageContent = surface === 'library' ? library() : surface === 'presets' ? presets() : surface === 'details' ? details() : surface === 'packages' ? packages() : surface === 'extras' ? extras() : surface === 'operation' ? operationView() : settings();
   const content = modal ? pageContent.replace('id="page-title"','id="background-page-title"') : pageContent;
   const overlay = modal ? `<div class="operation-backdrop"><section class="operation-modal glass-section" role="dialog" aria-modal="true" aria-labelledby="page-title">${operationView()}</section></div>` : '';
-  app.innerHTML = `<div class="shell" ${modal?'inert aria-hidden="true"':''}><header class="app-header" data-tauri-drag-region><a href="#library" class="brand" data-route="library" aria-label="rtxForge library"><img src="/app-icon.svg" alt="" /><span>rtxForge</span></a><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><div id="input-hints">${hints()}</div></footer></div>${overlay}`;
+  app.innerHTML = `<div class="shell" ${modal?'inert aria-hidden="true"':''}><header class="app-header" data-tauri-drag-region><div class="brand"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></div><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><div id="input-hints">${hints()}</div></footer></div>${overlay}`;
   const game = selectedGame(), scene = document.querySelector<HTMLElement>('#scene')!;
   if(view==='details'&&snapshot&&game)prioritizeArtwork(snapshot,game.id);
   applyStoreBackground(surface==='details'&&currentPreferences().online_art!==false&&game&&(game.accent||game.artworkAccentReady)?game.appid:null,scene,game?.id,detailsAccent(game));
@@ -929,8 +938,8 @@ function consistentGlyph(label: string, fallback: string) {
 }
 function enhanceActionLabels() {
   for(const heading of app.querySelectorAll<HTMLElement>('#content :is(.glass-section,.inner-card,.action-card,.extra-detail) :is(h2,h3,h4), #content .glass-section>h2, #content .action-card>h3')) {
-    if(heading.querySelector('.icon'))continue;
     heading.classList.add('panel-heading');
+    if(heading.querySelector('.icon') || heading.previousElementSibling?.classList.contains('icon'))continue;
     heading.insertAdjacentHTML('afterbegin',icon(consistentGlyph(heading.textContent||'', 'info')));
   }
   for(const button of app.querySelectorAll<HTMLButtonElement>('#content :is(.primary,.quiet,.setting-action), .operation-actions button')) {
@@ -999,7 +1008,7 @@ function bind() {
   app.querySelector<HTMLSelectElement>('#display-scale')?.addEventListener('change', event => { const value = (event.target as HTMLSelectElement).value; appearance.scale = value === 'auto' ? 'auto' : Number(value); applyAppearance(); });
   app.querySelectorAll<HTMLSelectElement | HTMLInputElement>('[data-draft]').forEach(node => node.addEventListener('change', () => { const game = selectedGame(); if (!game) return; drafts.set(game.id, { ...drafts.get(game.id), [node.dataset.draft!]: node.value }); app.querySelector('#draft-label')!.textContent = 'Draft · not applied'; if (['mfg_mode', 'mfg_enabled', 'provider'].includes(node.dataset.draft!)) { render(); app.querySelector<HTMLElement>(`[data-draft="${node.dataset.draft}"]`)?.focus(); } announce('Preview choice changed. Nothing applied.'); }));
   app.querySelectorAll<HTMLElement>('[data-extra]').forEach(node => node.addEventListener('click', () => { extraKind = node.dataset.extra!; render(); app.querySelector<HTMLElement>(`[data-extra="${extraKind}"]`)?.focus(); }));
-  app.querySelectorAll<HTMLElement>('[data-detail-section]').forEach(node => node.addEventListener('click', () => { if(detailsSection!==node.dataset.detailSection)gameAccentDrafts.clear(); detailsSection = node.dataset.detailSection!; render(); app.querySelector<HTMLElement>(`[data-detail-section="${detailsSection}"]`)?.focus(); const game = selectedGame(); if(detailsSection==='files'&&game&&backend.enabled)void loadDlssFiles(game); if(detailsSection==='overview'&&game&&backend.enabled){const row=engineRows.find(record=>pathKey(record.game)===pathKey(game.path));if(row)void loadOverviewExtras(game,row);} if (detailsSection === 'notes' && backend.enabled && game && !notesLoaded.has(game.id)) void engineRequest<Record<string, unknown>>('notes_get', { game: game.path }).then(record => { if (!noteDrafts.has(game.id)) noteDrafts.set(game.id, String(record.notes || '')); notesLoaded.add(game.id); if (view === 'details' && detailsSection === 'notes' && selectedId === game.id) render(); }).catch(problem => announce(problem.message)); }));
+  app.querySelectorAll<HTMLElement>('[data-detail-section]').forEach(node => node.addEventListener('click', () => { if(detailsSection!==node.dataset.detailSection)gameAccentDrafts.clear(); detailsSection = node.dataset.detailSection!; render(); app.querySelector<HTMLElement>(`[data-detail-section="${detailsSection}"]`)?.focus(); const game = selectedGame(); if(detailsSection==='files'&&game)void loadDlssFiles(game); if(detailsSection==='overview'&&game&&backend.enabled){const row=engineRows.find(record=>pathKey(record.game)===pathKey(game.path));if(row)void loadOverviewExtras(game,row);} if (detailsSection === 'notes' && backend.enabled && game && !notesLoaded.has(game.id)) void engineRequest<Record<string, unknown>>('notes_get', { game: game.path }).then(record => { if (!noteDrafts.has(game.id)) noteDrafts.set(game.id, String(record.notes || '')); notesLoaded.add(game.id); if (view === 'details' && detailsSection === 'notes' && selectedId === game.id) render(); }).catch(problem => announce(problem.message)); }));
   app.querySelectorAll<HTMLElement>('[data-operation]').forEach(node => node.addEventListener('click', () => void runOperation(node.dataset.operation!, node.dataset.batch === 'true', node.dataset.libraryScope === 'true')));
   app.querySelectorAll<HTMLElement>('[data-contract]').forEach(node => node.addEventListener('click', async () => {
     const game = selectedGame(); if (!game) return;

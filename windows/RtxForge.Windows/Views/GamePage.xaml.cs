@@ -474,8 +474,34 @@ public sealed partial class GamePage : Page
         var fileCards = new PresetColumns(240, 4) { ColumnSpacing = 12, RowSpacing = 12 };
         foreach (var component in inventory.Files.GroupBy(file => file.Title))
         {
-            var copies = component.Select(file => $"{file.Path} · {file.Current}");
-            fileCards.Children.Add(Prefs.Row(component.Key, string.Join("\n", copies)));
+            var body = new StackPanel { Spacing = 10 };
+            body.Children.Add(new TextBlock { Text = component.Key, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            foreach (var file in component)
+            {
+                var copy = new Grid { ColumnSpacing = 8 };
+                copy.ColumnDefinitions.Add(new());
+                copy.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+                var identity = new StackPanel { Spacing = 3 };
+                identity.Children.Add(new TextBlock { Text = Path.GetFileName(file.Path), TextWrapping = TextWrapping.Wrap });
+                var directory = Path.GetDirectoryName(file.Path);
+                if (!string.IsNullOrEmpty(directory))
+                    identity.Children.Add(Prefs.Label(directory.Replace('\\', '/'), "ForgeCaptionDimTextStyle"));
+                copy.Children.Add(identity);
+                var version = new Border
+                {
+                    Child = Prefs.Label(file.Current == "Unknown" ? "Version unavailable" : file.Current, "ForgeCaptionDimTextStyle"),
+                    CornerRadius = new CornerRadius(5), Padding = new Thickness(6, 3, 6, 3),
+                    Background = (Brush)Application.Current.Resources["ControlAltFillColorSecondaryBrush"],
+                    VerticalAlignment = VerticalAlignment.Top,
+                };
+                Grid.SetColumn(version, 1);
+                copy.Children.Add(version);
+                body.Children.Add(copy);
+            }
+            fileCards.Children.Add(new Border
+            {
+                Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Padding = new Thickness(16), Child = body
+            });
         }
         if (fileCards.Children.Count > 0) files.Add(fileCards);
         else if (inventory.Blocked.Length == 0) files.Add(Prefs.Row("No DLSS DLLs found", "No supported files were detected.", glyph: "\uE7C3"));

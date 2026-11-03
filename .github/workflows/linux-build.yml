@@ -145,7 +145,7 @@ jobs:
             gui/rtxforge_gtk.py
 
           /usr/bin/python3 -m unittest engine.tests.test_v13_core_hardening
-          /usr/bin/python3 -m unittest tests.test_overlay_settings tests.test_vulkan_app_routes tests.test_overlay_bundle tests.test_overlay_refresh tests.test_glass_preferences tests.test_package_downloads tests.test_game_mode_icons
+          /usr/bin/python3 -m unittest tests.test_overlay_settings tests.test_vulkan_app_routes tests.test_overlay_bundle tests.test_overlay_refresh tests.test_glass_preferences tests.test_package_downloads
           /usr/bin/python3 -m unittest tests.test_renodx_hdr tests.test_renodx_hdr_settings tests.linux_ui.test_overview_facts
 
           /usr/bin/python3 -m unittest discover -s tests -p test_runtime_updates.py

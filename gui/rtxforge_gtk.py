@@ -19,6 +19,7 @@ import mfg_choice
 from step_count import StepCount
 import action_labels
 import overview_facts
+import overview_summary
 import overlay_shortcut
 import breakpoints
 from feature_presets import FeaturePresets
@@ -10270,7 +10271,10 @@ class Window(Adw.ApplicationWindow):
         if not game.get('blocked') and game.get('installed') and game.get('installed_on')=='windows':
             banner=Adw.Banner(title=overview_facts.WINDOWS_NOTE,revealed=True)
             banner.add_css_class('overview-banner');box.append(banner)
-        facts=overview_facts.facts(game)
+        glyphs={'Features':'computer-symbolic','Compatibility':'emblem-ok-symbolic',
+                'Neural rendering':'rtx-sparkle-symbolic','Multi-Frame Generation':'video-display-symbolic'}
+        facts=[(card['title'],' · '.join(card['values']),glyphs[card['title']])
+               for card in overview_summary.cards(game)]
         if facts:
             flow=Gtk.Grid(column_spacing=12,row_spacing=12,column_homogeneous=True,hexpand=True,valign=Gtk.Align.START)
             flow.add_css_class('overview-facts')
@@ -10292,6 +10296,25 @@ class Window(Adw.ApplicationWindow):
                 return True
             flow.add_tick_callback(arrange_facts)
             box.append(flow)
+        if not self.options.demo and game.get('exe'):
+            extras_box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            box.append(extras_box)
+            def apply_overview(result):
+                if box.get_root() is None:
+                    return False
+                for widget, card in zip(cards, result['cards']):
+                    widget.get_row_at_index(0).set_subtitle(' · '.join(card['values']))
+                if result['extras']:
+                    extras_box.append(fact_row('Extras',' · '.join(result['extras']),'applications-graphics-symbolic'))
+                return False
+            def inspect_overview():
+                try:
+                    import engine_bridge
+                    result=overview_summary.inspect(game,engine_bridge.module(self.service.config))
+                except (OSError, ValueError):
+                    return
+                GLib.idle_add(apply_overview,result)
+            threading.Thread(target=inspect_overview,daemon=True,name='overview-details').start()
         path=overview_facts.folder(game)
         if path:
             open_button=button('Open folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(path).as_uri(),None))
@@ -12920,8 +12943,9 @@ class Window(Adw.ApplicationWindow):
         # Wraps instead of running off a narrow details window (Adw ≥ 1.7).
         hero_actions=Adw.WrapBox(child_spacing=8,line_spacing=8,align=1.0,valign=Gtk.Align.END,halign=Gtk.Align.END)
         hero_actions.add_css_class('detail-hero-actions')
-        install_label=action_labels.game(self.needs_linux_setup(game))[0]
-        hero_install=icon_button(install_label,'folder-download-symbolic',lambda *_:self.launch_action('install',targets=[game]),'hero-install')
+        feature_op='repair' if game.get('installed') and not self.needs_linux_setup(game) else 'install'
+        install_label='Update Features' if feature_op=='repair' else action_labels.game(self.needs_linux_setup(game))[0]
+        hero_install=icon_button(install_label,'folder-download-symbolic',lambda *_:self.launch_action(feature_op,targets=[game]),'hero-install')
         # Same rule as the Installation rows below (demo reviews never write).
         hero_install.set_sensitive(not game.get('blocked') and not self.busy and bool(self.hardware_info and self.hardware_info['ready']))
         hero_restore=icon_button('Restore Original Files','edit-undo-symbolic',lambda *_:self.launch_action('uninstall',targets=[game]),'hero-restore')
@@ -15365,14 +15389,9 @@ class Window(Adw.ApplicationWindow):
             if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
         corners.connect('notify::selected',change_corners);window_style.add(corners);window_style.add(compact)
 
-        theme_row=row('Color theme','Changes only rtxForge. Saved immediately.')
-        theme_selector=Adw.ToggleGroup(valign=Gtk.Align.CENTER)
-        for key,caption in [('light','Light'),('dark','Dark'),('night','Night')]:
-            theme_selector.add(Adw.Toggle(name=key,label=caption))
-        theme_selector.set_active_name((self.settings.get('theme') or ('dark' if self.settings['dark'] else 'light')))
-        def change_theme(group,*_):
+        def change_theme(value):
             global THEME_MODE
-            THEME_MODE=group.get_active_name()
+            THEME_MODE=value
             self.settings['theme']=THEME_MODE
             dark=THEME_MODE!='light'
             self.settings['dark']=dark
@@ -15383,9 +15402,10 @@ class Window(Adw.ApplicationWindow):
                 saved['dark']=dark
                 saved['theme']=THEME_MODE
                 library_media.save_settings(self.service.config,saved)
-        theme_selector.connect('notify::active-name',change_theme)
-        theme_row.add_suffix(theme_selector)
-        appearance.add(theme_row)
+        from overlay_layouts import ThemePicker
+        theme_selector=ThemePicker(self.settings.get('theme') or ('dark' if self.settings['dark'] else 'light'),
+                                  change_theme, modes=('light','dark','night'))
+        appearance.add(Adw.PreferencesRow(child=theme_selector))
         import native_game_mode_appearance
         game_mode_appearance_groups=native_game_mode_appearance.build(self)
 
@@ -15460,24 +15480,49 @@ class Window(Adw.ApplicationWindow):
         item=row('Library Reports','View test notes and export a support report.');action=button('Open',self.show_reports);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);library_reports.add(item)
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup())]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        # Windows SettingsPage section order.
-        icons={'Graphics':'video-display-symbolic','Overlay':'view-reveal-symbolic','Global':'emblem-system-symbolic',
-               'Appearance':'applications-graphics-symbolic','Library':'input-gaming-symbolic','Game Mode':'input-gaming-symbolic',
-               'System':'computer-symbolic','Recovery':'edit-undo-symbolic','About':'help-about-symbolic'}
-        sections=[('Appearance',[appearance,window_style]),('Library',[library_layout,artwork,steam_artwork,library_reports]),
-                  ('Game Mode',[*game_mode_appearance_groups,controls,controller_options,steam_launcher]),
-                  ('Graphics',[graphics,defaults,*global_groups]),('Overlay',[overlay_groups[1],overlay_groups[0],*overlay_groups[2:]]),
-                  ('System',[system]),('Recovery',[app_storage,recovery]),('About',[app])]
+        icons={'Game Features':'video-display-symbolic','Overlay':'view-reveal-symbolic',
+               'Appearance':'applications-graphics-symbolic','Library':'input-gaming-symbolic',
+               'Game Mode':'input-gaming-symbolic','System':'computer-symbolic',
+               'Recovery':'edit-undo-symbolic','About':'help-about-symbolic'}
+        sections={
+            'Appearance':[appearance,window_style],
+            'Library':[library_layout,artwork,steam_artwork,library_reports],
+            'Game Features':[graphics,defaults,*global_groups],
+            'Game Mode':[*game_mode_appearance_groups,controls,controller_options,steam_launcher],
+            'Overlay':[overlay_groups[1],overlay_groups[0],*overlay_groups[2:]],
+            'About':[app],
+            'System':[system],
+            'Recovery':[app_storage,recovery],
+        }
+        navigation=(
+            ('General', ('Appearance','Library','Game Features')),
+            ('Interfaces', ('Game Mode','Overlay')),
+            ('App & support', ('System','Recovery','About')),
+        )
+        index=Adw.PreferencesPage(title='Settings')
+        d.add(index)
         self.settings_pages={}
-        for section,groups in sections:
-            page=Adw.PreferencesPage(title=section,icon_name=icons[section],name=section)
-            for group in groups:page.add(group)
-            d.add(page);self.settings_pages[section]=page
+        for title,destinations in navigation:
+            category=Adw.PreferencesGroup(title=title)
+            index.add(category)
+            for section in destinations:
+                page=Adw.PreferencesPage(title=section,name=section)
+                for group in sections[section]:
+                    page.add(group)
+                toolbar=Adw.ToolbarView(content=page)
+                toolbar.add_top_bar(Adw.HeaderBar())
+                destination=Adw.NavigationPage(title=section,child=toolbar)
+                self.settings_pages[section]=destination
+                item=Adw.ActionRow(title=section,activatable=True)
+                item.add_prefix(Gtk.Image(icon_name=icons[section]))
+                item.add_suffix(Gtk.Image(icon_name='go-next-symbolic'))
+                item.connect('activated',lambda _row,target=destination:d.push_subpage(target))
+                category.add(item)
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return False
             settings_saved['value']=True
-            self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=theme_selector.get_active_name()!='light',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active(),skynizz_proton=skynizz_proton.get_active())
+            self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=self.settings.get('theme')!='light',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active(),skynizz_proton=skynizz_proton.get_active())
             self.nr_only.set_enabled(selected_provider in ('skynizz','dlss-unlocked','custom'))
             self.profile_group.set_active_name(selected_mode)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)

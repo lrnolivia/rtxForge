@@ -98,6 +98,8 @@ def stage_payload(root, payload, game_mode_package=None):
     if (vulkan/'candidate.json').is_file():
         shutil.copytree(vulkan,payload/'providers/vulkan-dlssg/runtime',ignore=shutil.ignore_patterns('*.part'),dirs_exist_ok=True)
     shutil.copytree(root/'assets/game-mode',payload/'assets/game-mode')
+    for hero in (root/'prototypes/game-mode-tauri/public').glob('app-hero-*.png'):
+        shutil.copy2(hero, payload/'assets/game-mode'/hero.name)
     for name in ['provider.json','README.md']:shutil.copyfile(root/name,payload/name)
     (payload/'engine').mkdir()
     # Reviewed Global and game-menu bulk changes share the Windows host's platform-neutral modules.

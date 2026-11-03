@@ -228,15 +228,35 @@ public sealed partial class GamePage : Page
                         Title = "Installed on Linux",
                         Message = GameOverview.LinuxNote,
                     });
-                var overviewFacts = GameOverview.Facts(g);
-                var facts = new PresetColumns(280, overviewFacts.Count > 3 ? 4 : 3) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
-                foreach (var fact in overviewFacts)
+                var facts = new PresetColumns(240, 4) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
+                void FillOverview(IReadOnlyList<GameOverview.Fact> cards)
                 {
-                    var card = Prefs.Row(fact.Title, fact.Value, glyph: fact.Glyph);
-                    card.VerticalAlignment = VerticalAlignment.Top;
-                    facts.Children.Add(card);
+                    facts.Children.Clear();
+                    foreach (var fact in cards)
+                        facts.Children.Add(Prefs.Row(fact.Title, fact.Value, glyph: fact.Glyph));
                 }
+                var cachedFacts = GameOverview.Cards(g.EngineRow?["overview_cards"]);
+                FillOverview(cachedFacts.Count > 0 ? cachedFacts : GameOverview.Facts(g));
                 PageHost.Children.Add(facts);
+                var overviewExtras = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0) };
+                PageHost.Children.Add(overviewExtras);
+                if (shell.Service is Services.EngineForgeService engine && !engine.IsPreview && g.EngineRow is not null)
+                    _ = RefreshOverviewAsync(engine);
+                async Task RefreshOverviewAsync(Services.EngineForgeService engine)
+                {
+                    try
+                    {
+                        var inspected = await engine.InspectOverviewAsync(g);
+                        if (!PageHost.Children.Contains(facts)) return;
+                        if (inspected.Cards.Count > 0) FillOverview(inspected.Cards);
+                        if (inspected.Extras.Length > 0)
+                        {
+                            overviewExtras.Children.Add(Prefs.Row("Extras", string.Join(" · ", inspected.Extras), glyph: "\uE90F"));
+                            overviewExtras.Visibility = Visibility.Visible;
+                        }
+                    }
+                    catch (Exception error) { Debug.WriteLine(error.Message); }
+                }
                 var openFolder = Prefs.ActionButton("Open folder", (_, _) => _ = shell.OpenGameFolderAsync(g));
                 openFolder.IsEnabled = !shell.Service.IsPreview && Directory.Exists(g.Location);
                 var folder = Prefs.Row("Game folder", g.Location, openFolder, "\uE838");

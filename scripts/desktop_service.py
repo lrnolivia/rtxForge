@@ -107,7 +107,14 @@ class DesktopService:
                         if row['runtime_provider']=='skynizz':
                             import skynizz_provider
                             row['feature_controls']=skynizz_provider.read_controls(config)
-                        component=((current.get('archive') or {}).get('release') or {}).get('mfg_component')
+                        archive = current.get('archive') or {}
+                        release = archive.get('release') or {}
+                        row['installed_package_archive'] = archive.get('name')
+                        row['installed_package_version'] = release.get('tag') or release.get('version')
+                        model = current.get('nr_runtime')
+                        if isinstance(model, dict):
+                            row['nr_runtime'] = {key: model[key] for key in ('version', 'sha256') if key in model}
+                        component = release.get('mfg_component')
                         universal=bool(component) and component.get('id')=='universal'
                         row['dynamic_mfg_available']=current.get('provider_id')=='skynizz' and not component
                         if universal:

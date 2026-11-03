@@ -14,29 +14,28 @@ internal sealed class GameModeAppearanceView : UserControl
 {
     readonly StackPanel body = new() { Spacing=16 };
     UIElementCollection Children => body.Children;
-    readonly EngineForgeService engine;
-    readonly GameModeAppearance store;
+    readonly EngineForgeService? engine;
+    readonly GameModeAppearance? store;
     readonly SemaphoreSlim edits = new(1, 1);
     readonly TextBlock feedback = new() { FontSize=12, TextWrapping=TextWrapping.Wrap, Visibility=Visibility.Collapsed };
     readonly Canvas sample = new() { Width=480, Height=270, IsHitTestVisible=false };
     JsonObject appearance = GameModeAppearance.Defaults;
     bool ready;
-    bool detailsSample;
     Border? tintRow;
     string backgroundKey = "";
     Task<BitmapImage?>? backgroundImage;
     public List<PreferencesGroup> Groups { get; } = [];
 
-    public GameModeAppearanceView(EngineForgeService service)
+    public GameModeAppearanceView(EngineForgeService? service)
     {
-        engine=service; store=new(engine.EngineRoot); Content=body;
+        engine=service; store=engine is null?null:new(engine.EngineRoot); Content=body;
         Children.Add(Prefs.Label("Loading Game Mode appearance…"));
         Loaded += async (_, _) => { if (ready) return; ready=true; await LoadAsync(); };
     }
 
     async Task LoadAsync()
     {
-        try { appearance=await store.ReadAsync() ?? GameModeAppearance.Defaults; Build(); }
+        try { appearance=(store is null?null:await store.ReadAsync()) ?? GameModeAppearance.Defaults; Build(); }
         catch (Exception error) { Children.Clear(); Children.Add(Prefs.Label(error.Message));
             Children.Add(Prefs.ActionButton("Try again", async (_, _) => await LoadAsync())); }
     }
@@ -46,6 +45,7 @@ internal sealed class GameModeAppearanceView : UserControl
     bool On(string key) => appearance[key]?.GetValue<bool>() == true;
     async Task ChangeAsync(string key, JsonNode? value)
     {
+        if(store is null)return;
         await edits.WaitAsync();
         try
         {
@@ -69,21 +69,18 @@ internal sealed class GameModeAppearanceView : UserControl
         layout.ColumnDefinitions.Add(new()); layout.ColumnDefinitions.Add(new() { Width=new GridLength(440) });
         layout.RowDefinitions.Add(new() { Height=GridLength.Auto }); layout.RowDefinitions.Add(new() { Height=GridLength.Auto });
         var material = new StackPanel { Spacing=12 };
-        material.Children.Add(Prefs.Label("Surface"));
         var themes = new OverlayThemePicker(Text("theme"));
         themes.SelectionChanged += async (_, _) => { if(themes.SelectedIndex>=0) await ChangeAsync("theme",JsonValue.Create(new[] {"light","clear","dark"}[themes.SelectedIndex])); };
         material.Children.Add(themes); layout.Children.Add(material);
-        var preview = new StackPanel { Spacing=8 };
-        var which = new ComboBox { ItemsSource=new[] {"Library preview","Game Details preview"}, SelectedIndex=0,
-            HorizontalAlignment=HorizontalAlignment.Stretch };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(which,"Game Mode appearance preview");
-        which.SelectionChanged += (_, _) => { detailsSample=which.SelectedIndex==1; Paint(); };
-        preview.Children.Add(which); preview.Children.Add(new Viewbox { Child=sample, Stretch=Stretch.Uniform, MaxHeight=248 });
+        var preview = new StackPanel { Spacing=12 };
+        preview.Children.Add(Prefs.Label("Library preview"));
+        preview.Children.Add(new Viewbox { Child=sample, Stretch=Stretch.Uniform, MaxHeight=248 });
         Grid.SetColumn(preview,1); layout.Children.Add(preview);
         layout.SizeChanged += (_, eventArgs) => { var wide=eventArgs.NewSize.Width>=820; layout.ColumnDefinitions[1].Width=wide?new GridLength(440):new GridLength(0);Grid.SetColumn(preview,wide?1:0);Grid.SetRow(preview,wide?0:1); };
         surface.Add(new Border { Style=Prefs.GetStyle("ForgeSettingsCardStyle"), Child=layout }); Groups.Add(surface);
 
-        var main = new PreferencesGroup("Main interface", "Navigation and focus use this accent. Game colors remain separate.");
+        var main = new PreferencesGroup(null);
+        material.Children.Add(main.Root);
         var swatch = new Microsoft.UI.Xaml.Shapes.Ellipse { Width=24,Height=24,
             Fill=new SolidColorBrush(ArtAccent.TryParse(Text("accent"),out var color)?color:ArtAccent.NoArtwork) };
         var colorButton = new Button { Content=swatch, Width=40,Height=40,Padding=new Thickness(6),CornerRadius=new CornerRadius(20) };
@@ -96,7 +93,10 @@ internal sealed class GameModeAppearanceView : UserControl
         var backgroundButtons=new StackPanel { Orientation=Orientation.Horizontal,Spacing=8 };
         backgroundButtons.Children.Add(Prefs.ActionButton("Choose image",async (_, _) => await ChooseBackgroundAsync()));
         backgroundButtons.Children.Add(Prefs.ActionButton("Use default",async (_, _) => await ChangeAsync("background",null)));
-        main.Add(Prefs.Row("Background","PNG, JPEG or WebP for the main Game Mode interface.",backgroundButtons,"\uEB9F")); Groups.Add(main);
+        main.Add(Prefs.Row("Background","PNG, JPEG or WebP for the main Game Mode interface.",backgroundButtons,"\uEB9F"));
+        Choice(main,"Text size",null,"text",["Standard","Large"],["standard","large"]);
+        Choice(main,"Navigation placement",null,"navigation",["Top","Bottom"],["top","bottom"]);
+        Choice(main,"Interface scale","Automatic adapts to the display.","scale",["Automatic","100%","125%","130%","150%","175%","200%"],["auto","100","125","130","150","175","200"]);
 
         var details = new PreferencesGroup("Game Details", "Surface Tint follows each game's saved color or artwork.");
         Choice(details,"Accent",null,"accentMode",["None","Adaptive","Game"],["theme","adaptive","custom"]);
@@ -106,20 +106,16 @@ internal sealed class GameModeAppearanceView : UserControl
         tint.ValueChanged += async (_, args) => { if(ready)await ChangeAsync("tintStrength",JsonValue.Create((int)args.NewValue)); };
         details.Add(strength);
         Choice(details,"Game Details navigation",null,"detailsNavigation",["Sidebar","Tabs"],["sidebar","tabs"]); Groups.Add(details);
-        var reading = new PreferencesGroup("Reading and motion");
-        Choice(reading,"Text size",null,"text",["Standard","Large"],["standard","large"]);
+        var reading = new PreferencesGroup("Motion and reset");
         var (row,motion)=Prefs.SwitchRow("Motion","Follows your system's reduced-motion preference.",On("motion"),"\uE768");
         motion.Toggled += async (_, _) => await ChangeAsync("motion",JsonValue.Create(motion.IsOn));reading.Add(row);Groups.Add(reading);
-        var placement = new PreferencesGroup("Layout");
-        Choice(placement,"Navigation placement",null,"navigation",["Top","Bottom"],["top","bottom"]);
-        Choice(placement,"Interface scale","Automatic adapts to the display.","scale",["Automatic","100%","125%","130%","150%","175%","200%"],["auto","100","125","130","150","175","200"]);Groups.Add(placement);
-        placement.Add(Prefs.Row("Reset appearance", "Restore the Game Mode appearance defaults.", Prefs.ActionButton("Reset", async (_, _) =>
-        { try { appearance=await store.WriteAsync(GameModeAppearance.Defaults); Build(); ShowFeedback("Appearance reset"); } catch(Exception error){ShowFeedback(error.Message);} }),"\uE777"));
-        placement.Add(feedback);
+        reading.Add(Prefs.Row("Reset appearance", "Restore the Game Mode appearance defaults.", Prefs.ActionButton("Reset", async (_, _) =>
+        { try { if(store is null)return; appearance=await store.WriteAsync(GameModeAppearance.Defaults); Build(); ShowFeedback("Appearance reset"); } catch(Exception error){ShowFeedback(error.Message);} }),"\uE777"));
+        reading.Add(feedback);
         Children.Add(Groups[0].Root);
         var columns=new PresetColumns(480,2) {ColumnSpacing=24,RowSpacing=16};
         foreach(var group in Groups.Skip(1))columns.Children.Add(group.Root);Children.Add(columns);
-        IsEnabled=!engine.IsPreview; Paint();
+        IsEnabled=engine is { IsPreview:false }; Paint();
     }
 
     void Choice(PreferencesGroup group,string title,string? copy,string key,string[] labels,string[] values)
@@ -152,20 +148,46 @@ internal sealed class GameModeAppearanceView : UserControl
 
     void Paint()
     {
-        sample.Children.Clear();var light=Text("theme")=="light";var ink=new SolidColorBrush(light?global::Windows.UI.Color.FromArgb(255,35,35,33):global::Windows.UI.Color.FromArgb(255,245,243,238));
-        var accent=ArtAccent.TryParse(Text("accent"),out var value)?value:ArtAccent.NoArtwork;
-        var background=new Border { Width=480,Height=270,CornerRadius=new CornerRadius(12),Background=new SolidColorBrush(light?global::Windows.UI.Color.FromArgb(255,225,225,220):global::Windows.UI.Color.FromArgb(255,27,28,29)) };sample.Children.Add(background);
-        var games=App.Main?.Games.Where(game=>game.PosterPath is not null&&File.Exists(game.PosterPath)).Take(6).ToArray()??[];
-        if(Text("background").StartsWith("data:image/",StringComparison.Ordinal))_ = PaintBackgroundAsync(background,Text("background"));
-        var nav=new Border { Width=448,Height=30,CornerRadius=new CornerRadius(8),Background=new SolidColorBrush(global::Windows.UI.Color.FromArgb(light?(byte)190:(byte)150,light?(byte)245:(byte)35,light?(byte)245:(byte)36,light?(byte)240:(byte)37)) };
-        nav.Child=new TextBlock { Text="rtxForge     Library     Presets     Packages     Settings",FontSize=12,Foreground=ink,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(12,0,0,0) };Canvas.SetLeft(nav,16);Canvas.SetTop(nav,Text("navigation")=="bottom"?224:16);sample.Children.Add(nav);
-        var title=new TextBlock { Text=detailsSample?games.FirstOrDefault()?.Name??"Game Details":"Your library",FontSize=Text("text")=="large"?23:20,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold,Foreground=ink,MaxWidth=440,TextTrimming=TextTrimming.CharacterEllipsis };Canvas.SetLeft(title,20);Canvas.SetTop(title,Text("navigation")=="bottom"?28:62);sample.Children.Add(title);
-        for(var index=0;index<games.Length;index++){
-            var card=new Border { Width=65,Height=100,CornerRadius=new CornerRadius(5),Background=new SolidColorBrush(accent) };
-            card.Child=new Image { Source=new BitmapImage(new Uri(games[index].PosterPath!)),Stretch=Stretch.UniformToFill };
-            Canvas.SetLeft(card,20+index*73);Canvas.SetTop(card,Text("navigation")=="bottom"?70:102);sample.Children.Add(card);
+        sample.Children.Clear();
+        var light = Text("theme") == "light";
+        var clear = Text("theme") == "clear";
+        var accent = ArtAccent.TryParse(Text("accent"), out var value) ? value : ArtAccent.NoArtwork;
+        var ink = new SolidColorBrush(light ? global::Windows.UI.Color.FromArgb(255,35,35,33) : global::Windows.UI.Color.FromArgb(255,245,243,238));
+        var shellInk = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255,245,243,238));
+        var glass = new SolidColorBrush(light ? global::Windows.UI.Color.FromArgb(222,246,244,239) :
+            global::Windows.UI.Color.FromArgb(clear ? (byte)128 : (byte)231,42,42,43));
+        void Place(UIElement element, double x, double y)
+        {
+            Canvas.SetLeft(element,x); Canvas.SetTop(element,y); sample.Children.Add(element);
         }
-        if(detailsSample){var pane=new Border { Width=300,Height=105,CornerRadius=new CornerRadius(8),Background=new SolidColorBrush(Text("accentMode")=="theme"?global::Windows.UI.Color.FromArgb(235,45,45,43):global::Windows.UI.Color.FromArgb((byte)(80+Number("tintStrength",50)*1.4),accent.R,accent.G,accent.B)),Child=new TextBlock { Text=Text("detailsNavigation")=="sidebar"?"Overview\nGraphics\nReShade & add-ons":"Overview   Graphics   ReShade & add-ons",Foreground=ink,FontSize=14,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(16) } };Canvas.SetLeft(pane,150);Canvas.SetTop(pane,102);sample.Children.Add(pane);}
+        var asset = light ? "app-hero-light.png" : "app-hero-dark.png";
+        var backdrop = new Border { Width=480,Height=270,CornerRadius=new CornerRadius(12),Background=new ImageBrush
+        {
+            ImageSource=new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory,"Assets","GameMode",asset))) { DecodePixelWidth=480 },
+            Stretch=Stretch.UniformToFill, Opacity=light ? .85 : .58,
+        }};
+        Place(backdrop,0,0);
+        if(Text("background").StartsWith("data:image/",StringComparison.Ordinal)) _=PaintBackgroundAsync(backdrop,Text("background"));
+        var bottom = Text("navigation") == "bottom";
+        var navTop = bottom ? 231 : 10;
+        var libraryTop = bottom ? 10 : 49;
+        Place(new TextBlock { Text="rtxForge",FontSize=13,FontWeight=Microsoft.UI.Text.FontWeights.Bold,Foreground=shellInk },18,navTop+8);
+        Place(new Border { Width=270,Height=30,CornerRadius=new CornerRadius(15),Background=glass },107,navTop);
+        Place(new Border { Width=53,Height=23,CornerRadius=new CornerRadius(12),Background=new SolidColorBrush(
+            global::Windows.UI.Color.FromArgb(82,accent.R,accent.G,accent.B)) },111,navTop+3);
+        Place(new TextBlock { Text="Library     Presets     Packages     Extras     Settings",FontSize=10,Foreground=ink },121,navTop+8);
+        Place(new Border { Width=456,Height=176,CornerRadius=new CornerRadius(13),Background=glass,BorderBrush=new SolidColorBrush(
+            global::Windows.UI.Color.FromArgb(55,255,255,255)),BorderThickness=new Thickness(1) },12,libraryTop);
+        Place(new TextBlock { Text="LIBRARY",FontSize=Text("text")=="large"?19:16,FontWeight=Microsoft.UI.Text.FontWeights.Bold,Foreground=ink },24,libraryTop+10);
+
+        var games=App.Main?.Games.Where(game=>game.PosterPath is not null&&File.Exists(game.PosterPath)).Take(6).ToArray()??[];
+        for(var index=0;index<6;index++)
+        {
+            var card=new Border { Width=63,Height=96,CornerRadius=new CornerRadius(6),Background=glass,
+                BorderBrush=new SolidColorBrush(accent),BorderThickness=new Thickness(index==0?2:0) };
+            if(index<games.Length)card.Child=new Image { Source=new BitmapImage(new Uri(games[index].PosterPath!)),Stretch=Stretch.UniformToFill };
+            Place(card,25+index*72,libraryTop+52);
+        }
     }
 
     async Task PaintBackgroundAsync(Border background,string data)

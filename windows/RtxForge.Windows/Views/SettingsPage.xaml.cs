@@ -38,6 +38,11 @@ public sealed partial class SettingsPage : Page
     {
         if (sender.SelectedItem?.Tag is not string name || !sections.TryGetValue(name, out var groups)) return;
         selectedSection = name;
+        foreach (var other in SectionGroups.Children.OfType<StackPanel>()
+                     .SelectMany(group => group.Children.OfType<SelectorBar>()))
+        {
+            if (other != sender) other.SelectedItem = null;
+        }
         foreach(var previous in PageHost.Children.OfType<PresetColumns>().ToArray())previous.Children.Clear();
         PageHost.Children.Clear();
         var cards = new PresetColumns(680, 2) { ColumnSpacing = 24, RowSpacing = 24 };
@@ -115,16 +120,13 @@ public sealed partial class SettingsPage : Page
         detailsWindow.SelectionChanged += (_, _) => { Settings.SeparateGameDetails = detailsWindow.SelectedIndex == 1; Save(); };
         details.Add(row);
         var libraryView = new PreferencesGroup("Library view");
-        (row, var theme) = Prefs.ComboRow("Color theme", "Changes only rtxForge.", ThemeController.Captions,
-            Math.Max(0, Array.IndexOf(ThemeController.Keys, Settings.Theme)), "");
-        appearance.Add(row);
+        var theme = new OverlayThemePicker(Settings.Theme, "Color theme", ThemeController.Keys, ThemeController.Captions);
+        appearance.Add(new Border { Style=Prefs.GetStyle("ForgeSettingsCardStyle"), Child=theme });
         theme.SelectionChanged += (_, _) =>
         {
-            if (theme.SelectedIndex < 0) return;
             Settings.Theme = ThemeController.Keys[theme.SelectedIndex]; Save();
         };
-        if(shell.Service is EngineForgeService gameModeEngine)gameModeAppearance.Add(new GameModeAppearanceView(gameModeEngine));
-        else gameModeAppearance.Add(Prefs.Row("Game Mode appearance", "The complete native package is required to edit these preferences.",glyph:"\uE790"));
+        gameModeAppearance.Add(new GameModeAppearanceView(shell.Service as EngineForgeService));
         (row, var layout) = Prefs.ComboRow("Library layout", "Choose how your game collection is displayed.",
             ["Poster", "Wide Capsule", "List"], Math.Max(0, Array.IndexOf(Views, Settings.LibraryView)), "");
         layout.SelectionChanged += (_, _) => { Settings.LibraryView = Views[layout.SelectedIndex]; Save(); };
@@ -254,13 +256,39 @@ public sealed partial class SettingsPage : Page
         sections["Appearance"] = [appearance, navigation, details];
         sections["Library"] = [libraryView, library, steamLibrary, reports];
         sections["Game Mode"] = [gameModeAppearance, interfaceGroup, controller, gameModeLayout, playFromSteam];
-        sections["Graphics"] = [installDefaults, existingFeatures];
+        sections["Game Features"] = [installDefaults, existingFeatures];
         sections["Overlay"] = overlay.Groups.ToArray();
         sections["System"] = [system];
         sections["Recovery"] = [cleanup];
         sections["About"] = [about];
-        foreach (var name in sections.Keys)
-            Sections.Items.Add(new SelectorBarItem { Text = name, Tag = name });
-        Sections.SelectedItem = Sections.Items.FirstOrDefault(i => (string)i.Tag == selectedSection) ?? Sections.Items[0];
+        SelectorBarItem? initialItem = null;
+        SelectorBar? initialBar = null;
+        (string Title, string[] Destinations)[] categoryNavigation =
+        [
+            ("General", ["Appearance", "Library", "Game Features"]),
+            ("Interfaces", ["Game Mode", "Overlay"]),
+            ("App & support", ["System", "Recovery", "About"]),
+        ];
+        foreach (var (title, destinations) in categoryNavigation)
+        {
+            var bar = new SelectorBar();
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(bar, title);
+            foreach (var destination in destinations)
+            {
+                var item = new SelectorBarItem { Text = destination, Tag = destination };
+                bar.Items.Add(item);
+                if (destination == selectedSection)
+                {
+                    initialItem = item;
+                    initialBar = bar;
+                }
+            }
+            bar.SelectionChanged += OnSectionChanged;
+            var group = new StackPanel();
+            group.Children.Add(new TextBlock { Text = title, Margin = new Thickness(8, 0, 0, 0) });
+            group.Children.Add(bar);
+            SectionGroups.Children.Add(group);
+        }
+        if (initialBar is not null) initialBar.SelectedItem = initialItem;
     }
 }

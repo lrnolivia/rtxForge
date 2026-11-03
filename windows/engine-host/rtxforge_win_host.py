@@ -390,6 +390,9 @@ def _scan(params):
         if row.get('installed') and row.get('runtime_provider') == 'skynizz' and row.get('exe'):
             try: row['feature_controls'] = skynizz_provider.read_controls((Path(row['game']) / row['exe']).parent / 'OptiScaler.ini')
             except (OSError, ValueError, TypeError, configparser.Error, transactions.Refusal): pass
+    import overview_summary
+    for row in rows:
+        row["overview_cards"] = overview_summary.cards(row)
     return sorted(rows, key=lambda r: r["name"].casefold())
 
 

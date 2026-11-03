@@ -17,8 +17,8 @@ class AppearanceSettings:
         self.refreshers = []
         self.refreshing = False
         self.feedback_group = None
-        self.details = False
         self.background = None
+        self.default_backdrops = {}
         self.posters = []
         for game in owner.games:
             source = game.get('poster') or game.get('capsule')
@@ -89,14 +89,13 @@ class AppearanceSettings:
                 child.set_active(self.value['theme'] == key); child = child.get_next_sibling()
         self.refreshers.append(refresh_themes)
         body.append(themes)
-        sample_choice = Gtk.DropDown(model=Gtk.StringList.new(['Library preview', 'Game Details preview']))
-        sample_choice.connect('notify::selected', lambda control, *_: self.sample(control.get_selected() == 1))
-        body.append(sample_choice)
+        body.append(Gtk.Label(label='Library preview', xalign=0))
         frame = Gtk.AspectFrame(ratio=16 / 9, obey_child=False, child=self.preview)
         body.append(Adw.Clamp(child=frame, maximum_size=480, tightening_threshold=380))
         custom = Adw.PreferencesRow(child=body)
         surface.add(custom)
-        main = self.group('Main interface', 'Navigation and focus use this accent. Game colors remain separate.')
+        main = Adw.PreferencesGroup()
+        body.insert_child_after(main, themes)
         color = Gdk.RGBA(); color.parse(self.value['accent'])
         chooser = Gtk.ColorDialogButton(dialog=Gtk.ColorDialog(title='Game Mode accent color', with_alpha=False), rgba=color, valign=Gtk.Align.CENTER)
         chooser.connect('notify::rgba', lambda control, *_: self.change('accent', '#%02x%02x%02x' % tuple(round(channel * 255) for channel in (control.get_rgba().red, control.get_rgba().green, control.get_rgba().blue))))
@@ -109,6 +108,9 @@ class AppearanceSettings:
         choose = Gtk.Button(label='Choose image'); choose.connect('clicked', self.choose_background)
         reset = Gtk.Button(label='Use default'); reset.connect('clicked', lambda *_: self.change('background', None))
         buttons.append(choose); buttons.append(reset); row.add_suffix(buttons); main.add(row)
+        self.choice(main, 'Text size', 'text', [('standard', 'Standard'), ('large', 'Large')])
+        self.choice(main, 'Navigation placement', 'navigation', [('top', 'Top'), ('bottom', 'Bottom')])
+        self.choice(main, 'Interface scale', 'scale', [('auto', 'Automatic'), *[(number, str(number) + '%') for number in (100, 125, 130, 150, 175, 200)]], 'Automatic adapts to the display.')
         details = self.group('Game Details', "Surface Tint follows each game's saved color or artwork.")
         self.choice(details, 'Accent', 'accentMode', [('theme', 'None'), ('adaptive', 'Adaptive'), ('custom', 'Game')])
         self.tint_row = Adw.SpinRow.new_with_range(0, 100, 5)
@@ -119,15 +121,11 @@ class AppearanceSettings:
         self.refreshers.append(lambda: self.tint_row.set_value(self.value['tintStrength']))
         details.add(self.tint_row)
         self.choice(details, 'Game Details navigation', 'detailsNavigation', [('sidebar', 'Sidebar'), ('tabs', 'Tabs')])
-        reading = self.group('Reading and motion')
-        self.choice(reading, 'Text size', 'text', [('standard', 'Standard'), ('large', 'Large')])
+        reading = self.group('Motion and reset')
         motion = Adw.SwitchRow(title='Motion', subtitle="Follows your system's reduced-motion preference.", active=self.value['motion'])
         motion.connect('notify::active', lambda control, *_: self.change('motion', control.get_active()))
         self.refreshers.append(lambda: motion.set_active(self.value['motion']))
         reading.add(motion)
-        layout = self.group('Layout')
-        self.choice(layout, 'Navigation placement', 'navigation', [('top', 'Top'), ('bottom', 'Bottom')])
-        self.choice(layout, 'Interface scale', 'scale', [('auto', 'Automatic'), *[(number, str(number) + '%') for number in (100, 125, 130, 150, 175, 200)]], 'Automatic adapts to the display.')
         reset_row = Adw.ActionRow(title='Reset appearance', subtitle='Restore the Game Mode appearance defaults.')
         reset_button = Gtk.Button(label='Reset', valign=Gtk.Align.CENTER)
         def reset_all(*_):
@@ -143,12 +141,8 @@ class AppearanceSettings:
                 self.message('Appearance reset.'); self.background = None; self.preview.queue_draw()
             except Exception as error:
                 self.message(str(error))
-        reset_button.connect('clicked', reset_all); reset_row.add_suffix(reset_button); layout.add(reset_row)
-        self.feedback_group = layout
-
-    def sample(self, details):
-        self.details = details
-        self.preview.queue_draw()
+        reset_button.connect('clicked', reset_all); reset_row.add_suffix(reset_button); reading.add(reset_row)
+        self.feedback_group = reading
 
     def choose_background(self, *_):
         picker = Gtk.FileDialog(title='Game Mode background')
@@ -185,26 +179,50 @@ class AppearanceSettings:
                 self.background = loader.get_pixbuf().scale_simple(480, 270, GdkPixbuf.InterpType.BILINEAR)
             except Exception:
                 pass
-        if self.background:
-            Gdk.cairo_set_source_pixbuf(cr, self.background, 0, 0); cr.paint()
+        backdrop = self.background
+        if backdrop is None:
+            if light not in self.default_backdrops:
+                root = Path(__file__).resolve().parents[1]
+                name = 'app-hero-light.png' if light else 'app-hero-dark.png'
+                asset = root/'assets/game-mode'/name
+                if not asset.is_file():
+                    asset = root/'prototypes/game-mode-tauri/public'/name
+                try:
+                    self.default_backdrops[light] = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(asset), 480, 270, True)
+                except GLib.Error:
+                    self.default_backdrops[light] = None
+            backdrop = self.default_backdrops[light]
+        if backdrop:
+            Gdk.cairo_set_source_pixbuf(cr, backdrop, 0, 0); cr.paint_with_alpha(.85 if light else .58)
         ink = (.14, .14, .13) if light else (.96, .95, .93)
         def text(value, x, y, size):
             cr.set_source_rgb(*ink); cr.set_font_size(size); cr.move_to(x, y); cr.show_text(value)
         bottom = self.value['navigation'] == 'bottom'
-        cr.set_source_rgba(*((.96, .96, .94, .8) if light else (.14, .14, .14, .8)))
-        cr.rectangle(16, 224 if bottom else 16, 448, 30); cr.fill()
-        text('rtxForge    Library    Presets    Packages    Settings', 28, 244 if bottom else 36, 12)
-        title = self.posters[0][0].get('name', 'Game Details') if self.details and self.posters else 'Your library'
-        text(title[:35], 20, 48 if bottom else 84, 23 if self.value['text'] == 'large' else 20)
+        opacity = .50 if self.value['theme'] == 'clear' else .9
+        glass = (.96, .96, .94, opacity) if light else (.16, .16, .17, opacity)
+        nav_y, library_y = (231, 10) if bottom else (10, 49)
+        def panel(x, y, w, h, radius, color):
+            from math import pi
+            cr.new_sub_path()
+            for cx, cy, angle in ((x+w-radius, y+radius, -.5), (x+w-radius, y+h-radius, 0),
+                                  (x+radius, y+h-radius, .5), (x+radius, y+radius, 1)):
+                cr.arc(cx, cy, radius, angle*pi, (angle+.5)*pi)
+            cr.close_path()
+            cr.set_source_rgba(*color); cr.fill()
+        accent = Gdk.RGBA(); accent.parse(self.value['accent'])
+        panel(107, nav_y, 270, 30, 15, glass)
+        panel(111, nav_y+3, 53, 23, 11, (accent.red, accent.green, accent.blue, .32))
+        cr.set_source_rgb(.96, .95, .93); cr.set_font_size(13); cr.move_to(18, nav_y+19); cr.show_text('rtxForge')
+        text('Library    Presets    Packages    Extras    Settings', 121, nav_y+19, 10)
+        panel(12, library_y, 456, 176, 13, glass)
+        text('LIBRARY', 24, library_y+30, 19 if self.value['text'] == 'large' else 16)
+        top = library_y + 52
+        panel(23, top-2, 67, 100, 7, (accent.red, accent.green, accent.blue, 1))
+        for index in range(6):
+            panel(25 + index * 72, top, 63, 96, 6, glass)
         for index, (_game, poster) in enumerate(self.posters):
-            cr.save(); cr.translate(20 + index * 73, 70 if bottom else 102); cr.scale(65 / poster.get_width(), 100 / poster.get_height())
+            cr.save(); cr.translate(25 + index * 72, top); cr.scale(63 / poster.get_width(), 96 / poster.get_height())
             Gdk.cairo_set_source_pixbuf(cr, poster, 0, 0); cr.paint(); cr.restore()
-        if self.details:
-            color = Gdk.RGBA(); color.parse(self.value['accent'])
-            cr.set_source_rgba(color.red, color.green, color.blue, .3 + self.value['tintStrength'] / 150 if self.value['accentMode'] != 'theme' else .85)
-            cr.rectangle(150, 102, 300, 105); cr.fill()
-            text('Overview   Graphics' if self.value['detailsNavigation'] == 'tabs' else 'Overview', 166, 130, 14)
-            text('ReShade & add-ons', 166, 158, 14)
 
 
 def build(owner):

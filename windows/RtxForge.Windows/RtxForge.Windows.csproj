@@ -1,18 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!--
-    rtxForge for Windows: native WinUI 3 shell.
-
-    Mirrors the Linux libadwaita desktop build (gui/rtxforge_gtk.py) screen for
-    screen. Game Mode (gui/couch_shell.py) is being ported; its settings are already here.
-    Shared product assets are linked from the repository instead of copied.
-  -->
-  <ItemGroup>
-    <Compile Remove="GameMode/*.cs" />
-    <Compile Include="GameMode/GamepadInput.cs" />
-    <Compile Include="GameMode/Controller*.cs" />
-    <Compile Include="GameMode/SteamControllerReport.cs" />
-  </ItemGroup>
+  <!-- Desktop starts the bundled native Game Mode; controller input remains shared. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>

@@ -6121,7 +6121,7 @@ class Window(Adw.ApplicationWindow):
         tools=Adw.PreferencesGroup(title='Tools')
         diagnose=row('Diagnose NR','Read saved NR settings, runtime hashes and log evidence.')
         action=button('Diagnose',lambda *_:self.show_diagnostics(game));action.set_valign(Gtk.Align.CENTER);diagnose.add_suffix(action);tools.add(diagnose);body.append(tools)
-        hdr=Adw.PreferencesGroup(title='ReShade & add-ons',description='Manage ReShade, RenoDX, shaders and presets for this game.')
+        hdr=Adw.PreferencesGroup(title='ReShade &amp; add-ons',description='Manage ReShade, RenoDX, shaders and presets for this game.')
         runtime=row('ReShade runtime','Install the official runtime or import your own package, shaders or preset.')
         runtime_actions=Gtk.Box(spacing=8,valign=Gtk.Align.CENTER)
         for kind,title in [('reshade','Install ReShade'),('reshade-import','Import package…')]:
@@ -13266,7 +13266,7 @@ class Window(Adw.ApplicationWindow):
 
         for title,subtitle,op in [
             (
-                feature_label,
+                install_label,
                 'Review updates for the installed package and keep your presets.'
                 if feature_op=='repair' else 'Review the selected feature package.',
                 feature_op,
@@ -13281,7 +13281,7 @@ class Window(Adw.ApplicationWindow):
             maintenance.add(maintenance_row)
 
             action=button(
-                ('Update' if op=='repair' else 'Adapt' if feature_label==action_labels.ADAPT else 'Install')
+                ('Update' if op=='repair' else 'Adapt' if install_label==action_labels.ADAPT else 'Install')
                 if op!='uninstall' else 'Restore',
                 lambda _,o=op:self.launch_action(
                     o,

@@ -277,6 +277,10 @@
             <p id="feedback" class="preview-note">Preview · no game connected.</p>
           </div>
         </div>
+        <div id="save-status" class="save-status" style="display: none">
+          <span id="save-badge" class="save-badge" style="display: none" />
+          <span id="restart-notice" style="display: none">Changes will take effect after restart</span>
+        </div>
         <div id="tuning-footer" class="tuning-footer">
           <div class="footer">
             <div class="history-actions">

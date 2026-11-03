@@ -51,6 +51,8 @@ def normalize(value):
         raise ValueError('Choose a six-digit accent color.')
     result['accent'] = result['accent'].lower()
     background = result.get('background')
+    if background is None:
+        result.pop('background', None)
     if background is not None:
         if not isinstance(background, str) or len(background) > 1600000:
             raise ValueError('Game Mode background is too large.')
@@ -73,7 +75,7 @@ def _check_path(path):
     path = Path(path)
     if not path.is_absolute():
         raise ValueError('Appearance storage must use an absolute path.')
-    if any(parent.is_symlink() for parent in (path, *path.parents)):
+    if any(parent.is_symlink() or getattr(parent, 'is_junction', lambda: False)() for parent in (path, *path.parents)):
         raise ValueError('Linked appearance storage is not supported.')
     return path
 

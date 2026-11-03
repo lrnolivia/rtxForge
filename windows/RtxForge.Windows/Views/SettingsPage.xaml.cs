@@ -18,7 +18,7 @@ public sealed partial class SettingsPage : Page
 
     readonly MainWindow shell = App.Main!;
     readonly Dictionary<string, PreferencesGroup[]> sections = [];
-    static string selectedSection = "Graphics";
+    static string selectedSection = "Appearance";
     public static bool OpenOverlaySection { get; set; }
     ForgeSettings Settings => shell.Settings;
 
@@ -38,10 +38,12 @@ public sealed partial class SettingsPage : Page
     {
         if (sender.SelectedItem?.Tag is not string name || !sections.TryGetValue(name, out var groups)) return;
         selectedSection = name;
-        if (PageHost.Children.FirstOrDefault() is PresetColumns previous) previous.Children.Clear();
+        foreach(var previous in PageHost.Children.OfType<PresetColumns>().ToArray())previous.Children.Clear();
         PageHost.Children.Clear();
         var cards = new PresetColumns(680, 2) { ColumnSpacing = 24, RowSpacing = 24 };
-        foreach (var group in groups) cards.Children.Add(group.Root);
+        var lead = name is "Overlay" or "Game Mode";
+        if(lead && groups.Length>0)PageHost.Children.Add(groups[0].Root);
+        foreach (var group in groups.Skip(lead?1:0)) cards.Children.Add(group.Root);
         PageHost.Children.Add(cards);
     }
 
@@ -105,7 +107,7 @@ public sealed partial class SettingsPage : Page
         }, shell.Service as EngineForgeService, groupCards: true);
 
         var appearance = new PreferencesGroup("Theme");
-        var gameModeAppearance = new PreferencesGroup("Theme");
+        var gameModeAppearance = new PreferencesGroup(null);
         var navigation = new PreferencesGroup("Navigation");
         var details = new PreferencesGroup("Game Details", "Choose how Game Details opens in Desktop Mode.");
         (row, var detailsWindow) = Prefs.ComboRow("Open Game Details", "Use tabs in the app, or a sidebar in a separate window.",
@@ -121,8 +123,8 @@ public sealed partial class SettingsPage : Page
             if (theme.SelectedIndex < 0) return;
             Settings.Theme = ThemeController.Keys[theme.SelectedIndex]; Save();
         };
-        gameModeAppearance.Add(Prefs.Row("Game Mode appearance", "Light, Clear or Dark, Adaptive color, Surface Tint and display scaling.",
-            Prefs.ActionButton("Open Appearance", (_, _) => shell.OpenGameModeAppearance()), "\uE790"));
+        if(shell.Service is EngineForgeService gameModeEngine)gameModeAppearance.Add(new GameModeAppearanceView(gameModeEngine));
+        else gameModeAppearance.Add(Prefs.Row("Game Mode appearance", "The complete native package is required to edit these preferences.",glyph:"\uE790"));
         (row, var layout) = Prefs.ComboRow("Library layout", "Choose how your game collection is displayed.",
             ["Poster", "Wide Capsule", "List"], Math.Max(0, Array.IndexOf(Views, Settings.LibraryView)), "");
         layout.SelectionChanged += (_, _) => { Settings.LibraryView = Views[layout.SelectedIndex]; Save(); };
@@ -181,14 +183,14 @@ public sealed partial class SettingsPage : Page
         RefreshSteamRow();
 
         var gameModeLayout = new PreferencesGroup("Layout and labels");
-        var interfaceGroup = new PreferencesGroup("Interface", "Choose the experience for Gaming Mode.");
-        (row, var bigPicture) = Prefs.ComboRow("Interface", "Choose Desktop or Big Picture UI. Keyboard, mouse and controller input keep your choice.",
-            ["Desktop", "Big Picture UI"], Settings.BigPictureUi ? 1 : 0, "");
+        var interfaceGroup = new PreferencesGroup("Startup", "Choose what a controller opens from Desktop.");
+        (row, var bigPicture) = Prefs.ComboRow("Controller opens", "Use Desktop or the current native Game Mode interface.",
+            ["Desktop", "Game Mode"], Settings.BigPictureUi ? 1 : 0, "");
         bigPicture.SelectionChanged += (_, _) =>
         {
             Settings.BigPictureUi = bigPicture.SelectedIndex == 1;
             Save();
-            if (Settings.BigPictureUi) shell.ShowToast("Big Picture UI opens when you use a controller.");
+            if (Settings.BigPictureUi) shell.ShowToast("Game Mode opens when you use a controller.");
         };
         interfaceGroup.Add(row);
         (row, var glyphs) = Prefs.SwitchRow("Button glyphs", "Show icons beside action labels.", Settings.ButtonGlyphs, "");
@@ -249,11 +251,11 @@ public sealed partial class SettingsPage : Page
             Prefs.ActionButton("Bug Report", async (_, _) => await shell.PrepareBetaReportsAsync(shell.Games)), ""));
 
         // Linux organize_pages(): one page per section. Windows shows them as SelectorBar tabs.
-        sections["Graphics"] = [installDefaults, existingFeatures];
-        sections["Overlay"] = overlay.Groups.ToArray();
         sections["Appearance"] = [appearance, navigation, details];
         sections["Library"] = [libraryView, library, steamLibrary, reports];
-        sections["Gaming Mode"] = [playFromSteam, interfaceGroup, gameModeAppearance, gameModeLayout, controller];
+        sections["Game Mode"] = [gameModeAppearance, interfaceGroup, controller, gameModeLayout, playFromSteam];
+        sections["Graphics"] = [installDefaults, existingFeatures];
+        sections["Overlay"] = overlay.Groups.ToArray();
         sections["System"] = [system];
         sections["Recovery"] = [cleanup];
         sections["About"] = [about];

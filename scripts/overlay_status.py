@@ -52,7 +52,10 @@ def _available(root, provider):
             expected[name] = item['sha256']
     folder = root / 'providers' / ('feeder-panel' if provider == 'feeder' else 'skynizz-bridge')
     receipt = _json(folder / 'package.json', {})
-    for name, item in (receipt.get('files', {}) if isinstance(receipt, dict) else {}).items():
+    receipt_files = receipt.get('files', {}) if isinstance(receipt, dict) else {}
+    if not isinstance(receipt_files, dict):
+        raise ValueError('The current overlay build receipt is unreadable.')
+    for name, item in receipt_files.items():
         if isinstance(item, dict) and re.fullmatch(r'[a-fA-F0-9]{64}', str(item.get('sha256', ''))):
             if name.lower().endswith(('.addon64', '.addon32')) or name.lower() == 'optiscaler.dll':
                 expected[name] = item['sha256'].lower()
@@ -117,7 +120,7 @@ def collect(root, state, rows=None, additional_states=()):
                     if relative.is_absolute() or '..' in relative.parts or ':' in name:
                         raise ValueError('Invalid owned overlay file path.')
                     member = target.joinpath(*relative.parts)
-                    if any(parent.is_symlink() for parent in (member, *member.parents)):
+                    if any(parent.is_symlink() or getattr(parent, 'is_junction', lambda: False)() for parent in (member, *member.parents)):
                         raise ValueError('Linked overlay files cannot be verified.')
                     observed[name] = _digest(member)
                     if observed[name] != digest:

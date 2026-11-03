@@ -276,7 +276,8 @@ def present_dlls(game, native=()):
             try:
                 path = t.safe(path)
                 relative = path.relative_to(root).as_posix()
-                if relative.casefold() in known or not path.is_file() or path.stat().st_size > MAX_DLL:
+                max_size = 2 * MAX_DLL if names[path.name.casefold()] == 'Neural Rendering' else MAX_DLL
+                if relative.casefold() in known or not path.is_file() or path.stat().st_size > max_size:
                     continue
                 files.append({'path': relative, 'component': path.name.casefold(),
                                      'current': version(path) or 'Unknown', 'provenance': 'Installed · read-only inventory'})

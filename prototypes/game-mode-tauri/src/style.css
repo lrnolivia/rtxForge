@@ -869,3 +869,22 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .app-header .brand{gap:10px;line-height:1}
 .app-header .brand img{flex:none;transform:translateY(-2px)}
 .app-header .brand>span{display:block;transform:translateY(-1px)}
+
+.dlss-file-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));
+  gap:12px;
+  margin-top:16px;
+}
+.dlss-file-card.inner-card {
+  min-width:0;
+  padding:16px;
+  border-radius:10px;
+  box-shadow:none;
+}
+.dlss-file-card h3 {font-size:1rem;font-weight:600;text-shadow:none;-webkit-text-stroke:0}
+.dlss-file-card ul {list-style:none;padding:0;margin:10px 0 0}
+.dlss-file-card li {display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 10px;padding:7px 0}
+.dlss-file-card li + li {border-top:1px solid var(--rim)}
+.dlss-file-card .path {min-width:0;overflow-wrap:anywhere;font-size:.8rem;color:var(--muted)}
+.dlss-file-card .hero-pill {white-space:nowrap}

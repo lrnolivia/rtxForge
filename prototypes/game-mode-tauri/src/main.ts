@@ -591,8 +591,15 @@ function detailTools(game: Game, row?: EngineRow) {
   if (detailsSection === 'files') {
     const inventory=fileInventories.get(game.id);
     const files=inventory?.files || [];
+    const byComponent=files.reduce((groups,file)=>{
+      const copies=groups.get(file.title)||[];copies.push(file);groups.set(file.title,copies);return groups;
+    },new Map<string,DlssInventory["files"]>());
+    const cards=[...byComponent].map(([title, copies])=>`<article class="inner-card dlss-file-card">
+      <h3>${e(title)}</h3>
+      <ul>${copies.map(file=>`<li><span class="path">${e(file.path)}</span><span class="hero-pill">${e(file.current==='Unknown'?'Version unavailable':file.current)}</span></li>`).join('')}</ul>
+    </article>`).join('');
     return `<section class="glass-section"><h2>Installed DLSS Files</h2>
-      ${files.length?`<div class="fact-grid native-facts">${files.map(file=>`<article class="glass-section overview-fact"><div class="overview-heading">${icon('file')}<strong>${e(file.title)}</strong></div><p class="path">${e(file.path)}</p><div class="overview-pills"><span class="hero-pill">${e(file.current==='Unknown'?'Version unavailable':file.current)}</span></div></article>`).join('')}</div>`:`<p>${e(inventory?.blocked || (inventory ? 'No supported DLSS DLLs were found.' : backend.enabled || !('__TAURI_INTERNALS__' in window) ? 'Checking installed DLLs…' : 'File inventory is available in the installed app.'))}</p>`}</section>
+      ${cards?`<div class="dlss-file-grid">${cards}</div>`:`<p>${e(inventory?.blocked || (inventory ? 'No supported DLSS DLLs were found.' : backend.enabled || !('__TAURI_INTERNALS__' in window) ? 'Checking installed DLLs…' : 'File inventory is available in the installed app.'))}</p>`}</section>
       <section class="glass-section"><h2>File Management</h2><div class="package-columns detail-card-row">${actionCard('Update DLSS','Update older DLSS files. Backups are kept for restoration.','data-operation="update-dlss"','Update')}${actionCard('Restore original DLSS files','Review the existing updater backups for this game.','data-contract="dlss_restore_review"','Restore')}</div></section>`;
   }
   if (detailsSection === 'notes') return `<section class="glass-section"><h2>Your Notes</h2><p>Kept with this game in rtxForge. Included in bug reports when you choose.</p><label class="notes-field"><span>Notes</span><textarea id="game-notes" rows="10" ${!backend.enabled||!notesLoaded.has(game.id)?'disabled':''}>${e(noteDrafts.get(game.id) ?? game.notes ?? '')}</textarea></label><button class="primary extra-actions" data-action="save-notes" ${!backend.enabled||!notesLoaded.has(game.id)?'disabled':''}>Save Notes</button></section>`;
@@ -938,9 +945,7 @@ function consistentGlyph(label: string, fallback: string) {
 }
 function enhanceActionLabels() {
   for(const heading of app.querySelectorAll<HTMLElement>('#content :is(.glass-section,.inner-card,.action-card,.extra-detail) :is(h2,h3,h4), #content .glass-section>h2, #content .action-card>h3')) {
-    heading.classList.add('panel-heading');
-    if(heading.querySelector('.icon') || heading.previousElementSibling?.classList.contains('icon'))continue;
-    heading.insertAdjacentHTML('afterbegin',icon(consistentGlyph(heading.textContent||'', 'info')));
+    if(!heading.closest('.dlss-file-grid'))heading.classList.add('panel-heading');
   }
   for(const button of app.querySelectorAll<HTMLButtonElement>('#content :is(.primary,.quiet,.setting-action), .operation-actions button')) {
     if(button.querySelector('.icon') || !button.textContent?.trim())continue;

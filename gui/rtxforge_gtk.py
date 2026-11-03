@@ -13359,12 +13359,14 @@ class Window(Adw.ApplicationWindow):
                 inventory.add(row('No supported DLSS files','No separate DLSS files were found outside the installed feature stack.'))
             if found['files']:
                 tiles=Adw.WrapBox(child_spacing=12,line_spacing=12,hexpand=True)
+                components={}
                 for item in found['files']:
+                    components.setdefault(item['title'],[]).append(item['path']+' · '+item['current'])
+                for title,copies in components.items():
                     card=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
                     card.add_css_class('boxed-list');card.set_size_request(245,-1)
-                    file_row=Adw.ActionRow(title=item['title'],subtitle=item['path']+' · '+item['current'])
-                    file_row.add_prefix(Gtk.Image(icon_name='x-office-document-symbolic',pixel_size=20))
-                    card.append(file_row);tiles.append(card)
+                    card.append(Adw.ActionRow(title=title,subtitle='\n'.join(copies)))
+                    tiles.append(card)
                 inventory.add(Adw.PreferencesRow(child=tiles))
             file_buttons[False].set_sensitive(any(item.get('before') for item in found['files']) and not found['blocked'])
             replace_button.set_sensitive(any(item.get('before') for item in found['files']) and not found['blocked'])

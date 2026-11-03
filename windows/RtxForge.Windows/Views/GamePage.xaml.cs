@@ -467,8 +467,11 @@ public sealed partial class GamePage : Page
         if (g != game || section != "DLSS Files") return;
         if (inventory.Blocked.Length > 0) files.Add(Prefs.Row("File management unavailable", inventory.Blocked, glyph: ""));
         var fileCards = new PresetColumns(240, 4) { ColumnSpacing = 12, RowSpacing = 12 };
-        foreach (var file in inventory.Files)
-            fileCards.Children.Add(Prefs.Row(file.Title, $"{file.Path} · {file.Current} · {file.Provenance}", glyph: "\uE7C3"));
+        foreach (var component in inventory.Files.GroupBy(file => file.Title))
+        {
+            var copies = component.Select(file => $"{file.Path} · {file.Current}");
+            fileCards.Children.Add(Prefs.Row(component.Key, string.Join("\n", copies)));
+        }
         if (fileCards.Children.Count > 0) files.Add(fileCards);
         else if (inventory.Blocked.Length == 0) files.Add(Prefs.Row("No DLSS DLLs found", "No supported files were detected.", glyph: "\uE7C3"));
         SetSubtitle(backupRow, inventory.LatestBackup is { } date ? "Latest backup " + date : "No DLSS file backups for this game.");

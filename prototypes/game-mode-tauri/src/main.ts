@@ -945,7 +945,10 @@ function consistentGlyph(label: string, fallback: string) {
 }
 function enhanceActionLabels() {
   for(const heading of app.querySelectorAll<HTMLElement>('#content :is(.glass-section,.inner-card,.action-card,.extra-detail) :is(h2,h3,h4), #content .glass-section>h2, #content .action-card>h3')) {
-    if(!heading.closest('.dlss-file-grid'))heading.classList.add('panel-heading');
+    heading.classList.add('panel-heading');
+    const dllHeading = detailsSection === 'files' && heading.closest('.detail-body');
+    if(dllHeading || heading.querySelector('.icon') || heading.previousElementSibling?.classList.contains('icon'))continue;
+    heading.insertAdjacentHTML('afterbegin',icon(consistentGlyph(heading.textContent||'', 'info')));
   }
   for(const button of app.querySelectorAll<HTMLButtonElement>('#content :is(.primary,.quiet,.setting-action), .operation-actions button')) {
     if(button.querySelector('.icon') || !button.textContent?.trim())continue;

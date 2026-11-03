@@ -891,3 +891,9 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 
 .native-facts .overview-heading > .icon{display:inline-flex;align-items:center;line-height:1;margin:0}
 .native-facts .overview-pills .hero-pill{margin:0}
+
+:root[data-surface=details] .details-page .detail-body .dlss-file-card h3 {
+  color:var(--ink);
+  -webkit-text-stroke:0;
+  text-shadow:none;
+}

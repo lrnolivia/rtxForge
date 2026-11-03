@@ -232,7 +232,26 @@ public sealed partial class GamePage : Page
                 {
                     var grid = new PresetColumns(240, cards.Count) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
                     foreach (var fact in cards)
-                        grid.Children.Add(Prefs.Row(fact.Title, fact.Value, glyph: fact.Glyph));
+                    {
+                        var content = new StackPanel { Spacing = 10 };
+                        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                        title.Children.Add(new FontIcon { Glyph = fact.Glyph, FontSize = 16, VerticalAlignment = VerticalAlignment.Center });
+                        title.Children.Add(new TextBlock { Text = fact.Title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                        content.Children.Add(title);
+                        var pills = new WrapRow { Spacing = 6, LineSpacing = 5 };
+                        foreach (var value in fact.Pills ?? [fact.Value])
+                            pills.Children.Add(new Border
+                            {
+                                Child = Prefs.Label(value, "ForgeCaptionDimTextStyle"),
+                                Padding = new Thickness(6, 3, 6, 3), CornerRadius = new CornerRadius(5),
+                                Background = (Brush)Application.Current.Resources["ControlAltFillColorSecondaryBrush"],
+                            });
+                        content.Children.Add(pills);
+                        grid.Children.Add(new Border
+                        {
+                            Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Padding = new Thickness(14), Child = content
+                        });
+                    }
                     return grid;
                 }
                 var cachedFacts = GameOverview.Cards(g.EngineRow?["overview_cards"]);
@@ -476,17 +495,12 @@ public sealed partial class GamePage : Page
         {
             var body = new StackPanel { Spacing = 10 };
             body.Children.Add(new TextBlock { Text = component.Key, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-            foreach (var file in component)
+            foreach (var file in component.DistinctBy(file => (Path.GetFileName(file.Path), file.Current)))
             {
                 var copy = new Grid { ColumnSpacing = 8 };
                 copy.ColumnDefinitions.Add(new());
                 copy.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-                var identity = new StackPanel { Spacing = 3 };
-                identity.Children.Add(new TextBlock { Text = Path.GetFileName(file.Path), TextWrapping = TextWrapping.Wrap });
-                var directory = Path.GetDirectoryName(file.Path);
-                if (!string.IsNullOrEmpty(directory))
-                    identity.Children.Add(Prefs.Label(directory.Replace('\\', '/'), "ForgeCaptionDimTextStyle"));
-                copy.Children.Add(identity);
+                copy.Children.Add(new TextBlock { Text = Path.GetFileName(file.Path), TextWrapping = TextWrapping.Wrap });
                 var version = new Border
                 {
                     Child = Prefs.Label(file.Current == "Unknown" ? "Version unavailable" : file.Current, "ForgeCaptionDimTextStyle"),

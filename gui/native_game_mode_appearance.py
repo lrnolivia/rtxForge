@@ -29,6 +29,16 @@ class AppearanceSettings:
                     pass
             if len(self.posters) == 6:
                 break
+        self.detail_hero = None
+        if self.posters:
+            game = self.posters[0][0]
+            art = game.get('art') or {}
+            hero = game.get('hero') or (art.get('hero') if isinstance(art, dict) else None)
+            if isinstance(hero, str):
+                try:
+                    self.detail_hero = GdkPixbuf.Pixbuf.new_from_file_at_scale(hero, 480, 145, True)
+                except GLib.Error:
+                    pass
         self.preview = Gtk.DrawingArea(content_width=480, content_height=270, hexpand=True)
         self.preview.set_draw_func(self.draw)
         self.details_preview = Gtk.DrawingArea(content_width=480, content_height=270, hexpand=True)
@@ -257,17 +267,53 @@ class AppearanceSettings:
         accent = Gdk.RGBA(); accent.parse(self.value['accent'])
         tint = 0 if self.value['accentMode'] == 'theme' else self.value['tintStrength'] / 180
         tinted = tuple(channel + (hue-channel)*tint for channel, hue in zip(base, (accent.red,accent.green,accent.blue)))
-        cr.set_source_rgb(*tinted); cr.rectangle(18, 132, 444, 116); cr.fill()
-        cr.set_source_rgb(*ink); cr.set_font_size(20)
-        cr.move_to(24, 96); cr.show_text('Game Details')
-        cr.set_font_size(12)
-        if self.value['detailsNavigation'] == 'tabs':
-            cr.move_to(31, 156); cr.show_text('Overview     Features     DLSS Files')
-            cr.move_to(31, 190); cr.show_text('Features     Compatibility')
+        bottom = self.value['navigation'] == 'bottom'
+        nav_y, hero_y = (239,8) if bottom else (8,39)
+        def panel(x,y,w,h,r,color):
+            from math import pi
+            cr.new_sub_path()
+            for cx,cy,angle in ((x+w-r,y+r,-.5),(x+w-r,y+h-r,0),(x+r,y+h-r,.5),(x+r,y+r,1)):
+                cr.arc(cx,cy,r,angle*pi,(angle+.5)*pi)
+            cr.close_path(); cr.set_source_rgba(*color); cr.fill()
+        def label(text,x,y,size):
+            cr.set_source_rgb(*ink); cr.set_font_size(size); cr.move_to(x,y); cr.show_text(text)
+        glass=(*tinted,.72 if theme=='clear' else .96)
+        raised=(accent.red,accent.green,accent.blue,.23)
+        panel(12,hero_y,456,190,12,glass)
+        if self.detail_hero:
+            cr.save(); cr.rectangle(12,hero_y,456,102);cr.clip()
+            Gdk.cairo_set_source_pixbuf(cr,self.detail_hero,12,hero_y);cr.paint_with_alpha(.68);cr.restore()
+        if self.posters:
+            game,poster=self.posters[0]
+            cr.save();cr.translate(25,hero_y+31);cr.scale(43/poster.get_width(),65/poster.get_height())
+            Gdk.cairo_set_source_pixbuf(cr,poster,0,0);cr.paint();cr.restore()
         else:
-            for i, label in enumerate(('Overview','Features','DLSS Files')):
-                cr.move_to(31, 156+20*i); cr.show_text(label)
-            cr.move_to(140, 156); cr.show_text('Features     Compatibility')
+            game={}
+        panel(121,nav_y,248,24,12,glass)
+        panel(124,nav_y+3,45,18,9,raised)
+        label('rtxForge',18,nav_y+17,12)
+        label('Library    Presets    Packages    Extras    Settings',132,nav_y+15,9)
+        label(game.get('name','Game Details')[:31],76,hero_y+65,16)
+        panel(74,hero_y+72,246,21,5,glass)
+        label('Steam   ·   Overview',82,hero_y+86,9)
+        panel(354,hero_y+72,96,21,11,raised)
+        label('Update Features',365,hero_y+86,9)
+        tabs=self.value['detailsNavigation']=='tabs'
+        if tabs:
+            panel(23,hero_y+111,54,19,5,raised)
+            label('Overview    Features    DLSS Files    Tools    Appearance',30,hero_y+124,9)
+        else:
+            panel(23,hero_y+111,76,19,5,raised)
+            for index,title in enumerate(('Overview','Features','DLSS Files')):
+                label(title,30,hero_y+124+20*index,9)
+        card_x=23 if tabs else 110
+        card_y=hero_y+(136 if tabs else 111)
+        card_width=(452-card_x-12)/3
+        for index,title in enumerate(('Features','Compatibility','Neural rendering')):
+            x=card_x+index*(card_width+6)
+            panel(x,card_y,card_width,41,6,raised)
+            label(title,x+7,card_y+15,8)
+            panel(x+7,card_y+23,card_width*.53,7,3,glass)
 
 
 def build(owner):

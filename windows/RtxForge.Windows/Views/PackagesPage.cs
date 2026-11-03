@@ -129,7 +129,7 @@ public sealed partial class PackagesPage : Page
         unified.Children.Add(unifiedCards);
         unified.Children.Add(new Expander { Header = "NR model", Content = SkynizzSettings(catalog),
             HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
-        body.Children.Add(unified);
+
 
         // Your own package (not supported yet) beside community projects.
         var sources = new PresetColumns(400, 2) { ColumnSpacing = 16, RowSpacing = 16, Margin = new Thickness(0, 12, 0, 0) };
@@ -139,7 +139,9 @@ public sealed partial class PackagesPage : Page
         pick.HorizontalAlignment = HorizontalAlignment.Right;
         custom.Children.Add(pick);
         var customCard = Card(custom); customCard.Opacity = .55; customCard.IsHitTestVisible = false;
+        sources.Children.Add(Card(unified));
         sources.Children.Add(customCard);
+        body.Children.Add(sources);
         if (catalog.Community.Count > 0)
         {
             var community = Section("Other community projects", "Explore other projects. These sources aren't curated install options.");
@@ -150,9 +152,8 @@ public sealed partial class PackagesPage : Page
                 entry.Children.Add(Prefs.Label(source.Note, "ForgeCaptionDimTextStyle"));
                 community.Children.Add(entry);
             }
-            sources.Children.Add(Card(community));
+            body.Children.Add(Card(community));
         }
-        body.Children.Add(sources);
     }
 
     Expander FeederSetup()

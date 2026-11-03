@@ -926,3 +926,8 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 }
 #app details[open] > summary::after {transform:rotate(225deg)}
 #app .schema-controls > summary {min-height:44px;padding-inline:12px}
+
+.package-sources{margin-top:20px;align-items:stretch}
+.package-sources .package-options{grid-template-columns:minmax(0,1fr)}
+.dlss-file-card li{flex-wrap:nowrap;align-items:start}
+.dlss-file-card .dll-name{min-width:0;overflow-wrap:anywhere}

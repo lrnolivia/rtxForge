@@ -245,29 +245,71 @@ internal sealed class GameModeAppearanceView : UserControl
             Canvas.SetLeft(element,x); Canvas.SetTop(element,y); detailsSample.Children.Add(element);
         }
         var neutral = light ? global::Windows.UI.Color.FromArgb(255,235,230,225) : global::Windows.UI.Color.FromArgb(255,40,40,42);
-        Place(new Border { Width=480,Height=270,CornerRadius=new CornerRadius(12),Background=new SolidColorBrush(neutral) },0,0);
+        var titleInk = new SolidColorBrush(light ? global::Windows.UI.Color.FromArgb(255,50,39,34) : accent);
         var hero = Artwork(game?.HeroPath) ?? new Uri(Path.Combine(AppContext.BaseDirectory,"Assets","GameMode",light?"app-hero-light.png":"app-hero-dark.png"));
-        Place(new Border { Width=480,Height=132,CornerRadius=new CornerRadius(12,12,0,0),Background=new ImageBrush
+        ImageBrush Image(Uri uri, double opacity=1) => new()
         {
-            ImageSource=new BitmapImage(hero) { DecodePixelWidth=480 },
-            Stretch=Stretch.UniformToFill,Opacity=light?.36:.58,
-        } },0,0);
-        if (Artwork(game?.PosterPath) is { } poster)
-            Place(new Border { Width=48,Height=68,CornerRadius=new CornerRadius(5),Background=new ImageBrush
-            {
-                ImageSource=new BitmapImage(poster) { DecodePixelWidth=96 },Stretch=Stretch.UniformToFill,
-            } },22,56);
-        var tint=(Number("tintStrength",50)/100)*.55;
-        if(Text("accentMode")=="theme")tint=0;
+            ImageSource=new BitmapImage(uri) { DecodePixelWidth=480 }, Stretch=Stretch.UniformToFill, Opacity=opacity
+        };
+        void Panel(double x,double y,double w,double h,double radius,Brush background) =>
+            Place(new Border { Width=w, Height=h, CornerRadius=new CornerRadius(radius), Background=background },x,y);
+        void Label(string label,double x,double y,double size,Brush foreground,double width=440,bool bold=false) =>
+            Place(new TextBlock { Text=label,FontSize=size,Foreground=foreground,MaxWidth=width,TextTrimming=TextTrimming.CharacterEllipsis,
+                FontWeight=bold?Microsoft.UI.Text.FontWeights.SemiBold:Microsoft.UI.Text.FontWeights.Normal },x,y);
+
+        var tint=Text("accentMode")=="theme" ? 0 : Number("tintStrength",50)*.005;
         byte Blend(byte channel,byte hue)=>(byte)(channel+(hue-channel)*tint);
-        var glass=new SolidColorBrush(global::Windows.UI.Color.FromArgb(theme=="clear"?(byte)170:(byte)238,
-            Blend(neutral.R,accent.R),Blend(neutral.G,accent.G),Blend(neutral.B,accent.B)));
-        Place(new TextBlock { Text=game?.Name??"Game Details",Foreground=ink,FontSize=19,MaxWidth=380,
-            TextTrimming=TextTrimming.CharacterEllipsis,FontWeight=Microsoft.UI.Text.FontWeights.Bold },Artwork(game?.PosterPath) is null?24:82,83);
+        var glassColor = global::Windows.UI.Color.FromArgb(theme=="clear"?(byte)170:(byte)238,
+            Blend(neutral.R,accent.R),Blend(neutral.G,accent.G),Blend(neutral.B,accent.B));
+        var glass = new SolidColorBrush(glassColor);
+        var raised = new SolidColorBrush(global::Windows.UI.Color.FromArgb(60,accent.R,accent.G,accent.B));
+        Panel(0,0,480,270,12,new SolidColorBrush(neutral));
+        Panel(0,0,480,270,12,Image(hero,.20));
+        var bottom = Text("navigation")=="bottom";
+        var navY=bottom?239:8;
+        var panelY=bottom?8:39;
+        Panel(121,navY,248,24,12,glass);
+        Panel(124,navY+3,45,18,9,raised);
+        Label("rtxForge",18,navY+4,12,ink,bold:true);
+        Label("Library    Presets    Packages    Extras    Settings",132,navY+5,9,ink);
+        Panel(12,panelY,456,190,12,glass);
+        Panel(12,panelY,456,106,11,Image(hero,light?.64:.86));
+        var fade = new LinearGradientBrush { StartPoint=new global::Windows.Foundation.Point(0,0), EndPoint=new global::Windows.Foundation.Point(0,1) };
+        fade.GradientStops.Add(new GradientStop { Color=global::Windows.UI.Color.FromArgb(0,neutral.R,neutral.G,neutral.B),Offset=.15 });
+        fade.GradientStops.Add(new GradientStop { Color=glassColor,Offset=1 });
+        Panel(12,panelY+35,456,78,9,fade);
+        if (Artwork(game?.PosterPath) is { } poster)
+            Panel(25,panelY+31,43,65,5,Image(poster));
+        Label(game?.Name??"Game Details",76,panelY+48,16,titleInk,285,true);
+        Panel(74,panelY+72,246,21,5,glass);
+        Label("Steam   ·   Overview",82,panelY+76,9,ink);
+        Panel(354,panelY+72,96,21,11,raised);
+        Label("Update Features",365,panelY+76,9,ink);
+
         var tabs=Text("detailsNavigation")=="tabs";
-        Place(new Border { Width=442,Height=114,CornerRadius=new CornerRadius(11),Background=glass },19,140);
-        Place(new TextBlock { Text=tabs?"Overview     Features     DLSS Files":"Overview\nFeatures\nDLSS Files",Foreground=ink,FontSize=12 },31,153);
-        Place(new TextBlock { Text="Features     Compatibility",Foreground=ink,FontSize=12 },tabs?31:143,tabs?194:153);
+        if (tabs)
+        {
+            Panel(23,panelY+111,54,19,5,raised);
+            Label("Overview    Features    DLSS Files    Tools    Appearance",30,panelY+113,9,ink);
+        }
+        else
+        {
+            Panel(23,panelY+111,76,19,5,raised);
+            Label("Overview",30,panelY+113,9,ink);
+            Label("Features",30,panelY+136,9,ink);
+            Label("DLSS Files",30,panelY+156,9,ink);
+        }
+        var cardX=tabs?23:110;
+        var cardY=panelY+(tabs?136:111);
+        var cardWidth=(452-cardX-12)/3d;
+        var labels=new[] { "Features", "Compatibility", "Neural rendering" };
+        for(var index=0;index<labels.Length;index++)
+        {
+            var x=cardX+index*(cardWidth+6);
+            Panel(x,cardY,cardWidth,41,6,raised);
+            Label(labels[index],x+7,cardY+6,8,ink,cardWidth-14,true);
+            Panel(x+7,cardY+23,cardWidth*.53,7,3,glass);
+        }
     }
 
     async Task PaintBackgroundAsync(Border background,string data)

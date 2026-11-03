@@ -13361,7 +13361,7 @@ class Window(Adw.ApplicationWindow):
                 tiles=Adw.WrapBox(child_spacing=12,line_spacing=12,hexpand=True)
                 components={}
                 for item in found['files']:
-                    components.setdefault(item['title'],[]).append(item['path']+' · '+item['current'])
+                    components.setdefault(item['title'],{})[Path(item['path']).name+' · '+item['current']]=None
                 for title,copies in components.items():
                     card=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
                     card.add_css_class('boxed-list');card.set_size_request(245,-1)

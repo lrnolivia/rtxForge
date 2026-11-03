@@ -902,3 +902,27 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
   margin-top:16px;
 }
 .detail-body .glass-section > .section-heading {margin-bottom:0}
+
+/* Keep native disclosure semantics with the same chevron as the other controls. */
+#app details > summary {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  list-style:none;
+  cursor:pointer;
+}
+#app details > summary::marker {content:""}
+#app details > summary::-webkit-details-marker {display:none}
+#app details > summary::after {
+  content:"";
+  width:7px;
+  height:7px;
+  flex:none;
+  margin-inline-start:auto;
+  margin-inline-end:3px;
+  border:solid currentColor;
+  border-width:0 1.5px 1.5px 0;
+  transform:rotate(45deg);
+}
+#app details[open] > summary::after {transform:rotate(225deg)}
+#app .schema-controls > summary {min-height:44px;padding-inline:12px}

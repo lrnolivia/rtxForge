@@ -568,7 +568,7 @@ function schemaControls(game: Game, provider: string) {
   const row = engineRows.find(row => pathKey(row.game) === pathKey(game.path));
   const saved = (row?.feature_controls || snapshot?.defaults.feature_controls || {}) as Record<string, number>;
   const draft = drafts.get(game.id) || {};
-  return `<details class="schema-controls"><summary>Advanced feature controls</summary><p class="subtle">The same control schema used by the overlay and existing Game Mode. Runtime units are preserved.</p>${schema.groups.filter(group => group.name !== 'Frame generation').map(group => {
+  return `<details class="schema-controls"><summary>${icon('sliders')}Advanced feature controls</summary><p class="subtle">The same control schema used by the overlay and existing Game Mode. Runtime units are preserved.</p>${schema.groups.filter(group => group.name !== 'Frame generation').map(group => {
     const controls = schema.controls.filter(control => control.group === group.name);
     if (!controls.length) return '';
     return `<section class="schema-group"><h3>${e(group.name)}</h3><div class="inner-card">${controls.map(control => {

@@ -35,6 +35,19 @@ def release(names, body=''):
 
 
 class OwnershipTests(unittest.TestCase):
+    def test_new_series_and_old_series_keep_separate_os_ownership(self):
+        windows = [name.replace('1.0.0-beta.2', '1.5.0-beta.1') for name in WINDOWS]
+        linux = [name.replace('1.0.0-beta.2', '1.5.0-beta.1') for name in LINUX]
+        mixed = release(windows + linux + [name + '.previous-' + WIN_SHA[:12] for name in WINDOWS])
+        self.assertEqual(beta.owned('windows', mixed), windows)
+        self.assertEqual(beta.owned('linux', mixed), linux)
+        self.assertEqual(beta.owned('windows', release(WINDOWS + LINUX)), WINDOWS)
+        for name in ['rtxForge-Setup-1.5.0-beta.1-x64.exe.extra',
+                     'rtxForge-Setup-1.5.0-beta.1-x86.exe',
+                     'rtxForge-windows-1.5.0-beta.1-arm64.zip',
+                     'rtxForge-1.5.0-beta.1-x86_64.AppImage.sha256.extra']:
+            self.assertIsNone(beta.owner(name), name)
+
     def test_each_os_counts_only_its_own_current_assets(self):
         mixed = release(WINDOWS + LINUX + PREVIOUS)
         self.assertEqual(beta.owned('windows', mixed), WINDOWS)
@@ -54,6 +67,14 @@ class OwnershipTests(unittest.TestCase):
 
 
 class NotesTests(unittest.TestCase):
+    def test_new_series_keeps_other_os_provenance_until_it_publishes(self):
+        both = beta.notes('linux', 'Base.', release(WINDOWS, LEGACY_BODY), '1.0.0-beta.16', LINUX_SHA, 'old')
+        updated = beta.notes('windows', 'New base.', release(WINDOWS + LINUX, both),
+                             '1.5.0-beta.1', WIN_SHA, 'new')
+        self.assertIn('Windows: version `1.5.0-beta.1`', updated)
+        self.assertIn('Linux: version `1.0.0-beta.16`', updated)
+        self.assertEqual(beta.source('linux', release([], updated)), LINUX_SHA)
+
     def test_legacy_windows_line_is_read_as_windows_source(self):
         self.assertEqual(beta.source('windows', release(WINDOWS, LEGACY_BODY)), WIN_SHA)
         self.assertIsNone(beta.source('linux', release(WINDOWS, LEGACY_BODY)))
@@ -94,6 +115,27 @@ class NotesTests(unittest.TestCase):
             self.assertNotEqual(run('source', 'linux', str(path)).returncode, 0)
 
 
+class VersionTests(unittest.TestCase):
+    def test_full_version_orders_before_beta_counter(self):
+        self.assertGreater(beta.version_key('1.5.0-beta.1'), beta.version_key('1.0.0-beta.16'))
+        self.assertGreater(beta.version_key('1.10.0-beta.1'), beta.version_key('1.5.0-beta.99'))
+        self.assertGreater(beta.version_key('1.5.1-beta.1'), beta.version_key('1.5.0-beta.99'))
+        self.assertGreater(beta.version_key('1.5.0-beta.10'), beta.version_key('1.5.0-beta.9'))
+
+    def test_version_cli_refuses_replacement_downgrade_and_invalid_version(self):
+        run = lambda *args: subprocess.run([sys.executable, str(ROOT / 'packaging/beta_release.py'), *args],
+                                           capture_output=True, text=True)
+        self.assertEqual(run('newer', '1.5.0-beta.1', '1.0.0-beta.16').returncode, 0)
+        for candidate, current in [('1.0.0-beta.17', '1.5.0-beta.1'),
+                                   ('1.5.0-beta.1', '1.5.0-beta.1'),
+                                   ('1.5.0-beta.1', '1.5.0-beta.2')]:
+            self.assertNotEqual(run('newer', candidate, current).returncode, 0)
+        for version in ['1.5.0', '1.5-beta.1', '1.5.0-rc.1', '1.5.0-beta.bad', '1.5.0-beta.1/extra']:
+            self.assertNotEqual(run('validate-version', version).returncode, 0)
+        self.assertEqual(run('title', '1.5.0-beta.1').stdout.strip(), 'rtxForge 1.5 Beta 1')
+        self.assertEqual(beta.release_title('1.5.2-beta.3'), 'rtxForge 1.5.2 Beta 3')
+
+
 class WorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -114,6 +156,16 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn('git/ref/heads/main', script)
             self.assertIn('beta_release.py owned', script)
             self.assertNotIn('target_commitish', script)
+
+    def test_publish_uses_full_version_order_and_versioned_title(self):
+        for workflow in (self.linux, self.windows):
+            script = workflow['jobs']['publish-beta']['steps'][-1]['run']
+            self.assertIn('beta_release.py validate-version "$VERSION"', script)
+            self.assertIn('beta_release.py newer "$VERSION" "$OLD_VERSION"', script)
+            self.assertIn('beta_release.py title "$VERSION"', script)
+            self.assertIn('--title "$TITLE"', script)
+            self.assertNotIn('OLD_VERSION##', script)
+            self.assertNotIn('1\\.0\\.0-beta', script)
 
     def test_linux_dispatch_gates_before_building(self):
         inputs = self.linux[True]['workflow_dispatch']['inputs']  # PyYAML reads the 'on' key as True

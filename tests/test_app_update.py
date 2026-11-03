@@ -8,6 +8,22 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import app_update, desktop_install
 
 class ApplicationUpdateTest(unittest.TestCase):
+    def test_new_beta_series_updates_from_old_series(self):
+        name = 'rtxForge-1.5.0-beta.1-x86_64.AppImage'
+        manifest = {'channel':'beta', 'version':'1.5.0-beta.1', 'commit':'remote',
+                    'appimage':name, 'sha256':'b'*64, 'size':10}
+        release = {'assets':[
+            {'name':'rtxforge-beta-linux.json', 'browser_download_url':'beta-manifest'},
+            {'name':name, 'browser_download_url':'https://github.com/lrnolivia/rtxForge/releases/download/beta/'+name}]}
+        for current, available in [('1.0.0-beta.16', True), ('1.5.0-beta.2', False)]:
+            with self.subTest(current=current), patch.object(app_update, 'channel', return_value='beta'), \
+                    patch.object(app_update, '_json', side_effect=[release, manifest.copy()]), \
+                    patch.object(app_update, 'current_build', return_value={'version':current, 'commit':'local'}):
+                info = app_update.check()
+            self.assertEqual(info['available'], available)
+            self.assertEqual(info['update_channel'], 'beta')
+        self.assertIsNotNone(desktop_install.BETA_APPIMAGE.fullmatch(name))
+
     def check_remote(self,remote):
         name='RTXForge.AppImage'
         manifest={'version':remote,'commit':'remote','appimage':name,'sha256':'a'*64,'size':100}

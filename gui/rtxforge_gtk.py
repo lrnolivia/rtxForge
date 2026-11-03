@@ -9525,6 +9525,13 @@ class Window(Adw.ApplicationWindow):
         """Installed with rtxForge on Windows, not yet set up (adapted) to run under Proton."""
         return game.get('installed_on')=='windows' and bool(game.get('adaptable') or not game.get('linux_ready'))
 
+    def game_feature_action(self,game):
+        if self.needs_linux_setup(game):
+            return action_labels.ADAPT,'install'
+        if game.get('installed') and game.get('installed_on')!='windows':
+            return 'Update Features','repair'
+        return action_labels.INSTALL,'install'
+
     def pending_linux_setup(self):
         """Every game installed with rtxForge on Windows that still needs Linux setup, whatever the filter."""
         return [game for game in self.games if not game.get('blocked') and self.needs_linux_setup(game)]
@@ -9572,7 +9579,8 @@ class Window(Adw.ApplicationWindow):
             else:add(action_labels.REMOVE_ADAPT,lambda:self.launch_action('uninstall',targets=[game]),not self.busy)
         else:
             # A Windows install with shared state is adapted for Linux (Set Up) or restored right here.
-            add(action_labels.game(self.needs_linux_setup(game))[0],lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
+            feature_label,feature_op=self.game_feature_action(game)
+            add(feature_label,lambda:self.launch_action(feature_op,targets=[game]),not game.get('blocked') and not self.busy)
             add('Restore Original Files',lambda:self.launch_action('uninstall',targets=[game]),bool(game.get('installed')) and not self.busy)
         add('Open Folder',lambda:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None),not self.options.demo)
         if self.adoptable(game):add('Adopt Existing Setup…',lambda:self.choose_adoption([game]),not self.busy)
@@ -10273,8 +10281,10 @@ class Window(Adw.ApplicationWindow):
             banner.add_css_class('overview-banner');box.append(banner)
         glyphs={'Features':'computer-symbolic','Compatibility':'emblem-ok-symbolic',
                 'Neural rendering':'rtx-sparkle-symbolic','Multi-Frame Generation':'video-display-symbolic'}
+        import compat_list
+        overview_game=dict(game,compat=compat_list.verdict(game))
         facts=[(card['title'],' · '.join(card['values']),glyphs[card['title']])
-               for card in overview_summary.cards(game)]
+               for card in overview_summary.cards(overview_game)]
         if facts:
             flow=Gtk.Grid(column_spacing=12,row_spacing=12,column_homogeneous=True,hexpand=True,valign=Gtk.Align.START)
             flow.add_css_class('overview-facts')
@@ -10284,8 +10294,8 @@ class Window(Adw.ApplicationWindow):
                 card.set_hexpand(True);cards.append(card)
             layout={'columns':0}
             def arrange_facts(widget,_clock):
-                count=min(len(cards),4,max(1,(widget.get_width()+12)//292))
-                if len(cards)>3 and count==3:count=2
+                count=min(len(cards),max(1,(widget.get_width()+12)//292))
+                if len(cards)==4 and count==3:count=2
                 if count!=layout['columns']:
                     layout['columns']=count
                     for card in cards:
@@ -10310,7 +10320,7 @@ class Window(Adw.ApplicationWindow):
             def inspect_overview():
                 try:
                     import engine_bridge
-                    result=overview_summary.inspect(game,engine_bridge.module(self.service.config))
+                    result=overview_summary.inspect(overview_game,engine_bridge.module(self.service.config))
                 except (OSError, ValueError):
                     return
                 GLib.idle_add(apply_overview,result)
@@ -12943,8 +12953,7 @@ class Window(Adw.ApplicationWindow):
         # Wraps instead of running off a narrow details window (Adw ≥ 1.7).
         hero_actions=Adw.WrapBox(child_spacing=8,line_spacing=8,align=1.0,valign=Gtk.Align.END,halign=Gtk.Align.END)
         hero_actions.add_css_class('detail-hero-actions')
-        feature_op='repair' if game.get('installed') and not self.needs_linux_setup(game) else 'install'
-        install_label='Update Features' if feature_op=='repair' else action_labels.game(self.needs_linux_setup(game))[0]
+        install_label,feature_op=self.game_feature_action(game)
         hero_install=icon_button(install_label,'folder-download-symbolic',lambda *_:self.launch_action(feature_op,targets=[game]),'hero-install')
         # Same rule as the Installation rows below (demo reviews never write).
         hero_install.set_sensitive(not game.get('blocked') and not self.busy and bool(self.hardware_info and self.hardware_info['ready']))
@@ -13257,14 +13266,10 @@ class Window(Adw.ApplicationWindow):
 
         for title,subtitle,op in [
             (
-                'Install Features',
-                'Add or update the selected feature mode.',
-                'install',
-            ),
-            (
-                'Repair Feature Files',
-                'Replace missing or damaged feature files while preserving your presets.',
-                'repair',
+                feature_label,
+                'Review updates for the installed package and keep your presets.'
+                if feature_op=='repair' else 'Review the selected feature package.',
+                feature_op,
             ),
             (
                 'Restore Original Files',
@@ -13276,13 +13281,8 @@ class Window(Adw.ApplicationWindow):
             maintenance.add(maintenance_row)
 
             action=button(
-                'Install'
-                if op=='install'
-                else 'Repair'
-                if op=='repair'
-                else 'Reset'
-                if op=='reset'
-                else 'Restore',
+                ('Update' if op=='repair' else 'Adapt' if feature_label==action_labels.ADAPT else 'Install')
+                if op!='uninstall' else 'Restore',
                 lambda _,o=op:self.launch_action(
                     o,
                     targets=[game],
@@ -14455,13 +14455,14 @@ class Window(Adw.ApplicationWindow):
             return
         applying_strength=operation=='reset' and entire and self.defaults_changed()
         title={'install':'Install Features','repair':'Repair Feature Files','uninstall':'Restore Original Files','reset':'Reset Presets'}[operation]
+        if operation=='repair' and targets and len(rows)==1:title='Update Features'
         if applying_strength:title='Apply Settings to Library'
         elif operation=='reset' and visual_settings is not None:title='Apply Presets'
         self.operation_previous=targets[0] if targets and len(targets)==1 else None
 
         self.operation_cancel=threading.Event();self.operation_executing=False
         self.operation_games=rows
-        flow=_flow if _flow is not None and not _flow.closed else self.new_operation_flow(operation,rows)
+        flow=_flow if _flow is not None and not _flow.closed else self.new_operation_flow(operation,rows,title if operation=='repair' else None)
         flow.games=rows
         flow.show_checking()
 

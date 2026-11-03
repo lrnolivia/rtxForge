@@ -12,6 +12,7 @@ PACKAGES = {
     'dlss-unlocked': 'DLSS-Unlocked',
     'feeder': 'Feeder NR',
     'custom': 'Custom package',
+    'vulkan-native': 'Vulkan NR + Universal MFG',
 }
 
 # Windows Segoe glyph -> closest Adwaita symbolic icon.
@@ -57,6 +58,131 @@ def facts(game):
     elif game.get('install_provider') == 'feeder' and game.get('feeder_available'):
         out.append(('Available features', 'Feeder NR · NR only', ICONS['nr']))
     return out
+
+
+def overview_cards(game, verdict=None):
+    """Three stable cards for Game Details, including when no result is recorded."""
+    rows = facts(game)
+    compatibility = 'No compatibility result'
+    if verdict:
+        source = 'rtxForge list' if verdict['source'] == 'list' else 'your result'
+        compatibility = f"{verdict['verdict']} · {source}"
+    feature = next((row for row in rows if row[0] in ('Neural rendering', 'Available features')), None)
+    title, value, icon = feature or (
+        'Features', (game.get('profile') or 'Installed') if game.get('installed') else 'Not installed', ICONS['nr'],
+    )
+    if game.get('runtime_provider') != 'feeder' and game.get('dlss_version'):
+        value += '\nDLSS ' + str(game['dlss_version'])
+    package_title, package, package_icon = rows[0]
+    if game.get('installed'):
+        version = game.get('installed_package_version') or game.get('installed_package_archive')
+        package = f'{package} · {version}' if version else f'{package} · version not recorded'
+        model = game.get('nr_runtime')
+        if (game.get('feature_mode') in ('nr-only', 'nr-mfg')
+                and game.get('runtime_provider') != 'feeder'
+                and isinstance(model, dict) and model.get('version')):
+            value += '\nNR model ' + str(model['version'])
+    elif game.get('adoption_available'):
+        package += ' · adoption available'
+    cards = [(package_title, package, package_icon), ('Compatibility', compatibility, 'emblem-ok-symbolic'),
+             (title, value, icon)]
+    if game.get('installed') and game.get('feature_mode') in ('nr-mfg', 'mfg-only'):
+        ratio = game.get('mfg_multiplier')
+        if game.get('mfg_enabled') is False or (type(ratio) is int and ratio == 0):
+            mfg = 'Off'
+        elif game.get('dynamic_mfg') == 1:
+            mfg = 'Dynamic'
+        elif type(ratio) is int and 2 <= ratio <= 6:
+            mfg = f'{ratio}×'
+        elif ratio == 'auto':
+            mfg = 'Auto'
+        else:
+            mfg = 'Saved setting unavailable'
+        cards.append(('Multi-Frame Generation', mfg, 'video-display-symbolic'))
+    return cards
+
+
+def installed_extras(game):
+    """Read bounded evidence next to the selected executable; never scan the game tree."""
+    from itertools import islice
+    from pathlib import Path
+    import transactions as t
+    import renodx_hdr
+    import reshade_import
+
+    def entries(directory, limit):
+        try:
+            path = t.safe(directory)
+            if path.is_dir():
+                yield from islice(path.iterdir(), limit)
+        except (t.Refusal, OSError):
+            return
+
+    def read(path, limit):
+        try:
+            path = t.safe(path)
+            if path.is_file() and path.stat().st_size <= limit:
+                with path.open('rb') as stream:
+                    data = stream.read(limit + 1)
+                if len(data) <= limit:
+                    return data
+        except (t.Refusal, OSError):
+            pass
+        return b''
+
+    try:
+        root = t.safe(game['game'])
+        exe = t.safe(root / t.relative(game['exe']))
+        if not exe.is_file():
+            return []
+    except (KeyError, TypeError, t.Refusal, OSError):
+        return []
+    directory = exe.parent
+    items = list(entries(directory, 512))
+    names = {item.name.casefold(): item for item in items}
+    hosts = (*renodx_hdr.PROXIES, 'reshade64.dll', 'reshade32.dll', 'reshade.dll')
+    reshade = any(reshade_import._is_reshade(read(names[name], 32 * 1024**2))
+                  for name in hosts if name in names)
+    addons = []
+    for item in items:
+        if item.suffix.lower() not in ('.addon64', '.addon32', '.addon') or item.name.casefold().startswith('rtxforge'):
+            continue
+        try:
+            if t.safe(item).is_file():
+                addons.append(item)
+        except (t.Refusal, OSError):
+            continue
+    hdr_addons = {item for item in addons if 'renodx' in item.name.casefold()}
+    try:
+        _, _, receipt = renodx_hdr._location(game)
+        if receipt.is_file() and receipt.stat().st_size <= 1024**2:
+            record = renodx_hdr._record(root, receipt, directory)
+            for name in record['files']:
+                if Path(name).suffix.lower() in ('.addon64', '.addon32'):
+                    target = t.safe(root / t.relative(name))
+                    if target.is_file():
+                        hdr_addons.add(target)
+    except (t.Refusal, OSError, ValueError, KeyError, TypeError):
+        pass
+    shader_root = names.get('reshade-shaders', directory / 'reshade-shaders')
+    shaders = any(item.suffix.lower() == '.fx' and not item.is_symlink() and item.is_file()
+                  for child in entries(shader_root, 32) if child.name.casefold() == 'shaders'
+                  for item in entries(child, 128))
+    presets = False
+    preset_dirs = [item for item in items if item.name.casefold() == 'presets']
+    candidates = (*items, *(item for path in preset_dirs for item in entries(path, 64)))
+    for item in islice((p for p in candidates if p.suffix.lower() == '.ini'
+                        and p.name.casefold() != 'reshade.ini'), 32):
+        try:
+            if reshade_import._preset_ini(read(item, 256 * 1024)):
+                presets = True
+                break
+        except UnicodeError:
+            pass
+    return [label for present, label in (
+        (bool(hdr_addons), 'RenoDX'), (reshade, 'ReShade'), (shaders, 'Filters'),
+        (presets, 'Presets'), (any(item not in hdr_addons for item in addons), 'Add-ons'),
+    ) if present]
 
 
 def compact_facts(game):

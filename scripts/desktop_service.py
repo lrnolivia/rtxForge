@@ -152,6 +152,11 @@ class DesktopService:
                 # Adoption over it; the game cannot read those files under Proton either.
                 row.update(installed=True,installed_on=None,record_unreadable=True,
                            blocked=UNREADABLE_RECORD.format(folder=target))
+            if record and isinstance(record.get('provider'), dict):
+                provider = record['provider']
+                provider_id = provider.get('id')
+                if provider_id and provider_id == row.get('runtime_provider') and provider_id != 'feeder':
+                    row['installed_package_version'] = row.get('installed_package_version') or provider.get('version')
             if record and record['os']!=cross_os.THIS_OS:
                 # Set Up (adapt) takes the other OS's install over instead of reinstalling it.
                 try:local=engine.load_baseline(target)
@@ -215,16 +220,29 @@ class DesktopService:
         settings['apply_requested_presets']=operation=='install' and visual_settings is not None
         if operation=='install' and rows and all(row.get('installed_on')=='windows' for row in rows) and cross_os.THIS_OS=='linux':
             return self.prepare_adapt(rows,mode,settings)
+        # A single installed Linux game's repair follows its recorded package
+        # and profile, even if library defaults now select a different route.
+        installed_repair = (operation == 'repair' and len(rows) == 1 and rows[0].get('installed')
+                            and rows[0].get('installed_on') != 'windows')
+        if installed_repair:
+            provider = rows[0].get('runtime_provider')
+            installed_mode = rows[0].get('feature_mode')
+            if not provider or installed_mode not in ('nr-only', 'nr-mfg', 'mfg-only'):
+                return {'kind': 'batch', 'operation': operation, 'title': 'Update Features',
+                        'plans': [], 'rows': [], 'blocked': [{'name': rows[0]['name'],
+                        'reason': 'The installed package or feature profile could not be verified.'}]}
+            settings['runtime_provider'] = provider
+            mode = installed_mode
         # Confirmed Vulkan games use the Vulkan package automatically, as Feeder games use Feeder NR.
         # It always brings frame generation, so NR Only keeps the DLSS package's own route.
-        if settings.get('runtime_provider')=='vulkan-native' or (rows and all(row.get('runtime_provider')=='vulkan-native'
+        if settings.get('runtime_provider')=='vulkan-native' or (not installed_repair and rows and all(row.get('runtime_provider')=='vulkan-native'
                 or mode in ('nr-mfg','mfg-only') and row.get('install_provider')=='vulkan-native' and row.get('vulkan_available') is True for row in rows)):
             import vulkan_app
             return vulkan_app.prepare(self.config,rows,mode,operation,settings,engine_bridge.module(self.config))
         feeder = settings.get('runtime_provider') == 'feeder'
         # Restoring an installed Feeder setup must use its actual ownership,
         # regardless of the package currently selected for new installations.
-        if feeder or (rows and all(row.get('runtime_provider') == 'feeder'
+        if feeder or (not installed_repair and rows and all(row.get('runtime_provider') == 'feeder'
                                   or row.get('install_provider') == 'feeder' and row.get('feeder_available') is True for row in rows)
                       and operation in ('install', 'uninstall', 'repair', 'reset')):
             import feeder_provider

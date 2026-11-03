@@ -647,6 +647,14 @@ def feeder_storage(params):
 
 METHODS['feeder_storage'] = feeder_storage
 
+
+def overlay_status(_params):
+    import overlay_status as inventory
+    return inventory.snapshot(win_features._config())
+
+
+METHODS['overlay_status'] = overlay_status
+
 import companion_controls  # noqa: E402
 METHODS.update(companion_controls.methods(STATE))
 # A functional test samples the same live snapshot the in-game panel shows.

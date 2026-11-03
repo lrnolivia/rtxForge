@@ -354,16 +354,19 @@ async function loadOverviewExtras(game: Game, row: EngineRow) {
 }
 function overviewDetails(game: Game, row?: EngineRow) {
   const saved = row || game.savedRecord;
-  const provider = saved?.runtime_provider;
-  const packageName = provider ? snapshot?.catalog?.find(item=>item.id===provider)?.name || provider : 'Installed features';
+  const provider = saved?.installed ? saved.runtime_provider : saved?.install_provider;
+  const packageNames: Record<string,string>={skynizz:'Skynizz',y4my:'y4my Multipass','dlss-unlocked':'DLSS-Unlocked',feeder:'Feeder NR','vulkan-native':'Native Vulkan',custom:'Custom package'};
+  const packageName = typeof provider==='string' ? snapshot?.catalog?.find(item=>item.id===provider)?.name || packageNames[provider] || provider : '';
+  const capabilities = saved?.features as {nr?:boolean;mfg?:boolean}|undefined;
+  const available = capabilities?.nr ? (capabilities.mfg?'NR + MFG':'NR only') : capabilities?.mfg ? 'MFG only' : '';
   const compat = saved?.compat as Record<string,unknown> | undefined;
   const nr = saved?.nr_runtime as Record<string,unknown> | undefined;
-  const features = saved?.installed ? String(saved.profile || 'Installed') : saved?.blocked ? 'Unavailable' : String(saved?.profile || 'Not checked');
+  const features = saved?.installed ? String(saved.profile || 'Installed') : saved?.blocked ? 'Unavailable' : available || String(saved?.profile || 'Not checked');
   const facts = [
-    ['Feature package', saved?.installed ? packageName : saved?.installed === false ? 'Not installed' : 'Not checked'],
+    ['Feature package', saved?.installed ? packageName || 'Package not identified' : saved?.installed === false ? (packageName ? 'Available · '+packageName : 'Not installed') : 'Not checked'],
     ['Compatibility', compat?.verdict ? String(compat.verdict)+(compat.source==='list'?' · rtxForge list':' · your result') : 'No compatibility result'],
-    provider==='feeder' && saved?.installed
-      ? ['Neural rendering', [nr?.version ? 'Model '+nr.version : '', typeof saved.nr_enabled==='boolean' ? (saved.nr_enabled?'Enabled in saved settings':'Disabled in saved settings') : 'Saved state unavailable', 'NR only'].filter(Boolean).join(' · ')]
+    saved?.installed && (provider==='feeder'||Boolean(nr?.version))
+      ? ['Neural rendering', [nr?.version ? 'Model '+nr.version : '', typeof saved.nr_enabled==='boolean' ? (saved.nr_enabled?'Enabled in saved settings':'Disabled in saved settings') : 'Saved state unavailable', provider==='feeder'?'NR only':''].filter(Boolean).join(' · ')]
       : ['Features', features+(saved?.dlss_version?' · DLSS '+saved.dlss_version:'')],
   ];
   if(saved?.mfg_enabled===true || saved?.installed && /mfg/i.test(String(saved.profile||saved.feature_mode||''))){

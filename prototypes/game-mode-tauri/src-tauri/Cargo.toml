@@ -15,3 +15,7 @@ tauri-plugin-dialog = "2"
 
 tauri-plugin-single-instance = "2"
 sdl3 = { version = "=0.22.0", features = ["build-from-source-static"] }
+
+# SDL only supplies input; Tauri owns the Linux display and audio dependencies.
+[target.'cfg(target_os = "linux")'.dependencies]
+sdl3-sys = { version = "0.7.2", features = ["no-sdl-video", "no-sdl-render", "no-sdl-gpu", "no-sdl-camera", "no-sdl-audio", "sdl-unix-console-build"] }

@@ -2788,6 +2788,7 @@ name = "rtxforge-game-mode"
 version = "1.0.0"
 dependencies = [
  "sdl3",
+ "sdl3-sys",
  "serde_json",
  "tauri",
  "tauri-build",

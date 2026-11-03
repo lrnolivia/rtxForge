@@ -240,7 +240,19 @@ public sealed partial class GamePage : Page
                     ?? new GameOverview.Fact("Features", g.Installed ? g.Profile ?? "Installed" : "Unavailable", "\uE9E9");
                 if (!g.IsFeeder && !string.IsNullOrWhiteSpace(g.DlssVersion))
                     featureFact = featureFact with { Value = featureFact.Value + "\nDLSS " + g.DlssVersion };
-                var overviewFacts = new List<GameOverview.Fact> { gameFacts[0], compatibility, featureFact };
+                var packageFact = gameFacts[0];
+                var recordedProvider = g.Installed ? g.RuntimeProvider : g.EngineRow?["install_provider"]?.ToString();
+                var recordedPackage = recordedProvider switch
+                {
+                    "skynizz" => "Skynizz", "y4my" => "y4my Multipass", "dlss-unlocked" => "DLSS-Unlocked",
+                    "feeder" => "Feeder NR", "vulkan-native" => "Native Vulkan", "custom" => "Custom package",
+                    _ => null,
+                };
+                if (recordedPackage is not null)
+                    packageFact = packageFact with { Value = g.Installed ? recordedPackage : "Available · " + recordedPackage };
+                else if (g.Installed && !g.AdoptionAvailable)
+                    packageFact = packageFact with { Value = "Package not identified" };
+                var overviewFacts = new List<GameOverview.Fact> { packageFact, compatibility, featureFact };
                 var mfg = g.EngineRow?["mfg_enabled"] is System.Text.Json.Nodes.JsonValue mfgFlag && mfgFlag.TryGetValue<bool>(out var mfgEnabled)
                     ? mfgEnabled : (bool?)null;
                 if (mfg == true || (g.Installed && g.Profile?.Contains("MFG", StringComparison.OrdinalIgnoreCase) == true))

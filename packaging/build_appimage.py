@@ -92,7 +92,7 @@ def stage_payload(root, payload, game_mode_package=None):
             build_sha='unknown'
     (payload/'BUILD_INFO.json').write_text(json.dumps({'version':version,'commit':build_sha},sort_keys=True)+'\n')
     for name in ['gui','scripts','providers']:
-        shutil.copytree(root/name,payload/name,ignore=shutil.ignore_patterns('__pycache__',*(['game_mode*.py'] if name=='gui' else [])))
+        shutil.copytree(root/name,payload/name,ignore=shutil.ignore_patterns('__pycache__'))
     bundle_overlays(root,payload)
     vulkan = root/'windows/out/vulkan-provider'
     if (vulkan/'candidate.json').is_file():

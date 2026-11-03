@@ -13,6 +13,7 @@ inline bool Read(void*,ForgeGlass::Snapshot* out) {
     auto& cfg=*Config::Instance();values=ForgePanel::Values(cfg);fields.clear();for(const auto& [key,value]:values)fields.push_back({key.c_str(),value});if(ForgePanel::mfgAllowed){fields.push_back({"__multiplier_max",float(State::Instance().dlssgMfgMax.value_or(0)+1)});fields.push_back({"__dynamic_supported",State::Instance().dlssgGameDMFGSupported?1.f:0.f});}
     ForgePanel::LiveStats stats;if(ForgePanel::readLiveStats)stats=ForgePanel::readLiveStats();
     fields.push_back({"__runtime_kind",float(runtimeKind)});
+    fields.push_back({"__tuning_pending",ForgePanel::queued.empty()?0.f:1.f});
     unsigned width=0,height=0;if(stats.nrRunning&&readModelDimensions&&readModelDimensions(width,height)&&width>0&&height>0&&width<=32768&&height<=32768){fields.push_back({"__nr_width",float(width)});fields.push_back({"__nr_height",float(height)});}
     auto prefs=ForgePanelChannel::settings;if(!prefs.contains("panel_key")){prefs["panel_key"]=ForgePanel::ShortcutKey();prefs["panel_modifiers"]=ForgePanel::modifiers;prefs["panel_hotkey"]=ForgePanel::ShortcutLabel();}
     static std::string title,accent;title=prefs.value("game_title",ForgePanel::title);char cachedAccent[8]{};std::snprintf(cachedAccent,sizeof(cachedAccent),"#%02X%02X%02X",unsigned(std::clamp(ForgePanel::accent.x,0.f,1.f)*255+.5f),unsigned(std::clamp(ForgePanel::accent.y,0.f,1.f)*255+.5f),unsigned(std::clamp(ForgePanel::accent.z,0.f,1.f)*255+.5f));accent=prefs.value("game_accent",std::string(cachedAccent));

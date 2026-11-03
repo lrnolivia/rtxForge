@@ -5,7 +5,22 @@ namespace RtxForge.Windows.Models;
 /// <summary>Overview facts shared by Desktop and Game Mode, without repeating hero metadata.</summary>
 public static class GameOverview
 {
-    public sealed record Fact(string Title, string Value, string Glyph);
+    public sealed record Fact(string Title, string Value, string Glyph, IReadOnlyList<string>? Pills = null);
+    public static IReadOnlyList<Fact> Cards(JsonNode? value)
+    {
+        if (value is not JsonArray cards) return [];
+        return cards.OfType<JsonObject>().Select(card =>
+        {
+            var title = card["title"]?.ToString() ?? "";
+            var glyph = title switch
+            {
+                "Features" => "\uE7F4", "Compatibility" => "\uE73E",
+                "Neural rendering" => "\uE9E9", "Multi-Frame Generation" => "\uE8A7", _ => "\uE946"
+            };
+            var values = card["values"] is JsonArray tags ? tags.Select(tag => tag?.ToString()).OfType<string>().Where(tag => tag.Length > 0).ToArray() : [];
+            return new Fact(title, string.Join(" · ", values), glyph, values);
+        }).ToArray();
+    }
     public const string AdoptionNote = "This package is installed. Adopt its current setup or back it up and clean install from rtxForge.";
     public const string OfflineNote = "Anti-cheat detected. Features are supported only in the game’s offline mode. Restore original files before online play. A Launch offline action is offered only for a reviewed game-specific launcher; otherwise use the game’s own offline mode.";
     public const string TryAnywayNote = "rtxForge hasn't verified this game with this package, so the features may not engage. Installs are still reviewed first, and Restore puts the original files back.";

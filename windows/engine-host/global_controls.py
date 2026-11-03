@@ -262,4 +262,11 @@ def execute(review):
         session.status = 'complete'; session.save()
         import operation_session
         operation_session.LIVE.discard(str(session.root))
-    return {'message': f'Updated {len(plans)} games. Other settings were preserved.', 'errors': []}
+    errors = []
+    if review.get('record_overlay_updates'):
+        try:
+            import overlay_status
+            overlay_status.record_updates(e.STATE_ROOT, plans)
+        except (OSError, ValueError) as error:
+            errors.append('Overlays updated, but the update date could not be saved: ' + str(error))
+    return {'message': f'Updated {len(plans)} games. Other settings were preserved.', 'errors': errors}

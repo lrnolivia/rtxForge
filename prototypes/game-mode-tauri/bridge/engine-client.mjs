@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 
-export const allowedMethods = new Set(['hello', 'hardware', 'scan', 'prepare', 'execute', 'cancel', 'discard_operation', 'prepare_dlss', 'update_dlss', 'packages', 'extras_list', 'extra_review', 'extra_restore_review', 'run', 'discard', 'steam_status', 'steam_review', 'steam_install', 'steam_remove', 'recoveries', 'recovery_review', 'diagnose', 'dlss_inventory', 'dlss_restore_review']);
+export const allowedMethods = new Set(['hello', 'hardware', 'scan', 'prepare', 'execute', 'cancel', 'discard_operation', 'prepare_dlss', 'update_dlss', 'packages', 'overview_inspect', 'extras_list', 'extra_review', 'extra_restore_review', 'run', 'discard', 'steam_status', 'steam_review', 'steam_install', 'steam_remove', 'recoveries', 'recovery_review', 'diagnose', 'dlss_inventory', 'dlss_restore_review']);
 ['launch_game', 'settings_get', 'settings_review', 'notes_save'].forEach(method => allowedMethods.add(method));
 ['package_inspect', 'package_use'].forEach(method => allowedMethods.add(method));
 allowedMethods.add('scan_game');
@@ -16,6 +16,7 @@ allowedMethods.add('executable_review');
 ['prepare_routes', 'execute_routes', 'cancel_routes', 'discard_routes'].forEach(method => allowedMethods.add(method));
 allowedMethods.add('cleanup_review');
 allowedMethods.add('open_game_folder');
+allowedMethods.add('overlay_status');
 const root = path.dirname(fileURLToPath(import.meta.url));
 export class EngineClient extends EventEmitter {
   child;

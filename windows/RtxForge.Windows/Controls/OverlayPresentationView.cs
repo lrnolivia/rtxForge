@@ -47,8 +47,7 @@ sealed class OverlayPresentationView : Grid
         ColumnDefinitions.Add(new()); ColumnDefinitions.Add(new() { Width = new GridLength(440) });
         RowDefinitions.Add(new() { Height = GridLength.Auto }); RowDefinitions.Add(new() { Height = GridLength.Auto });
         Children.Add(options);
-        Grid? previewSection = null;
-        if (engine is not null)
+        Grid previewSection;
         {
             preview = new(engine, App.Main?.Games ?? [], game, path);
             previewSection = new() { RowSpacing = 12 };
@@ -60,10 +59,10 @@ sealed class OverlayPresentationView : Grid
         }
         SizeChanged += (_, e) =>
         {
-            var wide = e.NewSize.Width >= 820 && engine is not null;
+            var wide = e.NewSize.Width >= 820;
             ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
             ColumnDefinitions[1].Width = wide ? new GridLength(440) : new GridLength(0);
-            if (previewSection is not null) { Grid.SetColumn(previewSection, wide ? 1 : 0); Grid.SetRow(previewSection, wide ? 0 : 1); }
+            Grid.SetColumn(previewSection, wide ? 1 : 0); Grid.SetRow(previewSection, wide ? 0 : 1);
         };
         void SideVisibility() { sideRow.Visibility = layout.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed; barRow.Visibility = layout.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed; }
         void Change(Action action) { edit(()=>{if(game is not null)GlassAppearance.GameFilePath(game,refresh:true);action();}); preview?.RefreshAppearance(); }

@@ -1,12 +1,39 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{path::PathBuf, process::Command};
+use std::{path::PathBuf, process::{Command, Stdio}, io::Write};
 use tauri_plugin_dialog::DialogExt;
 use tauri::{Manager, Emitter};
 use std::sync::atomic::Ordering;
 mod engine;
 mod runtime;
 mod desktop_parent;
+mod controller;
+
+fn appearance_command(app: tauri::AppHandle, value: Option<serde_json::Value>) -> Result<serde_json::Value,String> {
+    let root=runtime::root(&app)?;
+    let mut command=runtime::python_command(&app)?;
+    command.arg("-B").arg(runtime::bridge(&app,"appearance.py")?).arg("--root").arg(root).arg(if value.is_some(){"write"}else{"read"});
+    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
+    let bytes=value.map(|value|serde_json::to_vec(&value)).transpose().map_err(|_|"Invalid appearance data.")?;
+    if bytes.as_ref().is_some_and(|bytes|bytes.len()>2_000_000){return Err("The appearance file is too large.".into());}
+    let mut child=command.spawn().map_err(|_|"Appearance storage could not be opened.")?;
+    if let Some(mut input)=child.stdin.take(){if let Some(bytes)=bytes {input.write_all(&bytes).map_err(|_|"Appearance could not be saved.")?;}}
+    let output=child.wait_with_output().map_err(|_|"Appearance storage stopped unexpectedly.")?;
+    if !output.status.success(){return Err("Appearance could not be saved. Your current session preferences are retained.".into());}
+    if output.stdout.len()>2_000_000{return Err("Appearance storage exceeded its limit.".into());}
+    serde_json::from_slice(&output.stdout).map_err(|_|"Appearance storage returned invalid data.".into())
+}
+
+#[tauri::command]
+async fn appearance_read(app:tauri::AppHandle)->Result<serde_json::Value,String>{
+    tauri::async_runtime::spawn_blocking(move||appearance_command(app,None)).await.map_err(|_|"Appearance reader stopped.".to_string())?
+}
+
+#[tauri::command]
+async fn appearance_write(app:tauri::AppHandle,value:serde_json::Value)->Result<serde_json::Value,String>{
+    tauri::async_runtime::spawn_blocking(move||appearance_command(app,Some(value))).await.map_err(|_|"Appearance writer stopped.".to_string())?
+}
 
 #[tauri::command]
 fn exit_app(app: tauri::AppHandle) { close_safely(&app); }
@@ -86,6 +113,7 @@ async fn choose_path(app: tauri::AppHandle, kind: String) -> Result<Option<Strin
         let selected = match kind.as_str() {
             "folder" => dialog.blocking_pick_folder(),
             "package" => dialog.add_filter("Package archive", &["zip", "7z"]).blocking_pick_file(),
+            "renodx-addon" => dialog.add_filter("RenoDX add-on", &["addon32", "addon64"]).blocking_pick_file(),
             "addon" => dialog.add_filter("ReShade add-on", &["addon64"]).blocking_pick_file(),
             "executable" => dialog.add_filter("Game executable", &["exe"]).blocking_pick_file(),
             "image" => dialog.add_filter("Artwork image", &["png", "jpg", "jpeg"]).blocking_pick_file(),
@@ -156,6 +184,7 @@ fn main() {
             if let Some(window) = app.get_webview_window("main") { let _ = window.show(); let _ = window.unminimize(); let _ = window.set_focus(); }
         }))
         .manage(desktop_parent::DesktopParent(std::sync::Mutex::new(desktop_parent::from_args(&args))))
+        .manage(controller::ControllerState::default())
         .setup(move |app| {
             if args.iter().any(|arg|arg=="--desktop-mode") {
                 close_safely(app.handle());
@@ -174,11 +203,14 @@ fn main() {
             }
             Ok(())
         })
-        .plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![snapshot, artwork, store_background, store_screenshots, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
+        .plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![controller::start_native_controller, appearance_read, appearance_write, snapshot, artwork, store_background, store_screenshots, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
         .build(tauri::generate_context!()).expect("Could not build Game Mode")
         .run(|app, event| match event {
             tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::CloseRequested { api, .. }, .. } => {
                 api.prevent_close(); close_safely(app);
+            },
+            tauri::RunEvent::WindowEvent { label, event: tauri::WindowEvent::Focused(focused), .. } if label == "main" => {
+                app.state::<controller::ControllerState>().focus(focused);
             },
             tauri::RunEvent::ExitRequested { api, .. } => {
                 if !app.state::<engine::EngineState>().drained.load(Ordering::SeqCst) {

@@ -17,11 +17,6 @@ bool visible = false, backend = false, neuralRendering = true;
 LARGE_INTEGER frequency {}, last {};
 ForgePanel::LiveStats statistics;
 double measuredSeconds{}; unsigned measuredPresents{};
-// RenoDX loads tuning at launch; say so in the panel's own message line.
-constexpr const char *NextLaunch = "Saved. Model changes apply the next time the game starts. Neural rendering switches now.";
-const char *const Keys[] = {"NRIntensity", "NRPasses", "NRResolutionScale", "NRPreset", "NRStyle", "NRLocalStructure"};
-float launch[std::size(Keys)] {};
-
 void feed_keys(ImGuiIO &io)
 {
     static const std::pair<int, ImGuiKey> keys[] = {
@@ -69,16 +64,6 @@ void seed_shortcut_name()
     }
     catch (...) {}
 }
-
-void next_launch_message()
-{
-    if (!neuralRendering) return;
-    bool pending = false;
-    for (size_t i = 0; i < std::size(Keys); ++i) pending |= std::fabs(host.get(Keys[i], launch[i]) - launch[i]) > 0.001f;
-    auto &message = ForgePanelChannel::message;
-    if (pending && message.empty()) message = NextLaunch;
-    else if (!pending && message == NextLaunch) message.clear();
-}
 }
 
 bool Init(ID3D11Device *game, HWND window, bool nr)
@@ -98,7 +83,6 @@ bool Init(ID3D11Device *game, HWND window, bool nr)
     ForgePanel::nrAllowed = neuralRendering;
     ForgePanel::liveTuning = false;
     ForgePanel::mfgAllowed = false;
-    for (size_t i = 0; i < std::size(Keys); ++i) launch[i] = host.get(Keys[i], 0);
     seed_shortcut_name();
     ForgeGlassPanel::logSink=host.log;
     ForgeGlassPanel::runtimeKind=neuralRendering?2:3;
@@ -143,28 +127,18 @@ bool Draw(const Frame &frame)
 
     ImGui_ImplDX11_NewFrame();
     ImGui::NewFrame();
-    next_launch_message();
-    if(ForgeGlassPanel::loader.Ready()) {
-        next_launch_message();
-        if(ForgePanelChannel::needsHello&&!ForgePanelChannel::pending&&ForgePanelChannel::Send({{"op","hello"}}))ForgePanelChannel::needsHello=false;
-        const bool drawn=ForgeGlassPanel::Draw(device,frame.target,visible);
-        if(drawn){
-            ImGui::Render();ID3D11RenderTargetView* previous=nullptr;ID3D11DepthStencilView* depth=nullptr;immediate->OMGetRenderTargets(1,&previous,&depth);immediate->OMSetRenderTargets(1,&frame.target,nullptr);ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());immediate->OMSetRenderTargets(1,&previous,depth);if(previous)previous->Release();if(depth)depth->Release();return visible;
-        }
-        ImGui::EndFrame();ImGui::NewFrame();
+    bool drawn = false;
+    if (ForgeGlassPanel::loader.Ready()) {
+        if (ForgePanelChannel::needsHello && !ForgePanelChannel::pending
+            && ForgePanelChannel::Send({{"op","hello"}}))
+            ForgePanelChannel::needsHello = false;
+        drawn = ForgeGlassPanel::Draw(device, frame.target, visible);
     }
-    ForgePanel::Welcome(visible);
-    ForgePanel::Draw(visible, frame.height / 1080.0f);
-    ImGui::Render();
-
-    ID3D11RenderTargetView *previous = nullptr;
-    ID3D11DepthStencilView *depth = nullptr;
-    immediate->OMGetRenderTargets(1, &previous, &depth);
-    immediate->OMSetRenderTargets(1, &frame.target, nullptr);
-    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-    immediate->OMSetRenderTargets(1, &previous, depth);
-    if (previous) previous->Release();
-    if (depth) depth->Release();
+    ImGui::EndFrame();
+    if (!drawn) {
+        visible = false;
+        ForgePanelChannel::Visible(false);
+    }
     return visible;
 }
 

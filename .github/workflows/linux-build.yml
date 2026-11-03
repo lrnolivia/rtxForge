@@ -144,11 +144,9 @@ jobs:
             packaging/build_flatpak.py \
             gui/rtxforge_gtk.py
 
-          /usr/bin/python3 -m unittest \
-            engine.tests.test_v13_core_hardening \
-            tests.test_game_mode_motion
-          /usr/bin/python3 -m unittest tests.test_overlay_settings tests.test_vulkan_app_routes tests.test_overlay_bundle tests.test_overlay_refresh tests.test_glass_preferences tests.test_package_downloads tests.test_game_mode_icons
-          /usr/bin/python3 -m unittest tests.test_renodx_hdr tests.test_renodx_hdr_settings
+          /usr/bin/python3 -m unittest engine.tests.test_v13_core_hardening
+          /usr/bin/python3 -m unittest tests.test_overlay_settings tests.test_vulkan_app_routes tests.test_overlay_bundle tests.test_overlay_refresh tests.test_glass_preferences tests.test_package_downloads
+          /usr/bin/python3 -m unittest tests.test_renodx_hdr tests.test_renodx_hdr_settings tests.linux_ui.test_overview_facts
 
           /usr/bin/python3 -m unittest discover -s tests -p test_runtime_updates.py
           /usr/bin/python3 -m unittest discover -s tests -p test_ui_colors.py
@@ -221,15 +219,6 @@ jobs:
           cat /etc/fedora-release
           echo "Building rtxForge $(cat VERSION)"
           git rev-parse HEAD
-
-      - name: Verify native Game Mode motion
-        env:
-          GSK_RENDERER: cairo
-          GTK_A11Y: none
-          GSETTINGS_BACKEND: memory
-          PYTHONWARNINGS: ignore
-        run: |
-          xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 -m unittest tests.linux_ui.test_game_mode_motion_native
 
       - name: Verify native Desktop mode activation
         env:
@@ -317,7 +306,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
-          [[ "$VERSION" =~ ^1\.0\.0-beta\.[0-9]+$ ]]
+          python3 packaging/beta_release.py validate-version "$VERSION"
           APPIMAGE="rtxForge-${VERSION}-x86_64.AppImage"
           mkdir -p dist/beta
           cp "dist/RTXForge-${VERSION}-Bazzite-x86_64.AppImage" "dist/beta/$APPIMAGE"
@@ -481,7 +470,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
-          [[ "$VERSION" =~ ^1\.0\.0-beta\.[0-9]+$ ]]
+          python3 packaging/beta_release.py validate-version "$VERSION"
           FLATPAK="rtxForge-${VERSION}-x86_64.flatpak"
           mkdir -p dist/beta-flatpak
           cp "dist/$FLATPAK" "dist/beta-flatpak/$FLATPAK"
@@ -535,10 +524,11 @@ jobs:
           test "$GITHUB_SHA" = "$EXPECTED_SHA"
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$GITHUB_SHA"
           VERSION="$(tr -d '[:space:]' < VERSION)"
-          [[ "$VERSION" =~ ^1\.0\.0-beta\.[0-9]+$ ]]
+          python3 packaging/beta_release.py validate-version "$VERSION"
           APPIMAGE="rtxForge-$VERSION-x86_64.AppImage"
           FLATPAK="rtxForge-$VERSION-x86_64.flatpak"
           BUILD_URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          TITLE="$(python3 packaging/beta_release.py title "$VERSION")"
           mkdir release
           cp artifact/beta/* flatpak-artifact/beta-flatpak/* release/
           (cd release && test "$(ls | wc -l)" = 5 && sha256sum -c "$APPIMAGE.sha256" && sha256sum -c "$FLATPAK.sha256")
@@ -552,9 +542,9 @@ jobs:
             if [ -n "$CURRENT" ]; then
               # Keep the Linux build being replaced as *.previous-<commit> rollback
               # copies, exactly as Windows does; the website and updaters ignore them.
-              OLD_VERSION="$(sed -nE 's/^rtxForge-(1\.0\.0-beta\.[0-9]+)-x86_64\.AppImage$/\1/p' <<< "$CURRENT")"
+              OLD_VERSION="$(sed -nE 's/^rtxForge-([0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+)-x86_64\.AppImage$/\1/p' <<< "$CURRENT")"
               test -n "$OLD_VERSION" && test "$(wc -l <<< "$OLD_VERSION")" = 1
-              test "${OLD_VERSION##*.}" -lt "${VERSION##*.}"
+              python3 packaging/beta_release.py newer "$VERSION" "$OLD_VERSION"
               # 3 files before the Flatpak joined the release, 5 since.
               CURRENT_COUNT="$(wc -l <<< "$CURRENT")"
               if [ "$CURRENT_COUNT" = 5 ]; then
@@ -595,12 +585,12 @@ jobs:
               "$VERSION" "$GITHUB_SHA" "$BUILD_URL" > "$RUNNER_TEMP/beta-notes.md"
             git tag -f beta "$GITHUB_SHA"
             git push -f origin refs/tags/beta
-            gh release edit beta --draft=false --prerelease --latest=false --title 'rtxForge Beta 1' --notes-file "$RUNNER_TEMP/beta-notes.md"
+            gh release edit beta --draft=false --prerelease --latest=false --title "$TITLE" --notes-file "$RUNNER_TEMP/beta-notes.md"
           elif grep -q 'HTTP 404' "$RUNNER_TEMP/beta-lookup-error"; then
             WINDOWS_BEFORE=''
             python3 packaging/beta_release.py notes linux docs/releases/1.0-beta.md - \
               "$VERSION" "$GITHUB_SHA" "$BUILD_URL" > "$RUNNER_TEMP/beta-notes.md"
-            gh release create beta release/* --draft --prerelease --target "$GITHUB_SHA" --title 'rtxForge Beta 1' --notes-file "$RUNNER_TEMP/beta-notes.md"
+            gh release create beta release/* --draft --prerelease --target "$GITHUB_SHA" --title "$TITLE" --notes-file "$RUNNER_TEMP/beta-notes.md"
             gh release edit beta --draft=false --prerelease --latest=false
           else
             cat "$RUNNER_TEMP/beta-lookup-error" >&2

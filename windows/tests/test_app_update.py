@@ -28,6 +28,17 @@ exec(compile(ast.Module(body=nodes, type_ignores=[]), 'win_features.py', 'exec')
 
 
 class WindowsBetaUpdateTests(unittest.TestCase):
+    def test_new_series_updates_from_beta16_and_ignores_rollback(self):
+        release = self.release(version='1.5.0-beta.1')
+        rollback = self.release(version='1.0.0-beta.16')['assets']
+        for asset in rollback:
+            asset['name'] += '.previous-55f2d8b54e15'
+        release['assets'] += rollback
+        result = self.check([release], current='1.0.0-beta.16')
+        self.assertIn('rtxForge-Setup-1.5.0-beta.1-x64.exe', str(result))
+        self.assertNotIn('.previous-', str(result))
+        self.assertIn('up to date', str(self.check([self.release(version='1.0.0-beta.17')], current='1.5.0-beta.1')))
+
     def release(self, tag='beta', version='1.0.0-beta.2', draft=False):
         name = f'rtxForge-Setup-{version}-x64.exe'
         return {'tag_name': tag, 'draft': draft, 'published_at': '2026-10-27T00:00:00Z', 'assets': [

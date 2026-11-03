@@ -9,7 +9,7 @@ Both are manual `workflow_dispatch` runs on `main`, with the exact reviewed comm
 - Windows: `windows-build.yml` with `publish_beta` and `expected_sha`.
 - Linux: `linux-build.yml` with `publish_beta` and `expected_sha`. `publish_preview` (the continuous channel) cannot be used in the same run.
 
-A run stops before building if it is not on `main` or `expected_sha` is not the commit being built. It checks again before uploading, in case `main` moved during the build. `VERSION` must be `1.0.0-beta.N`. N must be higher than the version that OS currently has in the release.
+A run stops before building if it is not on `main` or `expected_sha` is not the commit being built. It checks again before uploading, in case `main` moved during the build. `VERSION` must be `major.minor.patch-beta.N` and newer than that OS's current release using the full numeric version. For example, `1.5.0-beta.1` follows `1.0.0-beta.16`; lowering only the Beta number when the core version increases is valid. The public title follows the version, such as **rtxForge 1.5 Beta 1**.
 
 ## What each OS owns
 

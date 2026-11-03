@@ -228,15 +228,59 @@ public sealed partial class GamePage : Page
                         Title = "Installed on Linux",
                         Message = GameOverview.LinuxNote,
                     });
-                var overviewFacts = GameOverview.Facts(g);
-                var facts = new PresetColumns(280, overviewFacts.Count > 3 ? 4 : 3) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
-                foreach (var fact in overviewFacts)
+                static PresetColumns OverviewGrid(IReadOnlyList<GameOverview.Fact> cards)
                 {
-                    var card = Prefs.Row(fact.Title, fact.Value, glyph: fact.Glyph);
-                    card.VerticalAlignment = VerticalAlignment.Top;
-                    facts.Children.Add(card);
+                    var grid = new PresetColumns(240, cards.Count) { ColumnSpacing = 12, RowSpacing = 12, Margin = new Thickness(0, 20, 0, 0) };
+                    foreach (var fact in cards)
+                    {
+                        var content = new StackPanel { Spacing = 10 };
+                        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                        title.Children.Add(new FontIcon { Glyph = fact.Glyph, FontSize = 16, VerticalAlignment = VerticalAlignment.Center });
+                        title.Children.Add(new TextBlock { Text = fact.Title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                        content.Children.Add(title);
+                        var pills = new WrapRow { Spacing = 6, LineSpacing = 5 };
+                        foreach (var value in fact.Pills ?? [fact.Value])
+                            pills.Children.Add(new Border
+                            {
+                                Child = Prefs.Label(value, "ForgeCaptionDimTextStyle"),
+                                Padding = new Thickness(6, 3, 6, 3), CornerRadius = new CornerRadius(5),
+                                Background = (Brush)Application.Current.Resources["ControlAltFillColorSecondaryBrush"],
+                            });
+                        content.Children.Add(pills);
+                        grid.Children.Add(new Border
+                        {
+                            Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Padding = new Thickness(14), Child = content
+                        });
+                    }
+                    return grid;
                 }
+                var cachedFacts = GameOverview.Cards(g.EngineRow?["overview_cards"]);
+                var facts = OverviewGrid(cachedFacts.Count > 0 ? cachedFacts : GameOverview.Facts(g));
                 PageHost.Children.Add(facts);
+                var overviewExtras = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0) };
+                PageHost.Children.Add(overviewExtras);
+                if (shell.Service is Services.EngineForgeService engine && g.EngineRow is not null)
+                    _ = RefreshOverviewAsync(engine);
+                async Task RefreshOverviewAsync(Services.EngineForgeService engine)
+                {
+                    try
+                    {
+                        var inspected = await engine.InspectOverviewAsync(g);
+                        var index = PageHost.Children.IndexOf(facts);
+                        if (index < 0) return;
+                        if (inspected.Cards.Count > 0)
+                        {
+                            PageHost.Children.RemoveAt(index);
+                            PageHost.Children.Insert(index, OverviewGrid(inspected.Cards));
+                        }
+                        if (inspected.Extras.Length > 0)
+                        {
+                            overviewExtras.Children.Add(Prefs.Row("Extras", string.Join(" · ", inspected.Extras), glyph: "\uE90F"));
+                            overviewExtras.Visibility = Visibility.Visible;
+                        }
+                    }
+                    catch (Exception error) { Debug.WriteLine(error.Message); }
+                }
                 var openFolder = Prefs.ActionButton("Open folder", (_, _) => _ = shell.OpenGameFolderAsync(g));
                 openFolder.IsEnabled = !shell.Service.IsPreview && Directory.Exists(g.Location);
                 var folder = Prefs.Row("Game folder", g.Location, openFolder, "\uE838");
@@ -314,7 +358,7 @@ public sealed partial class GamePage : Page
 
             case "DLSS Files":
                 var files = new PreferencesGroup("Installed DLSS Files");
-                files.Add(Prefs.Row("nvngx_dlss.dll", g.DlssVersion is null ? "Not detected" : "Version " + g.DlssVersion, glyph: ""));
+
                 var manage = new PreferencesGroup("File Management");
                 var fileActions = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
                 var update = Prefs.ActionButton("Update", (_, _) => _ = shell.LaunchAction("update-dlss", [g]));
@@ -344,30 +388,30 @@ public sealed partial class GamePage : Page
                 }), ""));
                 tools.Add(locationTools);
                 PageHost.Children.Add(tools);
-                var hdr = new PreferencesGroup("RenoDX HDR", "The matching HDR mod and its dependencies, managed together.");
-                var hdrInstall = Prefs.ActionButton("Install HDR", async (_, _) => { await shell.ChangeHdrAsync(g); Build("Tools"); });
-                var hdrRemove = Prefs.ActionButton("Remove HDR", async (_, _) => { await shell.ChangeHdrAsync(g, true); Build("Tools"); });
+                var reshade = new PreferencesGroup("ReShade & add-ons", "Manage the ReShade runtime, presets, filters and add-ons for this game.");
+                var hdrInstall = Prefs.ActionButton("Install RenoDX", async (_, _) => { await shell.ChangeHdrAsync(g); Build("Tools"); });
+                var hdrRemove = Prefs.ActionButton("Remove RenoDX", async (_, _) => { await shell.ChangeHdrAsync(g, true); Build("Tools"); });
                 hdrInstall.IsEnabled = false;
                 hdrRemove.Visibility = Visibility.Collapsed;
                 var hdrActions = new WrapRow { Spacing = 8, LineSpacing = 8 };
                 hdrActions.Children.Add(hdrInstall); hdrActions.Children.Add(hdrRemove);
-                var hdrStatus = Prefs.Row("HDR enhancement", "Checking HDR support…", hdrActions, "");
-                hdr.Add(hdrStatus);
+                var hdrStatus = Prefs.Row("RenoDX add-on", "Checking for a matching add-on…", hdrActions, "");
+                reshade.Add(hdrStatus);
                 var customHdr = Prefs.ActionButton("Use custom package…", async (_, _) => { await shell.ChooseCustomHdrAsync(g); Build("Tools"); });
                 customHdr.IsEnabled = !shell.Service.IsPreview && !shell.Busy;
-                hdr.Add(Prefs.Row("Custom HDR package", "Choose a RenoDX .addon64 or .addon32 file for this game. Its architecture and exact files are checked before installation; automatic updates keep your custom choice.", customHdr, "\uE8B7"));
-                PageHost.Children.Add(hdr);
+                reshade.Add(Prefs.Row("Custom RenoDX add-on", "Choose a RenoDX .addon64 or .addon32 file for this game. Its architecture and exact files are checked before installation; automatic updates keep your custom choice.", customHdr, "\uE8B7"));
+                PageHost.Children.Add(reshade);
                 _ = FillHdrAsync(g, hdrStatus, hdrInstall, hdrRemove);
                 // populate_tools: NR diagnosis and ReShade / add-ons, each reviewed before it touches the game.
-                var extras = new PreferencesGroup("Graphics Tools", "Check NR or add ReShade to this game. Existing graphics files are kept safe.");
+
                 var graphicsTools = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };
-                graphicsTools.Children.Add(DetailActionCard("Diagnose NR", "Read the saved NR settings, runtime hashes and log evidence.",
+                tools.Add(DetailActionCard("Diagnose NR", "Read the saved NR settings, runtime hashes and log evidence.",
                     Prefs.ActionButton("Diagnose", async (_, _) => await shell.DiagnoseAsync(g)), ""));
                 foreach (var (kind, title, subtitle) in new[]
                 {
                     ("reshade", "Install ReShade", "Download and install the official ReShade runtime for this game."),
                     ("reshade-import", "Import ReShade package", "Add a ZIP, custom runtime, add-on, shader or preset INI to this game. Review the exact files before importing."),
-                    ("addon", "Install Add-on", "Choose another .addon64 file. RenoDX HDR is managed above."),
+                    ("addon", "Install Add-on", "Choose a ReShade .addon64 file."),
                 })
                 {
                     var install = Prefs.ActionButton(kind == "reshade" ? "Install" : "Choose…", async (_, _) => await shell.InstallExtraAsync(g, kind));
@@ -376,8 +420,7 @@ public sealed partial class GamePage : Page
                 }
                 graphicsTools.Children.Add(DetailActionCard("ReShade Downloads", "Get ReShade from its official site.",
                     Prefs.ActionButton("Open", (_, _) => MainWindow.OpenUri("https://reshade.me/")), ""));
-                extras.Add(graphicsTools);
-                PageHost.Children.Add(extras);
+                reshade.Add(graphicsTools);
                 var trustNote = Prefs.Label("Use an extracted x64 ReShade DLL or .addon64 file from a source you trust. Shader packs and presets remain yours to manage.", "ForgeCaptionDimTextStyle");
                 trustNote.Margin = new Thickness(0, 12, 0, 0);
                 PageHost.Children.Add(trustNote);
@@ -447,8 +490,35 @@ public sealed partial class GamePage : Page
         catch (InvalidOperationException error) { SetSubtitle(backupRow, error.Message); return; }
         if (g != game || section != "DLSS Files") return;
         if (inventory.Blocked.Length > 0) files.Add(Prefs.Row("File management unavailable", inventory.Blocked, glyph: ""));
-        foreach (var file in inventory.Files)
-            files.Add(Prefs.Row(file.Title, $"{file.Path} · {file.Current} · {file.Provenance}", glyph: ""));
+        var fileCards = new PresetColumns(240, 4) { ColumnSpacing = 12, RowSpacing = 12 };
+        foreach (var component in inventory.Files.GroupBy(file => file.Title))
+        {
+            var body = new StackPanel { Spacing = 10 };
+            body.Children.Add(new TextBlock { Text = component.Key, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            foreach (var file in component.DistinctBy(file => (Path.GetFileName(file.Path), file.Current)))
+            {
+                var copy = new Grid { ColumnSpacing = 8 };
+                copy.ColumnDefinitions.Add(new());
+                copy.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+                copy.Children.Add(new TextBlock { Text = Path.GetFileName(file.Path), TextWrapping = TextWrapping.Wrap });
+                var version = new Border
+                {
+                    Child = Prefs.Label(file.Current == "Unknown" ? "Version unavailable" : file.Current, "ForgeCaptionDimTextStyle"),
+                    CornerRadius = new CornerRadius(5), Padding = new Thickness(6, 3, 6, 3),
+                    Background = (Brush)Application.Current.Resources["ControlAltFillColorSecondaryBrush"],
+                    VerticalAlignment = VerticalAlignment.Top,
+                };
+                Grid.SetColumn(version, 1);
+                copy.Children.Add(version);
+                body.Children.Add(copy);
+            }
+            fileCards.Children.Add(new Border
+            {
+                Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Padding = new Thickness(16), Child = body
+            });
+        }
+        if (fileCards.Children.Count > 0) files.Add(fileCards);
+        else if (inventory.Blocked.Length == 0) files.Add(Prefs.Row("No DLSS DLLs found", "No supported files were detected.", glyph: "\uE7C3"));
         SetSubtitle(backupRow, inventory.LatestBackup is { } date ? "Latest backup " + date : "No DLSS file backups for this game.");
         restore.IsEnabled = inventory.LatestBackup is not null && !shell.Busy;
     }

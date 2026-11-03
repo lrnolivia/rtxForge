@@ -12,7 +12,7 @@ namespace RtxForge.Windows.Controls;
 /// <summary>Instant layout illustration; the real renderer opens only on click.</summary>
 sealed class OverlayPreviewView : StackPanel
 {
-    readonly EngineForgeService engine;
+    readonly EngineForgeService? engine;
     readonly AutoSuggestBox search = new() { PlaceholderText = "Find a game…", DisplayMemberPath = "Name", HorizontalAlignment=HorizontalAlignment.Stretch, QueryIcon = new SymbolIcon(Symbol.Find) };
     readonly Canvas scene = new() { Width = 960, Height = 540, IsHitTestVisible = false };
     readonly Canvas diagram = new() { Width = 960, Height = 540, IsHitTestVisible = false };
@@ -33,27 +33,37 @@ sealed class OverlayPreviewView : StackPanel
     string stamp = "";
     bool active;
 
-    public OverlayPreviewView(EngineForgeService engine, IReadOnlyList<Game> library, Game? initialGame = null, string? preferencesPath = null)
+    public OverlayPreviewView(EngineForgeService? engine, IReadOnlyList<Game> library, Game? initialGame = null, string? preferencesPath = null)
     {
         this.preferencesPath=preferencesPath;this.engine=engine; games=library; Spacing=12; MaxWidth=440; HorizontalAlignment=HorizontalAlignment.Stretch;VerticalAlignment=VerticalAlignment.Center;
         // Frame the unobstructed right side of the existing gameplay photograph.
         // This small illustration has no telemetry, live controls or GPU renderer.
         scene.Clip=new RectangleGeometry { Rect=new global::Windows.Foundation.Rect(0,0,960,540) };
         scene.Children.Add(image);scene.Children.Add(diagram);
-        frame=new Button { Content=new Viewbox { Child=scene,Stretch=Stretch.Uniform }, Padding=new Thickness(0),
+        frame=new Button { Padding=new Thickness(0),
             HorizontalAlignment=HorizontalAlignment.Stretch,HorizontalContentAlignment=HorizontalAlignment.Stretch,CornerRadius=new CornerRadius(12) };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(frame,"Open full overlay preview");
-        ToolTipService.SetToolTip(frame,"Open full preview");Children.Add(frame);Children.Add(search);
+        if (engine is null)
+            Children.Add(new Viewbox { Child = scene, Stretch = Stretch.Uniform });
+        else
+        {
+            frame.Content = new Viewbox { Child = scene, Stretch = Stretch.Uniform };
+            ToolTipService.SetToolTip(frame, "Open full preview");
+            Children.Add(frame);
+        }
+        Children.Add(search);
         var openContent=new StackPanel { Orientation=Orientation.Horizontal,Spacing=8,HorizontalAlignment=HorizontalAlignment.Center };
         openContent.Children.Add(new SymbolIcon(Symbol.FullScreen));openContent.Children.Add(new TextBlock {Text="Open full preview"});
         var open=new Button {Content=openContent,HorizontalAlignment=HorizontalAlignment.Stretch,HorizontalContentAlignment=HorizontalAlignment.Center};
         Children.Add(open);Children.Add(status);
+        frame.IsEnabled = engine is not null;
+        open.Visibility = status.Visibility = engine is null ? Visibility.Collapsed : Visibility.Visible;
         search.Text=selected.Name;SetPhoto(shot);Draw();
         search.TextChanged+=(_,e)=>{if(e.Reason==AutoSuggestionBoxTextChangeReason.UserInput)search.ItemsSource=Matches().Take(30).ToArray();};
         search.GotFocus+=(_,_)=>search.ItemsSource=Matches().Take(30).ToArray();
         search.SuggestionChosen+=async(_,e)=>{if(e.SelectedItem is Game game)await ChooseAsync(game);};
         search.QuerySubmitted+=async(_,e)=>{if(e.ChosenSuggestion is not Game && Matches().FirstOrDefault() is { } game)await ChooseAsync(game);};
-        async Task OpenAsync(){try{OverlayPreview.Close(fullPreview);fullPreview=await OverlayPreview.StartAsync(engine.EngineRoot,selected,shot,games,sceneAccent,preferencesPath);}catch(Exception error)when(error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception){status.Text=error.Message;}}
+        async Task OpenAsync(){if(engine is null)return;try{OverlayPreview.Close(fullPreview);fullPreview=await OverlayPreview.StartAsync(engine.EngineRoot,selected,shot,games,sceneAccent,preferencesPath);}catch(Exception error)when(error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception){status.Text=error.Message;}}
         frame.Click+=async(_,_)=>await OpenAsync();open.Click+=async(_,_)=>await OpenAsync();
         frame.RegisterPropertyChangedCallback(Control.IsEnabledProperty,(_,_)=>open.IsEnabled=frame.IsEnabled);
         timer=DispatcherQueue.CreateTimer();timer.Interval=TimeSpan.FromMilliseconds(400);
@@ -137,17 +147,29 @@ sealed class OverlayThemePicker : UserControl
 {
     public int SelectedIndex {get;private set;}
     public event EventHandler? SelectionChanged;
-    public OverlayThemePicker(string theme)
+    public OverlayThemePicker(string theme, string title = "Surface", string[]? keys = null, string[]? labels = null)
     {
-        var root=new StackPanel {Spacing=8};root.Children.Add(new TextBlock {Text="Surface"});
+        var root=new StackPanel {Spacing=8};root.Children.Add(new TextBlock {Text=title});
         var choices=new Grid {ColumnSpacing=8};var group="overlay-theme-"+Guid.NewGuid();
-        string[] keys=["light","clear","dark"];string[] labels=["Light","Clear","Dark"];
-        Color[] colors=[Color.FromArgb(255,234,234,234),Color.FromArgb(65,225,225,225),Color.FromArgb(255,48,48,48)];
+        keys ??= ["light","clear","dark"]; labels ??= ["Light","Clear","Dark"];
+
         SelectedIndex=Math.Max(0,Array.IndexOf(keys,theme));
-        for(var i=0;i<3;i++){
+        for(var i=0;i<keys.Length;i++){
             choices.ColumnDefinitions.Add(new());var body=new StackPanel {Spacing=8,HorizontalAlignment=HorizontalAlignment.Center};
-            body.Children.Add(new Border {Width=44,Height=25,CornerRadius=new CornerRadius(6),Background=new SolidColorBrush(colors[i]),BorderBrush=new SolidColorBrush(Color.FromArgb(70,128,128,128)),BorderThickness=new Thickness(1)});
-            body.Children.Add(new TextBlock {Text=labels[i],FontSize=14,HorizontalAlignment=HorizontalAlignment.Center});
+            var color = keys[i] switch
+            {
+                "light" => Color.FromArgb(255,234,234,234),
+                "dark" => Color.FromArgb(255,48,48,48),
+                "night" => Color.FromArgb(255,12,12,12),
+                _ => Color.FromArgb(72,225,225,225),
+            };
+            var ink = new SolidColorBrush(keys[i] == "light" ? Color.FromArgb(90,25,26,25) : Color.FromArgb(110,255,255,255));
+            var lines = new StackPanel { Spacing=4, Width=28, VerticalAlignment=VerticalAlignment.Center };
+            lines.Children.Add(new Border { Height=4, CornerRadius=new CornerRadius(2), Background=ink });
+            lines.Children.Add(new Border { Width=17, Height=4, CornerRadius=new CornerRadius(2), Background=ink, HorizontalAlignment=HorizontalAlignment.Left });
+            body.Children.Add(new Border { Width=48, Height=32, CornerRadius=new CornerRadius(7), Background=new SolidColorBrush(color),
+                BorderBrush=new SolidColorBrush(Color.FromArgb(70,128,128,128)), BorderThickness=new Thickness(1), Child=lines });
+            body.Children.Add(new TextBlock {Text=keys[i]=="system"?"System":labels[i],FontSize=14,HorizontalAlignment=HorizontalAlignment.Center});
             var button=new RadioButton {Content=body,GroupName=group,IsChecked=i==SelectedIndex,Style=Prefs.GetStyle("ForgeSegmentStyle"),Padding=new Thickness(12),HorizontalAlignment=HorizontalAlignment.Stretch};
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button,labels[i]);var index=i;
             button.Checked+=(_,_)=>{SelectedIndex=index;SelectionChanged?.Invoke(this,EventArgs.Empty);};Grid.SetColumn(button,i);choices.Children.Add(button);

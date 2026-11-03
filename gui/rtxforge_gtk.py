@@ -19,6 +19,7 @@ import mfg_choice
 from step_count import StepCount
 import action_labels
 import overview_facts
+import overview_summary
 import overlay_shortcut
 import breakpoints
 from feature_presets import FeaturePresets
@@ -6117,46 +6118,47 @@ class Window(Adw.ApplicationWindow):
 
     def populate_tools(self,body,game):
         import renodx_hdr
-        hdr=Adw.PreferencesGroup(title='RenoDX HDR',description='The matching HDR mod and its dependencies, managed together.')
-        hdr_row=row('HDR enhancement','Checking HDR support…')
-        install=button('Install HDR',lambda *_:self.review_hdr(game))
-        remove=button('Remove HDR',lambda *_:self.review_hdr(game,remove=True))
+        tools=Adw.PreferencesGroup(title='Tools')
+        diagnose=row('Diagnose NR','Read saved NR settings, runtime hashes and log evidence.')
+        action=button('Diagnose',lambda *_:self.show_diagnostics(game));action.set_valign(Gtk.Align.CENTER);diagnose.add_suffix(action);tools.add(diagnose);body.append(tools)
+        hdr=Adw.PreferencesGroup(title='ReShade &amp; add-ons',description='Manage ReShade, RenoDX, shaders and presets for this game.')
+        runtime=row('ReShade runtime','Install the official runtime or import your own package, shaders or preset.')
+        runtime_actions=Gtk.Box(spacing=8,valign=Gtk.Align.CENTER)
+        for kind,title in [('reshade','Install ReShade'),('reshade-import','Import package…')]:
+            control=button(title,lambda _,kind=kind:self.choose_extra(game,kind));control.set_sensitive(not self.options.demo);runtime_actions.append(control)
+        runtime.add_suffix(runtime_actions);hdr.add(runtime)
+        hdr_row=row('RenoDX','Checking the matching game add-on and required ReShade files…')
+        hdr_actions=Gtk.Box(spacing=8,valign=Gtk.Align.CENTER)
+        install=button('Install RenoDX',lambda *_:self.review_hdr(game))
+        remove=button('Remove RenoDX',lambda *_:self.review_hdr(game,remove=True))
         install.set_sensitive(False);remove.set_visible(False)
-        hdr_row.add_suffix(install);hdr_row.add_suffix(remove);hdr.add(hdr_row);body.append(hdr)
-        custom=row('Custom HDR package','Choose a RenoDX .addon64 or .addon32 file for this game. Updates retain your custom choice.')
-        custom.add_prefix(Gtk.Image.new_from_icon_name('document-open-symbolic'))
-        choose=button('Use custom package…',lambda *_:self.choose_custom_hdr(game));choose.set_valign(Gtk.Align.CENTER)
-        choose.set_sensitive(not self.options.demo);custom.add_suffix(choose);hdr.add(custom)
+        hdr_actions.append(install);hdr_actions.append(remove)
+        choose=button('Use custom add-on…',lambda *_:self.choose_custom_hdr(game));choose.set_sensitive(not self.options.demo);hdr_actions.append(choose)
+        hdr_row.add_suffix(hdr_actions);hdr.add(hdr_row);body.append(hdr)
         def show_hdr(result):
             hdr_row.set_subtitle(result['message']+'\n'+result.get('notes',''))
             installed=result.get('installed',False)
-            install.set_label('Update HDR' if installed else 'Install HDR')
+            install.set_label('Update RenoDX' if installed else 'Install RenoDX')
             install.set_sensitive(result.get('available',False) and (not installed or result.get('update',False)))
             install.set_visible(not installed or result.get('update',False));remove.set_visible(installed)
-        if self.options.demo:hdr_row.set_subtitle('HDR support is checked in the installed app.')
+        if self.options.demo:hdr_row.set_subtitle('The matching RenoDX add-on is checked in the installed app.')
         else:
             def load_hdr():
                 result=renodx_hdr.status(self.service.config,game)
                 GLib.idle_add(show_hdr,result)
             threading.Thread(target=load_hdr,daemon=True).start()
-        body.append(label('Tools','title-2'))
-        body.append(label('Check NR or add ReShade to this game. Existing graphics files are kept safe.','dim-label'))
-        actions=[button('Diagnose NR',lambda *_:self.show_diagnostics(game))]
-        for kind,title in [('reshade','Install ReShade'),('reshade-import','Import ReShade package…'),('addon','Install Add-on')]:
-            control=button(title,lambda _,kind=kind:self.choose_extra(game,kind))
-            control.set_sensitive(not self.options.demo);actions.append(control)
-        actions.append(button('ReShade Downloads',lambda *_:Gio.AppInfo.launch_default_for_uri('https://reshade.me/',None)))
-        body.append(action_tiles(actions))
-        note=label('Install the official runtime automatically, or import a ZIP, custom runtime, add-on, shader or preset INI. Each import is reviewed first. Custom packages and presets stay with this game.','dim-label')
-        # A capped natural width makes the page reserve every wrapped line
-        # (uncapped, it measured one long line and clipped the rest).
-        note.set_max_width_chars(70);body.append(note)
+        other=row('Other add-ons','Choose a ReShade .addon64 file.')
+        addon=button('Choose add-on…',lambda *_:self.choose_extra(game,'addon'));addon.set_sensitive(not self.options.demo);addon.set_valign(Gtk.Align.CENTER);other.add_suffix(addon);hdr.add(other)
+        downloads=row('ReShade downloads','Open the official ReShade website.')
+        open_downloads=button('Open website',lambda *_:Gio.AppInfo.launch_default_for_uri('https://reshade.me/',None));open_downloads.set_valign(Gtk.Align.CENTER);downloads.add_suffix(open_downloads);hdr.add(downloads)
         if not self.options.demo:
             import extra_tools
+            recovery=Adw.PreferencesGroup(title='Previous changes')
             for record in extra_tools.recoveries(self.service.config,game):
                 item=row(extra_tools.KINDS[record['kind']],record['date'])
                 item.add_suffix(button('Restore',lambda _,r=record:self.review_extra_restore(r)))
-                body.append(item)
+                recovery.add(item)
+            body.append(recovery)
 
     def review_list(self):
         listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
@@ -6793,7 +6795,7 @@ class Window(Adw.ApplicationWindow):
             review={'operation':'tool-restore' if remove else 'tool','rows':[{'name':game['name'],'game':game['game'],'detail':changes}],'blocked':[]}
             self.review_write(review['operation'],review,
                 run=lambda _:renodx_hdr.apply(self.service.config,plan),
-                details=['Remove HDR' if remove else 'Install HDR','Keep NR, MFG and unrelated tuning.'],
+                details=['Remove RenoDX' if remove else 'Install RenoDX','Keep NR, MFG and unrelated tuning.'],
                 note=' '.join(plan.get('notes',[renodx_hdr.NOTICE])),
                 trust='I trust the source of this exact file' if plan.get('custom') else None,
                 done=lambda result:result['message'])
@@ -9523,6 +9525,13 @@ class Window(Adw.ApplicationWindow):
         """Installed with rtxForge on Windows, not yet set up (adapted) to run under Proton."""
         return game.get('installed_on')=='windows' and bool(game.get('adaptable') or not game.get('linux_ready'))
 
+    def game_feature_action(self,game):
+        if self.needs_linux_setup(game):
+            return action_labels.ADAPT,'install'
+        if game.get('installed') and game.get('installed_on')!='windows':
+            return 'Update Features','repair'
+        return action_labels.INSTALL,'install'
+
     def pending_linux_setup(self):
         """Every game installed with rtxForge on Windows that still needs Linux setup, whatever the filter."""
         return [game for game in self.games if not game.get('blocked') and self.needs_linux_setup(game)]
@@ -9570,7 +9579,8 @@ class Window(Adw.ApplicationWindow):
             else:add(action_labels.REMOVE_ADAPT,lambda:self.launch_action('uninstall',targets=[game]),not self.busy)
         else:
             # A Windows install with shared state is adapted for Linux (Set Up) or restored right here.
-            add(action_labels.game(self.needs_linux_setup(game))[0],lambda:self.launch_action('install',targets=[game]),not game.get('blocked') and not self.busy)
+            feature_label,feature_op=self.game_feature_action(game)
+            add(feature_label,lambda:self.launch_action(feature_op,targets=[game]),not game.get('blocked') and not self.busy)
             add('Restore Original Files',lambda:self.launch_action('uninstall',targets=[game]),bool(game.get('installed')) and not self.busy)
         add('Open Folder',lambda:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None),not self.options.demo)
         if self.adoptable(game):add('Adopt Existing Setup…',lambda:self.choose_adoption([game]),not self.busy)
@@ -10269,7 +10279,12 @@ class Window(Adw.ApplicationWindow):
         if not game.get('blocked') and game.get('installed') and game.get('installed_on')=='windows':
             banner=Adw.Banner(title=overview_facts.WINDOWS_NOTE,revealed=True)
             banner.add_css_class('overview-banner');box.append(banner)
-        facts=overview_facts.facts(game)
+        glyphs={'Features':'computer-symbolic','Compatibility':'emblem-ok-symbolic',
+                'Neural rendering':'rtx-sparkle-symbolic','Multi-Frame Generation':'video-display-symbolic'}
+        import compat_list
+        overview_game=dict(game,compat=compat_list.verdict(game))
+        facts=[(card['title'],' · '.join(card['values']),glyphs[card['title']])
+               for card in overview_summary.cards(overview_game)]
         if facts:
             flow=Gtk.Grid(column_spacing=12,row_spacing=12,column_homogeneous=True,hexpand=True,valign=Gtk.Align.START)
             flow.add_css_class('overview-facts')
@@ -10279,8 +10294,8 @@ class Window(Adw.ApplicationWindow):
                 card.set_hexpand(True);cards.append(card)
             layout={'columns':0}
             def arrange_facts(widget,_clock):
-                count=min(len(cards),4,max(1,(widget.get_width()+12)//292))
-                if len(cards)>3 and count==3:count=2
+                count=min(len(cards),max(1,(widget.get_width()+12)//292))
+                if len(cards)==4 and count==3:count=2
                 if count!=layout['columns']:
                     layout['columns']=count
                     for card in cards:
@@ -10291,6 +10306,25 @@ class Window(Adw.ApplicationWindow):
                 return True
             flow.add_tick_callback(arrange_facts)
             box.append(flow)
+        if not self.options.demo and game.get('exe'):
+            extras_box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            box.append(extras_box)
+            def apply_overview(result):
+                if box.get_root() is None:
+                    return False
+                for widget, card in zip(cards, result['cards']):
+                    widget.get_row_at_index(0).set_subtitle(' · '.join(card['values']))
+                if result['extras']:
+                    extras_box.append(fact_row('Extras',' · '.join(result['extras']),'applications-graphics-symbolic'))
+                return False
+            def inspect_overview():
+                try:
+                    import engine_bridge
+                    result=overview_summary.inspect(overview_game,engine_bridge.module(self.service.config))
+                except (OSError, ValueError):
+                    return
+                GLib.idle_add(apply_overview,result)
+            threading.Thread(target=inspect_overview,daemon=True,name='overview-details').start()
         path=overview_facts.folder(game)
         if path:
             open_button=button('Open folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(path).as_uri(),None))
@@ -10305,18 +10339,50 @@ class Window(Adw.ApplicationWindow):
             library_media.save_settings(self.service.config,fresh);self.settings.update(fresh)
 
     def overlay_update_details(self,report=None):
-        import json
-        from storage import storage
-        if report is None:
-            path=storage(self.service.config)/'overlay-refresh.json'
-            try:report=json.loads(path.read_text(encoding='utf-8'))
-            except (OSError,ValueError):report={}
-        text=f"{report.get('updated',0)} updated · {len(report.get('skipped') or [])} already current"
-        for item in report.get('updated_games',[]):text+='\n\nUpdated · '+item['title']
-        for item in report.get('blocked',[]):text+='\n\nNeeds repair · '+item['title']+'\n'+item['detail']
-        if report.get('error'):text+='\n\n'+report['error']
-        dialog=Adw.AlertDialog(heading='Overlay update',body=text)
-        dialog.add_response('close','Done');dialog.set_close_response('close');dialog.present(self)
+        import json,overlay_status
+        dialog=Adw.Dialog(title='Overlay Status',content_width=760,content_height=600)
+        view=Adw.ToolbarView();view.add_top_bar(Adw.HeaderBar())
+        body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16,margin_top=16,margin_bottom=16,margin_start=24,margin_end=24)
+        summary=Gtk.Label(label='Checking installed overlays…',xalign=0,wrap=True)
+        warning=Gtk.Label(xalign=0,wrap=True,visible=False);warning.add_css_class('dim-label')
+        body.append(summary);body.append(warning)
+        model=Gtk.StringList.new([]);factory=Gtk.SignalListItemFactory()
+        def setup(_factory,item):
+            box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,margin_top=8,margin_bottom=12,margin_start=8,margin_end=8)
+            title=Gtk.Label(xalign=0,wrap=True);title.add_css_class('heading');box.append(title)
+            detail=Gtk.Label(xalign=0,wrap=True);detail.add_css_class('dim-label');box.append(detail);item.set_child(box)
+        def bind(_factory,item):
+            game=json.loads(item.get_item().get_string());box=item.get_child();title=box.get_first_child();detail=title.get_next_sibling()
+            status={'current':'Current','update-available':'Update available','needs-attention':'Needs attention','unavailable':'Game folder unavailable'}.get(game.get('status'),'Version not verified')
+            title.set_label(game['name']+' · '+status)
+            when='Not recorded'
+            try:
+                if game.get('lastUpdated'):when=datetime.datetime.fromisoformat(game['lastUpdated']).astimezone().strftime('%x %H:%M')
+            except (ValueError,TypeError):pass
+            detail.set_label('Installed: '+str(game.get('installedVersion') or 'Not recorded')+' · Current: '+str(game.get('currentVersion') or 'Not available')+'\nLast updated: '+when+('\n'+game['detail'] if game.get('detail') else ''))
+        factory.connect('setup',setup);factory.connect('bind',bind)
+        listing=Gtk.ListView(model=Gtk.NoSelection(model=model),factory=factory)
+        scroll=Gtk.ScrolledWindow(vexpand=True,hexpand=True,min_content_height=260,child=listing)
+        body.append(scroll);actions=Gtk.Box(spacing=8,halign=Gtk.Align.END)
+        update=button('Update all',lambda *_:(dialog.close(),self.overlay_packages_review()))
+        update.add_css_class('suggested-action');update.set_sensitive(False)
+        actions.append(update);actions.append(button('Close',lambda *_:dialog.close()));body.append(actions)
+        view.set_content(body);dialog.set_child(view);dialog.present(self)
+        alive=[True];dialog.connect('closed',lambda *_:alive.__setitem__(0,False))
+        def populated(result=None,error=None):
+            if not alive[0]:return False
+            if error:
+                summary.set_label('Overlay Status could not be read.');warning.set_label(str(error));warning.set_visible(True);return False
+            games=result['games'];current=sum(game['status']=='current' for game in games)
+            summary.set_label(f'{len(games)} game overlays · {current} current' if games else 'No managed game overlays are installed.')
+            model.splice(0,model.get_n_items(),[json.dumps(game) for game in games])
+            warning.set_label('\n'.join(result.get('warnings') or []));warning.set_visible(bool(warning.get_label()))
+            update.set_sensitive(bool(games) and not self.options.demo and self.runtime_api() is not None)
+            return False
+        def read_status():
+            try:GLib.idle_add(populated,overlay_status.snapshot(self.service.config,self.games))
+            except Exception as error:GLib.idle_add(populated,None,str(error))
+        threading.Thread(target=read_status,daemon=True).start()
 
     def check_overlay_refresh(self):
         import json,hashlib
@@ -10360,7 +10426,7 @@ class Window(Adw.ApplicationWindow):
             widget=Adw.SwitchRow(title=title,subtitle=subtitle,active=bool(s.get(key,library_media.DEFAULTS[key])))
             widget.connect('notify::active',lambda w,*_:save(key,w.get_active()))
             group.add(widget);return widget
-        panel=Adw.PreferencesGroup(title='rtxForge Panel',description='NR and MFG controls drawn inside the game. Saved here, then written to each game on its next reviewed install or repair.')
+        panel=Adw.PreferencesGroup(title='Overlay interface',description='Saved for this game.' if game else 'Defaults for new and inheriting games. In-game changes stay with that game.')
         choice('Overlay','Choose rtxForge to enable its panel.' if game else 'The default overlay for your games.',['game','optiscaler'],['rtxForge','Native'],'overlay_renderer',panel)
         import glass_preferences as glass
         appearance=Adw.PreferencesGroup(title='Appearance',description='Saved for this game.' if game else 'Defaults for game overlays. In-game changes stay with that game.')
@@ -10505,6 +10571,7 @@ class Window(Adw.ApplicationWindow):
         switch('ReShade Welcome','Show ReShade\u2019s first-run guide. Its short loading banner can\u2019t be turned off.','reshade_intro',reshade)
         vulkan=Adw.PreferencesGroup(title='Vulkan MFG overlay')
         switch('Native MFG menu and hint','Optional advanced menu; frame generation keeps running when hidden.','vulkan_mfg_native_menu',vulkan)
+        installed=Adw.PreferencesGroup(title='Game overlays',description='Check installed versions or apply defaults to existing games.')
         if not game:
             reset_row=Adw.ActionRow(title='Reset game overlays',subtitle='Apply these defaults to every overlay. Close games first.')
             def reset_overlays(*_):
@@ -10512,13 +10579,14 @@ class Window(Adw.ApplicationWindow):
                 if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
                 self.toast('All game overlays now use your defaults.')
             reset_all=button('Apply defaults to all overlays',reset_overlays);reset_all.set_valign(Gtk.Align.CENTER)
-            reset_row.add_suffix(reset_all);appearance.add(reset_row)
-        installed=Adw.PreferencesGroup(title='Update Overlays')
-        item=row('Update Overlays','Review overlay package updates and the effective menu, welcome and shortcut choices for each installed game.')
-        action=button('Update Overlays',lambda *_:self.overlay_packages_review(game));action.set_valign(Gtk.Align.CENTER);action.set_sensitive(self.runtime_api() is not None and not self.options.demo and (not game or game.get('installed',False)))
-        item.add_suffix(action);installed.add(item)
-        history=row('Last overlay update','Updated games, current overlays and anything that needs repair.')
-        details=button('Details',lambda *_:self.overlay_update_details());history.add_suffix(details);installed.add(history)
+            reset_row.add_suffix(reset_all)
+        history=row('Overlay Status','Installed overlays, current versions and last update dates.')
+        details=button('View status',lambda *_:self.overlay_update_details());details.set_valign(Gtk.Align.CENTER);history.add_suffix(details);installed.add(history)
+        if not game:installed.add(reset_row)
+        else:
+            item=row('Update this overlay','Review package and native menu changes for this game.')
+            action=button('Update overlay',lambda *_:self.overlay_packages_review(game));action.set_valign(Gtk.Align.CENTER);action.set_sensitive(self.runtime_api() is not None and not self.options.demo and game.get('installed',False))
+            item.add_suffix(action);installed.add(item)
         return [panel,appearance,notifications,shortcut,optiscaler,reshade,vulkan,installed]
 
     def game_overlay_card(self,game):
@@ -12885,8 +12953,8 @@ class Window(Adw.ApplicationWindow):
         # Wraps instead of running off a narrow details window (Adw ≥ 1.7).
         hero_actions=Adw.WrapBox(child_spacing=8,line_spacing=8,align=1.0,valign=Gtk.Align.END,halign=Gtk.Align.END)
         hero_actions.add_css_class('detail-hero-actions')
-        install_label=action_labels.game(self.needs_linux_setup(game))[0]
-        hero_install=icon_button(install_label,'folder-download-symbolic',lambda *_:self.launch_action('install',targets=[game]),'hero-install')
+        install_label,feature_op=self.game_feature_action(game)
+        hero_install=icon_button(install_label,'folder-download-symbolic',lambda *_:self.launch_action(feature_op,targets=[game]),'hero-install')
         # Same rule as the Installation rows below (demo reviews never write).
         hero_install.set_sensitive(not game.get('blocked') and not self.busy and bool(self.hardware_info and self.hardware_info['ready']))
         hero_restore=icon_button('Restore Original Files','edit-undo-symbolic',lambda *_:self.launch_action('uninstall',targets=[game]),'hero-restore')
@@ -13198,14 +13266,10 @@ class Window(Adw.ApplicationWindow):
 
         for title,subtitle,op in [
             (
-                'Install Features',
-                'Add or update the selected feature mode.',
-                'install',
-            ),
-            (
-                'Repair Feature Files',
-                'Replace missing or damaged feature files while preserving your presets.',
-                'repair',
+                install_label,
+                'Review updates for the installed package and keep your presets.'
+                if feature_op=='repair' else 'Review the selected feature package.',
+                feature_op,
             ),
             (
                 'Restore Original Files',
@@ -13217,13 +13281,8 @@ class Window(Adw.ApplicationWindow):
             maintenance.add(maintenance_row)
 
             action=button(
-                'Install'
-                if op=='install'
-                else 'Repair'
-                if op=='repair'
-                else 'Reset'
-                if op=='reset'
-                else 'Restore',
+                ('Update' if op=='repair' else 'Adapt' if install_label==action_labels.ADAPT else 'Install')
+                if op!='uninstall' else 'Restore',
                 lambda _,o=op:self.launch_action(
                     o,
                     targets=[game],
@@ -13298,10 +13357,19 @@ class Window(Adw.ApplicationWindow):
                 inventory.add(self.technical_details(found['blocked']))
             elif not found['files']:
                 inventory.add(row('No supported DLSS files','No separate DLSS files were found outside the installed feature stack.'))
-            for item in found['files']:
-                inventory.add(row(runtime_updates.COMPONENTS[item['component']],item['path']+' · '+item['current']+' · '+item['provenance']))
-            file_buttons[False].set_sensitive(bool(found['files']) and not found['blocked'])
-            replace_button.set_sensitive(bool(found['files']) and not found['blocked'])
+            if found['files']:
+                tiles=Adw.WrapBox(child_spacing=12,line_spacing=12,hexpand=True)
+                components={}
+                for item in found['files']:
+                    components.setdefault(item['title'],{})[Path(item['path']).name+' · '+item['current']]=None
+                for title,copies in components.items():
+                    card=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+                    card.add_css_class('boxed-list');card.set_size_request(245,-1)
+                    card.append(Adw.ActionRow(title=title,subtitle='\n'.join(copies)))
+                    tiles.append(card)
+                inventory.add(Adw.PreferencesRow(child=tiles))
+            file_buttons[False].set_sensitive(any(item.get('before') for item in found['files']) and not found['blocked'])
+            replace_button.set_sensitive(any(item.get('before') for item in found['files']) and not found['blocked'])
             file_buttons[True].set_sensitive(bool(backups))
             if backups:
                 files.add(row('Latest backup',backups[0]['date']))
@@ -13319,7 +13387,7 @@ class Window(Adw.ApplicationWindow):
             import runtime_updates
             loaded['value']=True
             self.start('Checking native DLSS files',lambda:(
-                runtime_updates.inspect(self.service.config,[game])[0],
+                runtime_updates.display_inventory(self.service.config,game),
                 runtime_updates.game_recoveries(self.service.config,game['game'])),show_inventory)
             return False
         pages.connect('notify::visible-child-name',load_inventory)
@@ -14389,13 +14457,14 @@ class Window(Adw.ApplicationWindow):
             return
         applying_strength=operation=='reset' and entire and self.defaults_changed()
         title={'install':'Install Features','repair':'Repair Feature Files','uninstall':'Restore Original Files','reset':'Reset Presets'}[operation]
+        if operation=='repair' and targets and len(rows)==1:title='Update Features'
         if applying_strength:title='Apply Settings to Library'
         elif operation=='reset' and visual_settings is not None:title='Apply Presets'
         self.operation_previous=targets[0] if targets and len(targets)==1 else None
 
         self.operation_cancel=threading.Event();self.operation_executing=False
         self.operation_games=rows
-        flow=_flow if _flow is not None and not _flow.closed else self.new_operation_flow(operation,rows)
+        flow=_flow if _flow is not None and not _flow.closed else self.new_operation_flow(operation,rows,title if operation=='repair' else None)
         flow.games=rows
         flow.show_checking()
 
@@ -15268,10 +15337,10 @@ class Window(Adw.ApplicationWindow):
         steam_action.set_sensitive(not self.options.demo);steam_action.set_valign(Gtk.Align.CENTER)
         steam_shortcut.add_suffix(steam_action);steam_launcher.add(steam_shortcut)
         self.steam_shortcut_row=steam_shortcut;self.steam_shortcut_button=steam_action
-        controls=Adw.PreferencesGroup(title='Interface',description='Choose the experience for Gaming Mode.')
+        controls=Adw.PreferencesGroup(title='Startup',description='Choose what a controller opens from Desktop.')
         controller_options=Adw.PreferencesGroup(title='Controller',description='Navigation prompts in Gaming Mode.')
         scale_navigation=Adw.PreferencesGroup(title='Navigation',description='Size, navigation and button labels for both interfaces.')
-        big_picture=safe_combo_row(title='Interface',subtitle='Choose Desktop or Big Picture UI. Keyboard, mouse and controller input keep your choice.',model=Gtk.StringList.new(['Desktop','Big Picture UI']),selected=1 if self.input_stack.get_visible_child_name()=='couch' else 0)
+        big_picture=safe_combo_row(title='Controller opens',subtitle='Use Desktop or the current native Game Mode interface.',model=Gtk.StringList.new(['Desktop','Game Mode']),selected=1 if self.settings.get('big_picture_ui',True) else 0)
         big_picture.connect('notify::selected',lambda widget,*_:self.set_big_picture_ui(widget.get_selected()==1))
         controls.add(big_picture)
         for key,title,keys,captions in [
@@ -15283,10 +15352,8 @@ class Window(Adw.ApplicationWindow):
                 COUCH_MODE=self.settings.get('input_mode','auto') if self.settings.get('big_picture_ui',True) else 'desktop'
                 if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
                 if key=='input_mode':self.toast('Input mode saved. Restart to rebuild all menu controls.')
-            choice.connect('notify::selected',change_input);(scale_navigation if key=='controller_glyphs' else controls).add(choice)
+            choice.connect('notify::selected',change_input);controller_options.add(choice)
         for key,title,keys,captions in [
-            ('ui_scale','UI Scale',list(SCALES),['Automatic (130% at 4K)','100%','125%','130%','150%','175%','200%']),
-            ('navigation_position','Navigation Position',['top','bottom'],['Top','Bottom']),
             ('controller_hints','Controller Hints',['always','auto'],['Always visible','Hide when idle'])]:
             choice=safe_combo_row(title=title,model=Gtk.StringList.new(captions),selected=keys.index(self.settings.get(key,library_media.DEFAULTS[key])))
             choice.connect('notify::selected',lambda widget,*_,key=key,keys=keys:self.set_display_preference(key,keys[widget.get_selected()]))
@@ -15332,14 +15399,9 @@ class Window(Adw.ApplicationWindow):
             if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
         corners.connect('notify::selected',change_corners);window_style.add(corners);window_style.add(compact)
 
-        theme_row=row('Color theme','Changes only rtxForge. Saved immediately.')
-        theme_selector=Adw.ToggleGroup(valign=Gtk.Align.CENTER)
-        for key,caption in [('light','Light'),('dark','Dark'),('night','Night')]:
-            theme_selector.add(Adw.Toggle(name=key,label=caption))
-        theme_selector.set_active_name((self.settings.get('theme') or ('dark' if self.settings['dark'] else 'light')))
-        def change_theme(group,*_):
+        def change_theme(value):
             global THEME_MODE
-            THEME_MODE=group.get_active_name()
+            THEME_MODE=value
             self.settings['theme']=THEME_MODE
             dark=THEME_MODE!='light'
             self.settings['dark']=dark
@@ -15350,16 +15412,12 @@ class Window(Adw.ApplicationWindow):
                 saved['dark']=dark
                 saved['theme']=THEME_MODE
                 library_media.save_settings(self.service.config,saved)
-        theme_selector.connect('notify::active-name',change_theme)
-        theme_row.add_suffix(theme_selector)
-        appearance.add(theme_row)
-        gaming_theme=Adw.PreferencesGroup(title='Game Mode appearance',description='Light, Clear or Dark, Adaptive color, Surface Tint and display scaling.')
-        def open_native_appearance(*_):
-            if self.dialog:self.dialog.close()
-            self._native_game_mode_appearance=True
-            self.enter_game_mode()
-        appearance_action=button('Open Appearance',open_native_appearance)
-        appearance_item=row('Appearance','Configure the native Game Mode interface.');appearance_item.add_suffix(appearance_action);gaming_theme.add(appearance_item)
+        from overlay_layouts import ThemePicker
+        theme_selector=ThemePicker(self.settings.get('theme') or ('dark' if self.settings['dark'] else 'light'),
+                                  change_theme, modes=('light','dark','night'))
+        appearance.add(Adw.PreferencesRow(child=theme_selector))
+        import native_game_mode_appearance
+        game_mode_appearance_groups=native_game_mode_appearance.build(self)
 
         glyphs=Adw.SwitchRow(title='Button Icons',subtitle='Show action icons beside button labels.',active=self.settings.get('button_glyphs',True))
         def change_glyphs(widget,*_):
@@ -15432,23 +15490,49 @@ class Window(Adw.ApplicationWindow):
         item=row('Library Reports','View test notes and export a support report.');action=button('Open',self.show_reports);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);library_reports.add(item)
         for title,subtitle,caption,fn in [('Previous Changes','Browse available recovery records.','Browse',lambda *_:self.show_undo()),('Old NR Files','Review legacy files before removal.','Review',lambda *_:self.show_cleanup())]:
             item=row(title,subtitle);action=button(caption,fn);action.set_valign(Gtk.Align.CENTER);item.add_suffix(action);recovery.add(item)
-        # Windows SettingsPage section order.
-        icons={'Graphics':'video-display-symbolic','Overlay':'view-reveal-symbolic','Global':'emblem-system-symbolic',
-               'Appearance':'applications-graphics-symbolic','Library':'input-gaming-symbolic','Gaming Mode':'input-gaming-symbolic',
-               'System':'computer-symbolic','Recovery':'edit-undo-symbolic','About':'help-about-symbolic'}
-        sections=[('Graphics',[graphics,defaults]),('Overlay',overlay_groups),('Global',global_groups),
-                  ('Appearance',[appearance,scale_navigation,window_style]),('Library',[library_layout,artwork,steam_artwork,library_reports]),
-                  ('Gaming Mode',[steam_launcher,controls,gaming_theme,controller_options]),('System',[system]),('Recovery',[app_storage,recovery]),('About',[app])]
+        icons={'Game Features':'video-display-symbolic','Overlay':'view-reveal-symbolic',
+               'Appearance':'applications-graphics-symbolic','Library':'input-gaming-symbolic',
+               'Game Mode':'input-gaming-symbolic','System':'computer-symbolic',
+               'Recovery':'edit-undo-symbolic','About':'help-about-symbolic'}
+        sections={
+            'Appearance':[appearance,window_style],
+            'Library':[library_layout,artwork,steam_artwork,library_reports],
+            'Game Features':[graphics,defaults,*global_groups],
+            'Game Mode':[*game_mode_appearance_groups,controls,controller_options,steam_launcher],
+            'Overlay':[overlay_groups[1],overlay_groups[0],*overlay_groups[2:]],
+            'About':[app],
+            'System':[system],
+            'Recovery':[app_storage,recovery],
+        }
+        navigation=(
+            ('General', ('Appearance','Library','Game Features')),
+            ('Interfaces', ('Game Mode','Overlay')),
+            ('App & support', ('System','Recovery','About')),
+        )
+        index=Adw.PreferencesPage(title='Settings')
+        d.add(index)
         self.settings_pages={}
-        for section,groups in sections:
-            page=Adw.PreferencesPage(title=section,icon_name=icons[section],name=section)
-            for group in groups:page.add(group)
-            d.add(page);self.settings_pages[section]=page
+        for title,destinations in navigation:
+            category=Adw.PreferencesGroup(title=title)
+            index.add(category)
+            for section in destinations:
+                page=Adw.PreferencesPage(title=section,name=section)
+                for group in sections[section]:
+                    page.add(group)
+                toolbar=Adw.ToolbarView(content=page)
+                toolbar.add_top_bar(Adw.HeaderBar())
+                destination=Adw.NavigationPage(title=section,child=toolbar)
+                self.settings_pages[section]=destination
+                item=Adw.ActionRow(title=section,activatable=True)
+                item.add_prefix(Gtk.Image(icon_name=icons[section]))
+                item.add_suffix(Gtk.Image(icon_name='go-next-symbolic'))
+                item.connect('activated',lambda _row,target=destination:d.push_subpage(target))
+                category.add(item)
         def save(*_):
             selected_provider=provider_keys[provider.get_selected()];selected_mode=modes[profile.get_selected()]
             if selected_provider=='y4my' and selected_mode=='nr-only':self.toast('NR Only requires DLSS-Unlocked.');return False
             settings_saved['value']=True
-            self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=theme_selector.get_active_name()!='light',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active(),skynizz_proton=skynizz_proton.get_active())
+            self.settings.update(manage_dlss_files=manage_files.get_active(),runtime_provider=selected_provider,nr_runtime=nr_path.get_text().strip(),default_profile=selected_mode,library_view=pending_library_view['value'],dark=self.settings.get('theme')!='light',online_art=art.get_active(),steam_metadata=metadata.get_active(),network_timeout=timeout.get_value_as_int(),recognize_previous=adopt.get_active(),skynizz_proton=skynizz_proton.get_active())
             self.nr_only.set_enabled(selected_provider in ('skynizz','dlss-unlocked','custom'))
             self.profile_group.set_active_name(selected_mode)
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)

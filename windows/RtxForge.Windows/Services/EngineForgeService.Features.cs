@@ -266,6 +266,12 @@ public sealed partial class EngineForgeService
             report?.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) ?? "", Strings(report?["warnings"]));
     }
 
+    public async Task<(IReadOnlyList<GameOverview.Fact> Cards, string[] Extras)> InspectOverviewAsync(Game game)
+    {
+        var result = await CallAsync("overview_inspect", new JsonObject { ["row"] = Row(game) });
+        return (GameOverview.Cards(result?["cards"]), Strings(result?["extras"]).ToArray());
+    }
+
     public async Task<IReadOnlyList<ExtraRecord>> ExtraRecordsAsync(Game game) =>
         Objects(await CallAsync("extras_list", new JsonObject { ["row"] = Row(game) }))
             .Select(r => new ExtraRecord(S(r, "path") ?? "", S(r, "name") ?? "", S(r, "kind") ?? "", S(r, "title") ?? "", S(r, "date") ?? "")).ToList();

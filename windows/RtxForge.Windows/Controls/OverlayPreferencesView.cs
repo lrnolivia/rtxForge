@@ -8,7 +8,8 @@ namespace RtxForge.Windows.Controls;
 /// <summary>The same preferences in the manager and the independent overlay.</summary>
 public sealed class OverlayPreferencesView : StackPanel
 {
-    readonly TextBlock feedback = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+    readonly TextBlock feedback = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8,
+        Margin = new Thickness(0, 8, 0, 0), Visibility = Visibility.Collapsed };
     readonly List<PreferencesGroup> groups = [];
     readonly bool groupCards;
     readonly Action<ForgeSettings> applied;
@@ -23,14 +24,17 @@ public sealed class OverlayPreferencesView : StackPanel
         Spacing = 20;
         var current = ForgeSettings.Load();
         var glass = GlassAppearance.Load();
-        Heading("rtxForge panel");
-        var renderer = Choice("Overlay", ["rtxForge", "Native"], current.OverlayRenderer == "optiscaler" ? 1 : 0,
-            "Use the rtxForge panel in compatible packages, or the original menus provided by OptiScaler, Feeder or ReShade.", glyph: "\uE7F4");
+        Heading("Layout and appearance", "Defaults for new and inheriting games. Changes made inside an overlay stay with that game.");
+        var renderer = Choice("Overlay interface", ["rtxForge", "Native"], current.OverlayRenderer == "optiscaler" ? 1 : 0,
+            "Use rtxForge or the native interfaces provided by the installed package.", glyph: "\uE7F4");
         presentation = new OverlayPresentationView(EditGlass, engine);
         AddControl(new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = presentation });
+        Heading("Controls");
         var type = Choice("Text size", ["Aa  Smaller", "Aa  Default", "Aa  Larger"], glass.Number("TextSize", 22, 16, 26) < 22 ? 0 : glass.Number("TextSize", 22, 16, 26) > 22 ? 2 : 1, glyph: "\uE8D2");
         var originalLabels = Switch("Original labels", glass.On("OriginalLabels",false), "Use upstream control names instead of friendly labels.", glyph: "\uE8D2");
         var motion = Switch("Motion effects", glass.On("Motion"), glyph: "\uE768");
+        var key = new OverlayShortcutPicker(current.PanelHotkey, settingsRow: groupCards);
+        AddControl(key);
         Heading("Status and notifications");
         var liveStats = Switch("Live feature statistics", current.OverlayLiveStats,
             "Show measured activity and performance beside NR and frame generation controls, when the injector supplies them.", glyph: "\uE9D9");
@@ -39,36 +43,31 @@ public sealed class OverlayPreferencesView : StackPanel
         var notifications = Switch("Hotkey notifications", glass.On("ShowNotifications"), "Show preset changes and feature toggles in the same slim toast.", glyph: "\uE7E7");
         var welcomePosition = Choice("Welcome position", ["Top center", "Top left", "Top right", "Bottom left", "Bottom right"],
             Array.IndexOf(ForgeSettings.WelcomePositions, current.OverlayWelcomePosition), "Applies when the game starts.", glyph: "\uE8B9");
-        Heading("Shortcuts and helper");
-        var key = new OverlayShortcutPicker(current.PanelHotkey, settingsRow: groupCards);
-        AddControl(key);
+        Heading("Background helper");
         var helper = Switch("Background overlay helper", current.OverlayHelper,
             "Keep saved presets and panel settings available after closing the manager.", glyph: "\uE7F8");
         var startup = Switch("Start with Windows", current.OverlayStartWithWindows,
             "Starts only the helper, when the rtxForge overlay is selected.", glyph: "\uE7E8");
-        Heading("OptiScaler");
+        Heading("OptiScaler", "Native menu access is independent of rtxForge and rendering features.");
         var optiUi = Switch("In-game menu", current.OptiScalerUi, glyph: "\uE700");
         var optiIntro = Switch("Intro message", current.OptiScalerIntro,
             "The startup message and the menu are separate. Turning either off keeps NR and MFG installed.", glyph: "\uE8F2");
         var nativeKey = Choice("OptiScaler shortcut", ["Insert", "F8", "Disabled"], current.OptiScalerHotkey == "F8" ? 1 : current.OptiScalerHotkey == "Disabled" ? 2 : 0,
             "Switching overlays or changing the OptiScaler key takes effect after restarting the game. Install the current rtxForge package in your game to use the original panel.", glyph: "\uE765");
-        Heading("ReShade");
+        Heading("ReShade", "Native menus can remain available alongside rtxForge.");
         var reshadeUi = Switch("In-game menu", current.ReShadeUi, glyph: "\uE700");
         var reshadeIntro = Switch("Welcome messages", current.ReShadeIntro,
             "Controls the ReShade guide and RenoDX welcome dialog. Loading notices are separate. Feeder NR and effects stay running.", glyph: "\uE8F2");
         Heading("Vulkan MFG overlay");
         var vulkanMenu = Switch("Native MFG menu and hint", current.VulkanMfgNativeMenu,
             "Optional advanced MFG Unlocker panel. Off by default; frame generation keeps running. The rtxForge welcome message has its own setting.", glyph: "\uE700");
-        Heading("Apply to games");
-        OverlayUiReviewView? gameReview = null;
-        if (engine is not null) { gameReview = new(engine, settingsRows: true); AddControl(gameReview); }
-        var history = Prefs.ActionButton("View details", async (_, _) =>
-        { if (App.Main is { } main) await main.ShowOverlayUpdateDetailsAsync(); });
-        AddControl(Prefs.Row("Last overlay update", "See which games were updated and whether any still need attention.", history, glyph: "\uE81C"));
-        var feedbackCard = new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = feedback, Visibility = Visibility.Collapsed };
+        Heading("Game overlays", "Check installed versions or apply your defaults to existing games.");
+        var history = Prefs.ActionButton("View status", async (_, _) =>
+        { if (App.Main is { } main) await main.ShowOverlayStatusAsync(); });
+        history.IsEnabled = engine is not null;
+        AddControl(Prefs.Row("Overlay Status", "Installed overlays, current versions and last update dates.", history, glyph: "\uE81C"));
         feedback.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) =>
-            feedbackCard.Visibility = string.IsNullOrEmpty(feedback.Text) ? Visibility.Collapsed : Visibility.Visible);
-        AddControl(feedbackCard);
+            feedback.Visibility = string.IsNullOrEmpty(feedback.Text) ? Visibility.Collapsed : Visibility.Visible);
         void Availability()
         {
             var native = renderer.SelectedIndex == 1;
@@ -85,7 +84,6 @@ public sealed class OverlayPreferencesView : StackPanel
                 // preference into fresh settings, preserving the other process's work.
                 var fresh = ForgeSettings.EditOverlay(edit);
                 OverlayHelper.ConfigureStartup(fresh); applied(fresh);
-                gameReview?.Invalidate();
                 feedback.Text = fresh.OverlayRenderer == "optiscaler"
                     ? "Saved · restart your game to use its native overlay."
                     : "Saved";
@@ -97,6 +95,7 @@ public sealed class OverlayPreferencesView : StackPanel
         var resetDefaults=new Button { Content="Apply defaults to all overlays" };
         AddControl(Prefs.Row("Reset game overlays", "Replace saved per-game appearance and shortcuts with these defaults. Close games first.",resetDefaults,glyph:"\uE777"));
         resetDefaults.Click+=(_,_)=>{try{GlassAppearance.ResetGameProfiles();if(Save(s=>s.GameOverlaySettings.Clear()))feedback.Text="All game overlays now use your defaults.";}catch(Exception error){feedback.Text=error.Message;}};
+        AddControl(feedback);
         renderer.SelectionChanged += (_, _) => Save(s => s.OverlayRenderer = renderer.SelectedIndex == 1 ? "optiscaler" : "game");
         type.SelectionChanged += (_, _) => EditGlass(() => GlassAppearance.Set("TextSize", type.SelectedIndex == 0 ? 20 : type.SelectedIndex == 2 ? 24 : 22));
         originalLabels.Toggled += (_, _) => EditGlass(() => GlassAppearance.Set("OriginalLabels", originalLabels.IsOn ? 1 : 0));
@@ -160,9 +159,9 @@ public sealed class OverlayPreferencesView : StackPanel
     {
         if (groupCards) group!.Add(control); else Children.Add(control);
     }
-    void Heading(string text)
+    void Heading(string text, string? description = null)
     {
-        if (groupCards) { group = new PreferencesGroup(text); groups.Add(group); }
+        if (groupCards) { group = new PreferencesGroup(text, description); groups.Add(group); }
         else Children.Add(new TextBlock
         { Text = text, FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
     }

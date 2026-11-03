@@ -92,12 +92,14 @@ def stage_payload(root, payload, game_mode_package=None):
             build_sha='unknown'
     (payload/'BUILD_INFO.json').write_text(json.dumps({'version':version,'commit':build_sha},sort_keys=True)+'\n')
     for name in ['gui','scripts','providers']:
-        shutil.copytree(root/name,payload/name,ignore=shutil.ignore_patterns('__pycache__',*(['game_mode*.py'] if name=='gui' else [])))
+        shutil.copytree(root/name,payload/name,ignore=shutil.ignore_patterns('__pycache__'))
     bundle_overlays(root,payload)
     vulkan = root/'windows/out/vulkan-provider'
     if (vulkan/'candidate.json').is_file():
         shutil.copytree(vulkan,payload/'providers/vulkan-dlssg/runtime',ignore=shutil.ignore_patterns('*.part'),dirs_exist_ok=True)
     shutil.copytree(root/'assets/game-mode',payload/'assets/game-mode')
+    for hero in (root/'prototypes/game-mode-tauri/public').glob('app-hero-*.png'):
+        shutil.copy2(hero, payload/'assets/game-mode'/hero.name)
     for name in ['provider.json','README.md']:shutil.copyfile(root/name,payload/name)
     (payload/'engine').mkdir()
     # Reviewed Global and game-menu bulk changes share the Windows host's platform-neutral modules.

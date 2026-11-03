@@ -109,6 +109,24 @@ struct Runtime {
     bool nrActivationPending=false,nrActivationAnnounced=false;
     int helperRevision=-1;bool helperReady=false;std::set<std::string> supportedKeys;
     std::map<std::string,nlohmann::json> pendingSettings;
+    bool settingInFlight=false, tuningPending=false, restartRequired=false, displayedRestart=false;
+    int settingRevision=-1;
+    double settingSentAt=0, badgeUntil=0;
+    std::string badgeResult, displayedBadge;
+
+    void ShowSaveStatus(double now) {
+        const bool saving=settingInFlight||tuningPending||(helperReady&&!pendingSettings.empty());
+        const std::string badge=saving?"Saving…":!pendingSettings.empty()?"Waiting to save":now<badgeUntil?badgeResult:"";
+        auto& c=*controls;
+        if(badge!=displayedBadge||restartRequired!=displayedRestart){
+            displayedBadge=badge;
+            c.Element("save-badge")->SetInnerRML(badge);
+            c.Element("save-badge")->SetProperty("display",badge.empty()?"none":"inline-block");
+            displayedRestart=restartRequired;
+            c.Element("restart-notice")->SetProperty("display",restartRequired?"inline":"none");
+            c.Visible("save-status",restartRequired||!badge.empty());
+        }
+    }
     nlohmann::json lastAppearance;
     nlohmann::json lastPreferences;
     nlohmann::json AppearanceValues()const {
@@ -173,6 +191,11 @@ struct Runtime {
         if(!text||std::strlen(text)>65536||lastHelper==text)return;lastHelper=text;const auto data=nlohmann::json::parse(text,nullptr,false);if(!data.is_object())return;
         auto& c=*controls;if(data.value("op",std::string())=="use-native-overlays")c.NativeOverlaysResult(data.value("error",false));helperReady=data.value("ready",false);c.Disabled("save",!helperReady||!data.value("named_supported",false)||data.value("pending",false));
         const int revision=data.value("revision",0);
+        if(settingInFlight&&revision!=settingRevision&&!data.value("pending",false)){
+            settingInFlight=false;
+            badgeResult=data.value("error",false)||data.value("op",std::string())!="set-setting"?"Couldn’t save":"Saved";
+            badgeUntil=Rml::GetSystemInterface()->GetElapsedTime()+2.5;
+        }
         if(data.contains("settings")&&data["settings"].is_object()&&data["settings"]!=lastPreferences){const auto& prefs=data["settings"];lastPreferences=prefs;
             if(prefs.contains("overlay_appearance"))Appearance(prefs["overlay_appearance"]);
             if(prefs.contains("game_poster")&&prefs["game_poster"].is_string()){const auto path=std::filesystem::u8path(prefs["game_poster"].get<std::string>());if(path!=renderer->posterPath){renderer->posterPath=path;renderer->posterPixels.clear();c.Poster(path.empty()?"":"game-poster-"+std::to_string(std::hash<std::wstring>{}(path.wstring())));}}
@@ -254,7 +277,9 @@ struct Runtime {
             for(const auto& [id,key]:std::map<std::string,std::string>{{"strength","intensity"},{"render-resolution","work_scale"},{"processing-stage","pre_sr"},{"model-preset","preset"},{"detail","detail"},{"colour","colour"},{"tone","tone"}})c.Disabled(id.c_str(),!current.contains(key));
             c.Disabled("pass-minus",!current.contains("passes")||c.values["passes"]<=1);c.Disabled("pass-plus",!current.contains("passes")||c.values["passes"]>=3);
             for(const auto* key:{"strength","tone","structure","skin"})c.Disabled((std::string("pass-")+key).c_str(),!current.contains("pass"+std::to_string(c.pass)+"_"+key)||c.values["pass"+std::to_string(c.pass)+"_inherit"]!=0);
-            const bool passesSupported=current.contains("pass2_strength")&&c.values["passes"]>=2;c.Disabled("open-passes",!passesSupported);c.Disabled("nav-passes",!passesSupported);c.Disabled("pass-2",!passesSupported);c.Disabled("pass-3",!current.contains("pass3_strength")||c.values["passes"]<3);const auto passPrefix="pass"+std::to_string(c.pass)+"_";c.Disabled("inherit",!current.contains(passPrefix+"inherit"));for(const auto* id:{"pass-style-default","pass-style-natural","pass-style-cinematic"})c.Disabled(id,!current.contains(passPrefix+"style")||c.values[passPrefix+"inherit"]!=0);if(!messageInitialized){c.Message(snapshot.liveTuning?"Live tuning":"Model changes apply after restarting the game.");messageInitialized=true;}
+            const bool passesSupported=current.contains("pass2_strength")&&c.values["passes"]>=2;c.Disabled("open-passes",!passesSupported);c.Disabled("nav-passes",!passesSupported);c.Disabled("pass-2",!passesSupported);c.Disabled("pass-3",!current.contains("pass3_strength")||c.values["passes"]<3);const auto passPrefix="pass"+std::to_string(c.pass)+"_";c.Disabled("inherit",!current.contains(passPrefix+"inherit"));for(const auto* id:{"pass-style-default","pass-style-natural","pass-style-cinematic"})c.Disabled(id,!current.contains(passPrefix+"style")||c.values[passPrefix+"inherit"]!=0);restartRequired=!snapshot.liveTuning&&(snapshot.nrAvailable||snapshot.fgAvailable);
+            tuningPending=current.contains("__tuning_pending")&&current.at("__tuning_pending")!=0;
+            if(!messageInitialized){c.Message("");messageInitialized=true;}
             Helper(snapshot.helperJson);
             for(const auto* id:{"overview-metadata","popup-metadata"}){auto* metadata=c.Element(id);metadata->QuerySelector(".preview-badge")->SetProperty("display","none");metadata->QuerySelector(".session-heading")->GetChild(1)->SetInnerRML("Live session");}
             c.Element("status-sr")->SetProperty("display","none");c.Element("status-rr")->SetProperty("display","none");
@@ -279,10 +304,21 @@ struct Runtime {
         c.CheckPreviewFocus();const auto afterSettings=SettingsValues();for(const auto& [key,value]:afterSettings.items())if(beforeSettings.at(key)!=value)pendingSettings[key]=value;
         if(oldShortcut!=c.shortcut||oldModifiers!=c.shortcutModifiers){const auto key=c.shortcut;int vk=0;if(key!=Rml::Input::KI_UNKNOWN)for(int candidate=1;candidate<256;++candidate)if(Key(candidate)==key){vk=candidate;break;}if(vk||key==Rml::Input::KI_UNKNOWN)pendingSettings["panel_binding"]={{"key",vk},{"modifiers",(c.shortcutModifiers&Rml::Input::KM_ALT?1:0)|(c.shortcutModifiers&Rml::Input::KM_CTRL?2:0)|(c.shortcutModifiers&Rml::Input::KM_SHIFT?4:0)}};}
         if(helperReady)c.hdr.Flush(c.requestJson);
-        if(helperReady&&host.request&&!pendingSettings.empty()){auto it=pendingSettings.begin();const auto request=nlohmann::json{{"op","set-setting"},{"key",it->first},{"value",it->second}}.dump();if(host.request(host.user,request.c_str()))pendingSettings.erase(it);}
+        if(settingInFlight&&now-settingSentAt>10){
+            settingInFlight=false;badgeResult="Couldn’t confirm save";badgeUntil=now+2.5;
+        }
+        if(helperReady&&host.request&&!settingInFlight&&!pendingSettings.empty()){
+            auto it=pendingSettings.begin();
+            const auto request=nlohmann::json{{"op","set-setting"},{"key",it->first},{"value",it->second}}.dump();
+            if(host.request(host.user,request.c_str())){
+                settingInFlight=true;settingRevision=helperRevision;settingSentAt=now;
+                pendingSettings.erase(it);
+            }
+        }
         ForgeWorkbench::Values changed;for(const auto& [key,value]:c.values)if(lastValues.contains(key)&&lastValues.at(key)!=value&&key!="mfg_enabled")changed[key]=value;
         if(c.values["mfg_enabled"]!=lastValues["mfg_enabled"]){changed["multiplier"]=c.values["mfg_enabled"]?rememberedMfgMultiplier:0;changed["dynamic_mfg"]=c.values["mfg_enabled"]?rememberedMfgDynamic:0;}
         if(!changed.empty()){std::vector<ForgeGlass::Value> updates;for(const auto& [key,value]:changed)updates.push_back({key.c_str(),value});if(!host.apply||!host.apply(host.user,updates.data(),uint32_t(updates.size()))){c.values=lastValues;c.Message("This change is unavailable in the current rendering route.");}c.Sync();}
+        ShowSaveStatus(now);
         c.reducedMotion=systemReducedMotion||!c.motionEnabled;document->SetClass("reduce-motion",c.reducedMotion);c.Animate(now);c.Adapt(backdrop->measured,now);context->Update();c.AdaptiveForeground(*backdrop,now);context->Update();if(c.SelectMenu())context->Update();
         // Display changes resolve during Update. Reading the previous computed
         // visibility would immediately close a panel reopened by the host.

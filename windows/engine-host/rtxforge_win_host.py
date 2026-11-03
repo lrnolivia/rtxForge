@@ -390,6 +390,9 @@ def _scan(params):
         if row.get('installed') and row.get('runtime_provider') == 'skynizz' and row.get('exe'):
             try: row['feature_controls'] = skynizz_provider.read_controls((Path(row['game']) / row['exe']).parent / 'OptiScaler.ini')
             except (OSError, ValueError, TypeError, configparser.Error, transactions.Refusal): pass
+    import overview_summary
+    for row in rows:
+        row["overview_cards"] = overview_summary.cards(row)
     return sorted(rows, key=lambda r: r["name"].casefold())
 
 
@@ -644,6 +647,14 @@ def feeder_storage(params):
 
 METHODS['feeder_storage'] = feeder_storage
 
+
+def overlay_status(_params):
+    import overlay_status as inventory
+    return inventory.snapshot(win_features._config())
+
+
+METHODS['overlay_status'] = overlay_status
+
 import companion_controls  # noqa: E402
 METHODS.update(companion_controls.methods(STATE))
 # A functional test samples the same live snapshot the in-game panel shows.
@@ -665,7 +676,7 @@ def handle(request: dict) -> None:
             send({"event": "progress", "id": rid, "label": str(event["text"]).strip()})
 
     try:
-        if os.environ.get('RTXFORGE_READ_ONLY') == '1' and request['method'] not in {'hello', 'hardware', 'scan', 'settings'}:
+        if os.environ.get('RTXFORGE_READ_ONLY') == '1' and request['method'] not in {'hello', 'hardware', 'scan', 'settings', 'overview_inspect', 'dlss_inventory', 'overlay_status'}:
             raise RuntimeError('This library preview cannot change games or packages.')
         method = METHODS[request["method"]]
         if request["method"] == "execute":

@@ -152,10 +152,13 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
             mfg.append(package_card(name,version,description,['windows'],
                                    'In use' if selected else 'Use with '+pair_name if supported else 'Unavailable',choose,paired and not selected and supported))
         columns.append(nr);columns.append(mfg)
+        sources=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=18)
         def resize_columns(adjustment,*_):
             horizontal=adjustment.get_page_size()>=1000
             columns.set_orientation(Gtk.Orientation.HORIZONTAL if horizontal else Gtk.Orientation.VERTICAL)
             columns.set_homogeneous(horizontal)
+            sources.set_orientation(columns.get_orientation())
+            sources.set_homogeneous(horizontal)
         cards._resize_handler=scroll.get_hadjustment().connect('notify::page-size',resize_columns)
         resize_columns(scroll.get_hadjustment())
         cards.append(columns)
@@ -163,7 +166,9 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
         unified.append(heading('Unified packages','NR and frame generation in one package, for games with DLSS.'))
         for item in catalog:
             if item['id'] not in ('skynizz','feeder'):unified.append(curated(item))
-        cards.append(unified)
+        if (parent:=custom.get_parent()) is not None:parent.remove(custom)
+        sources.append(unified);sources.append(custom)
+        cards.append(sources)
         return False
 
     def render_inspection(result):

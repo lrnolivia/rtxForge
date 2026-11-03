@@ -1,11 +1,18 @@
 import {surfaceTintControls,type AccentMode} from './surface-tint';
+import {surfaceCards} from './surface-cards';
 import {overlaySurface} from './overlay-settings';
 import { escape as e, type Game } from './model';
 
-export const settingsSections = [
-  ['graphics','Graphics','cpu'], ['overlay','Overlay','sliders'], ['appearance','Appearance','palette'],
-  ['library','Library','books'], ['gaming','Gaming Mode','controller'], ['system','System','gear'],
-  ['recovery','Recovery','refresh'], ['about','About','info'],
+export const settingsGroups = [
+  ['General', [
+    ['appearance','Appearance','palette'], ['library','Library','books'], ['graphics','Game Features','cpu'],
+  ]],
+  ['Interfaces', [
+    ['gaming','Game Mode','controller'], ['overlay','Overlay','sliders'],
+  ]],
+  ['App & support', [
+    ['system','System','gear'], ['recovery','Recovery','refresh'], ['about','About','info'],
+  ]],
 ] as const;
 
 interface Context {
@@ -78,16 +85,18 @@ export function settingsContent(c: Context) {
       ? choice('SidePanelSide','Side Panel position',[['left','Left'],['right','Right']],'Choose which edge the Side Panel opens on.','data-glass',glass.SidePanelSide||'left')
       : glass.Layout==='bar' && Object.hasOwn(c.glassDefaults,'BarPosition')
         ? choice('BarPosition','Bar position',[['bottom','Bottom'],['top','Top']],'Open the Bar at the top or bottom of the screen.','data-glass',glass.BarPosition||'bottom') : '';
-    body=group('rtxForge panel',c.game?'Changes apply to this game.':'Defaults for new and inheriting games.',`<div class="overlay-presentation"><div>`+choice('overlay_renderer','Primary overlay',[['game','rtxForge'],['optiscaler','Native']],'Use the rtxForge panel in compatible packages, or the original OptiScaler, Feeder or ReShade menus.')+layoutPicker+position+`</div>${preview}</div>`,true)+
-      group('Appearance','',`<div class="field"><span><strong>Surface</strong><small>Material and accent tint are independent.</small></span><div class="overlay-theme-segments" role="group" aria-label="Overlay surface">${['light','clear','dark'].map(mode=>`<button data-overlay-surface="${mode}" aria-pressed="${theme===mode}" ${disabled}>${mode[0].toUpperCase()+mode.slice(1)}</button>`).join('')}</div></div>`+
-        surfaceTintControls(String(glass.AccentMode||'adaptive') as AccentMode,Number(glass.AccentTint??26),true,!c.enabled)+
-        glassChoice('TextSize','Text size',[[18,'Aa Smaller'],[22,'Aa Default'],[26,'Aa Larger']])+glassChoice('Motion','Motion effects',onOff))+
+    const appearance=`<div class="layout-picker"><strong>Surface</strong><p>Material and accent tint are independent.</p>${surfaceCards(theme, "overlay-surface", "Overlay surface", c.icon, !c.enabled)}</div>`+
+      surfaceTintControls(String(glass.AccentMode||'adaptive') as AccentMode,Number(glass.AccentTint??26),true,!c.enabled);
+    body=group('Layout and appearance',c.game?'Changes apply to this game.':'Defaults for new and inheriting games.',`<div class="overlay-presentation"><div>`+
+      choice('overlay_renderer','Primary overlay',[['game','rtxForge'],['optiscaler','Native']],'Use the rtxForge panel in compatible packages, or the original OptiScaler, Feeder or ReShade menus.')+
+      layoutPicker+position+appearance+`</div>${preview}</div>`,true)+
+      group('Controls','',glassChoice('TextSize','Text size',[[18,'Aa Smaller'],[22,'Aa Default'],[26,'Aa Larger']])+glassChoice('Motion','Motion effects',onOff))+
       group('Status and notifications','',glassChoice('ShowNotifications','Hotkey notifications',onOff)+toggle('overlay_live_stats','Live feature statistics','Measured activity beside NR and frame generation controls.')+toggle('overlay_welcome','Welcome message','Show the rtxForge logo and assigned shortcut at game startup.')+choice('overlay_welcome_position','Welcome position',[['top-center','Top center'],['top-left','Top left'],['top-right','Top right'],['bottom-left','Bottom left'],['bottom-right','Bottom right']],'Applies when the game starts.'))+
       group(c.game?'Shortcuts':'Shortcuts and helper','',`<label class="field"><span><strong>rtxForge shortcut</strong><small>Choose an unused key or combination. Other overlays keep their shortcuts.</small></span><input id="panel-shortcut" aria-label="Panel shortcut" value="${e(values.panel_hotkey)}" ${disabled}/></label><div class="shortcut-actions"><button class="quiet" data-action="reset-panel-shortcut" ${disabled}>Reset</button><button class="quiet" data-action="disable-panel-shortcut" ${disabled}>Disable</button></div>`+(c.game?'':toggle('overlay_helper','Background overlay helper','Keep saved presets and panel settings available after closing the manager.')+(c.platform==='Windows'?toggle('overlay_start_with_windows','Start helper with Windows','Starts the helper for the rtxForge panel.'):'') ))+
       group('OptiScaler','Menu access and the welcome message are independent.',toggle('optiscaler_ui','OptiScaler menu','Keep NR and MFG installed when the menu is off.')+choice('optiscaler_hotkey','OptiScaler shortcut',[['Insert','Insert'],['F8','F8'],['Disabled','Disabled']],'Applies next game launch.')+toggle('optiscaler_intro','OptiScaler intro','Startup message only.'))+
       group('ReShade','Menu access and the welcome message are independent.',toggle('reshade_ui','ReShade menu','Feeder NR and effects keep running when this is off.')+toggle('reshade_intro','ReShade welcome','ReShade guide and RenoDX welcome dialog. Loading notices are separate.'))+
       group('Vulkan MFG overlay','',toggle('vulkan_mfg_native_menu','Native MFG menu and hint','Optional advanced menu. Frame generation keeps running when it is off.'))+
-      (c.game?'':group('Apply to games','Menu and welcome changes take effect next launch.',action('Update Overlays','overlay-package-review','Review overlay packages, menus, welcome messages and shortcuts for every installed game.','sliders')+action('Review game menus','overlay-menu-review','Review the native menu choices for installed games.','sliders')+`<details class="last-overlay-update"><summary>Last overlay update</summary>${overlayUpdate(c.overlayReport)}</details>`+action('Apply defaults to all overlays','overlay-defaults-all','Review replacing saved per-game appearance and shortcuts with the app defaults.','refresh')));
+      (c.game?'':group('Apply to games','Menu and welcome changes take effect next launch.',action('Update Overlays','overlay-package-review','Review overlay packages, menus, welcome messages and shortcuts for every installed game.','sliders')+action('Review game menus','overlay-menu-review','Review the native menu choices for installed games.','sliders')+action('Overlay Status','overlay-status','Installed overlay versions and last update times.','info')+action('Apply defaults to all overlays','overlay-defaults-all','Review replacing saved per-game appearance and shortcuts with the app defaults.','refresh')));
   }
   if(c.category==='library') body=group('Library view','',choice('library_view','Library layout',[['posters','Posters'],['capsules','Wide Capsule'],['list','List']]))+
     group('Artwork and game information','',toggle('online_art','Download missing artwork','Cached images stay available offline.')+toggle('steam_metadata','Download game information','Descriptions, developers, and release dates from Steam.')+action('Refresh artwork','library-art-refresh','Refresh the artwork for your library.','refresh'))+
@@ -103,10 +112,4 @@ export function settingsContent(c: Context) {
   if(c.category==='about') body=group('App and updates','rtxForge Game Mode shares its engine and settings with the desktop application.',`<div class="field"><span><strong>Automatic updates</strong><small>Automatic app replacement is not yet available in Game Mode.</small></span><button class="toggle" role="switch" aria-label="Automatic updates" aria-checked="${values.auto_update===true}" disabled><span></span></button></div>`+action('Check for updates','update-check','Check the existing application’s update source.','refresh',c.platform==='Windows'))+
     group('Report a bug','Choose games, say what happened and review a redacted ZIP before anything is saved.',`<details class="report-game-picker"><summary>Choose games (${c.reportSelection.size} selected)</summary>${c.games.map(game=>`<label><input type="checkbox" data-support-game="${e(game.id)}" ${c.reportSelection.has(game.id)?'checked':''} ${disabled}/><span>${e(game.name)}</span></label>`).join('')}</details>`+action('Prepare bug report','support-report','Review facts and choose whether to include logs or notes.','warning',c.reportSelection.size>0));
   return `<div class="settings-groups">${body}</div>`;
-}
-
-function overlayUpdate(report?:Record<string,unknown>|null) {
-  if(!report) return '<p>No saved overlay update report is available.</p>';
-  const list=(key:string,label:string)=>Array.isArray(report[key])?(report[key] as Record<string,unknown>[]).map(row=>`<p><strong>${label} · ${e(row.title||row.name)}</strong>${row.detail?`<br>${e(row.detail)}`:''}</p>`).join(''):'';
-  return `<p>${e(report.updated??0)} updated · ${Array.isArray(report.skipped)?report.skipped.length:0} already current</p>${report.error?`<p>${e(report.error)}</p>`:''}${list('updated_games','Updated')}${list('blocked','Needs repair')}`;
 }

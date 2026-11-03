@@ -51,12 +51,15 @@ class LayoutPicker(Gtk.Box):
 
 class ThemePicker(Gtk.Box):
     """Native toggle swatches mirroring the in-game Theme choices."""
-    def __init__(self, selected, changed):
+    def __init__(self, selected, changed, modes=("light", "clear", "dark")):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, homogeneous=True)
         first = None
         for key, caption, shade in [('light', 'Light', (.92, .92, .92, 1)),
                                     ('clear', 'Clear', (.88, .88, .88, .25)),
-                                    ('dark', 'Dark', (.19, .19, .19, 1))]:
+                                    ('dark', 'Dark', (.19, .19, .19, 1)),
+                                    ('night', 'Night', (.04, .04, .04, 1))]:
+            if key not in modes:
+                continue
             item = Gtk.ToggleButton(hexpand=True, tooltip_text=caption)
             if first is None: first = item
             else: item.set_group(first)
@@ -78,3 +81,6 @@ class ThemePicker(Gtk.Box):
             cr.arc(x,y,6,start,start+math.pi/2)
         cr.close_path();cr.set_source_rgba(*color);cr.fill_preserve()
         cr.set_source_rgba(.5,.5,.5,.3);cr.set_line_width(1);cr.stroke()
+        ink = .12 if color[3] == 1 and color[0] > .8 else 1
+        cr.set_source_rgba(ink, ink, ink, .36)
+        cr.rectangle(9, 8, 26, 3); cr.rectangle(9, 15, 16, 3); cr.fill()

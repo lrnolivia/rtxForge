@@ -97,7 +97,7 @@ public sealed class Game
         && flag.TryGetValue<bool>(out var available) && available;
     public string DynamicMfgDetail => EngineRow?["dynamic_mfg_detail"] is JsonValue detail && detail.TryGetValue<string>(out var text) ? text : "";
     public string InstallLabel => AdoptionAvailable ? "Adopt with rtxForge" : InstalledOnLinux ? "Set Up for Windows"
-        : UsesFeeder ? Installed ? "Update Feeder NR" : "Install Feeder NR" : "Install Features";
+        : Installed ? "Update Features" : UsesFeeder ? "Install Feeder NR" : "Install Features";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>
     public System.Text.Json.Nodes.JsonObject? EngineRow { get; init; }
     public bool AntiCheatDetected

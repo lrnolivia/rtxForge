@@ -115,7 +115,7 @@ def bind(root, send):
                             if child.is_dir() and not child.is_symlink() and not child.name.startswith('.')]
             except OSError:
                 continue
-        return service.scan_all(list(dict.fromkeys(folders)))
+        return compat_list.apply(service.config, service.scan_all(list(dict.fromkeys(folders))), engine_bridge.module(service.config))
 
     def extra_review(params):
         plan = extra_tools.prepare(service.config, params['row'], params['path'], params['kind'])
@@ -278,16 +278,21 @@ def bind(root, send):
         library = library_media.LibraryMedia(service.config, library_media.load_settings(service.config))
         return [dict(game=row['game'], **library.enrich(row, bool(params.get('refresh')))) for row in params['rows']]
 
-    methods = dict(hello=lambda _p: {'root': str(root), 'platform': 'Linux'}, hardware=lambda _p: service.hardware(), scan=scan,
+    def overlay_status(params):
+        import overlay_status as status_inventory
+        return status_inventory.snapshot(service.config)
+
+    import overview_summary
+    methods = dict(overview_inspect=lambda p: overview_summary.inspect(p["row"], engine_bridge.module(service.config)), overlay_status=overlay_status, hello=lambda _p: {'root': str(root), 'platform': 'Linux'}, hardware=lambda _p: service.hardware(), scan=scan,
                    prepare=prepare, execute=execute, cancel=cancel, discard_operation=discard, discard=discard, run=execute,
                    settings_get=lambda _p: library_media.load_settings(service.config), settings_review=settings_review,
                    packages=lambda _p: {'catalog': package_catalog.catalog(service.hardware())},
                    extras_list=lambda p: extra_tools.recoveries(service.config, p['row']), extra_review=extra_review,
                    extra_restore_review=extra_restore, prepare_dlss=prepare_dlss, update_dlss=execute, dlss_restore_review=restore_dlss,
-                   dlss_inventory=lambda p: runtime_updates.inspect(service.config, [p['row']]), diagnose=lambda p: runtime_diagnostics.inspect(p['row']),
+                   dlss_inventory=lambda p: runtime_updates.display_inventory(service.config, p['row']), diagnose=lambda p: runtime_diagnostics.inspect(p['row']),
                    recoveries=lambda _p: service.recoveries(), recovery_review=recover, cleanup_review=cleanup_review, launch_game=launch, open_game_folder=open_game_folder, notes_save=notes,
                    steam_review=steam_review, steam_status=steam_status, steam_install=execute, steam_remove=execute,
-                   scan_game=lambda p: service.scan(None, [p['folder']]), package_inspect=inspect_package, package_use=use_package,
+                   scan_game=lambda p: compat_list.apply(service.config, service.scan(None, [p['folder']]), engine_bridge.module(service.config)), package_inspect=inspect_package, package_use=use_package,
                    notes_get=lambda p: game_notes.load(service.config, p['game']),
                    hdr_status=lambda p: renodx_hdr.status(service.config, p['row']), hdr_review=hdr_review,
                    test_start=lambda p: game_notes.start(service.config, p['row'], functional_test.preflight(p['row'], library_media.load_settings(service.config))),

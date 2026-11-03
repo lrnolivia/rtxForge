@@ -8,6 +8,9 @@ OS can publish without touching, counting or discarding the other's files.
   owned <windows|linux> <release.json>        current (non-rollback) assets the OS owns
   source <windows|linux> <release.json>       source commit of the OS's current build
   notes <windows|linux> <base.md> <release.json|-> <version> <sha> <build-url> [extra]
+  validate-version <version>                 require a semantic Beta version
+  newer <candidate> <current>                 refuse equal or older versions
+  title <version>                            public release title
 """
 import json
 import re
@@ -17,13 +20,27 @@ from pathlib import Path
 OSES = ('windows', 'linux')
 LABELS = {'windows': 'Windows', 'linux': 'Linux'}
 PREVIOUS = '.previous-'
+BETA_VERSION = r'[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+'
 OWNED = {
-    'windows': re.compile(r'^rtxForge-(?:Setup|windows)-1\.0\.0-beta\.\d+-'),
-    'linux': re.compile(r'^(?:rtxForge-1\.0\.0-beta\.\d+-x86_64\.(?:AppImage|flatpak)(?:\.sha256)?|rtxforge-beta-linux\.json)$'),
+    'windows': re.compile(rf'^rtxForge-(?:Setup-{BETA_VERSION}-(?:x64|arm64)\.exe|windows-{BETA_VERSION}-x64\.zip)(?:\.sha256)?$'),
+    'linux': re.compile(rf'^(?:rtxForge-{BETA_VERSION}-x86_64\.(?:AppImage|flatpak)(?:\.sha256)?|rtxforge-beta-linux\.json)$'),
 }
 LINE = re.compile(r'^(Windows|Linux): version `([^`]+)` · source `([0-9a-f]{40})`')
 # Windows Beta 1 and 2 were published with one unlabelled provenance line.
 LEGACY_WINDOWS = re.compile(r'^Version: `([^`]+)` · Source: `([0-9a-f]{40})`')
+
+
+def version_key(version):
+    if not re.fullmatch(BETA_VERSION, version):
+        raise ValueError(f'Invalid Beta version: {version}')
+    core, number = version.split('-beta.')
+    return tuple(map(int, core.split('.'))) + (int(number),)
+
+
+def release_title(version):
+    major, minor, patch, number = version_key(version)
+    core = f'{major}.{minor}' + (f'.{patch}' if patch else '')
+    return f'rtxForge {core} Beta {number}'
 
 
 def owner(name):
@@ -57,6 +74,7 @@ def source(os_name, release):
 
 
 def notes(os_name, base, release, version, sha, build_url, extra=''):
+    version_key(version)
     if not re.fullmatch(r'[0-9a-f]{40}', sha):
         raise ValueError('source must be a full commit SHA')
     lines = source_lines((release or {}).get('body'))
@@ -71,6 +89,16 @@ def load(path):
 
 
 def main(argv):
+    if len(argv) == 2 and argv[0] == 'validate-version':
+        version_key(argv[1])
+        return
+    if len(argv) == 2 and argv[0] == 'title':
+        print(release_title(argv[1]))
+        return
+    if len(argv) == 3 and argv[0] == 'newer':
+        if version_key(argv[1]) <= version_key(argv[2]):
+            raise SystemExit(f'Refusing Beta downgrade or replacement: {argv[2]} -> {argv[1]}')
+        return
     if len(argv) < 3 or argv[1] not in OSES:
         raise SystemExit(__doc__)
     command, os_name = argv[0], argv[1]

@@ -1,9 +1,13 @@
+import {surfaceCards} from './surface-cards';
+import {overlayStatusView,type OverlayStatus} from './overlay-status';
+import {setupViewportArtwork} from './viewport-artwork';
 import {surfaceTintControls} from './surface-tint';
+import {colorPicker, bindColorPicker} from './color-picker';
 import './style.css';
 import { captureArrival, arrive } from './motion';
 import { bindArtworkFailures, hydrateArtwork, clearArtworkCache, prioritizeArtwork } from './artwork';
 // Artwork sources remain exact library identities.
-import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type Snapshot, type View } from './model';
+import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type OverviewCard, type Snapshot, type View } from './model';
 import { operationFlow,operationStep,flowGame } from './operation-ui';
 import { installInput } from './input';
 import { setupLibraryLayout } from './library-layout';
@@ -14,7 +18,7 @@ import { bindScreenshotThumbnails } from './screenshot-crop';
 import { controllerGlyph, type ControllerFamily } from './controller-glyphs';
 import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero, sectionHeadingColor } from './art-accent';
 import { enhanceSelects, closeSelectMenu, selectMenuOpen } from './select-menu';
-import { settingsSections, settingsContent } from './settings-content';
+import { settingsGroups, settingsContent } from './settings-content';
 import {mergeOverlay, overlaySurface, surfaceChanges, overlayPreferenceChanges} from './overlay-settings';
 let overlayPreviewId = '';
 
@@ -23,7 +27,7 @@ import { engineRequest, engineStatus, type EngineRow, type EngineStatus, type Re
 const symbols: Record<string, number> = { plus:58324, minus:58154, dots: 57854, books: 59224, package: 58256, wrench: 58836, gear: 57968, search: 58124,
   refresh: 57492, controller: 57966, arrow: 57432, check: 57730, folder: 57930, info: 58062, warning: 58592,
   palette: 59080, sliders: 58420, cpu: 58896, grid: 58006, list: 58096, keyboard: 58072, eye: 57888, download: 57868 };
-const icon = (name: string, cls = '') => name==='posters'||name==='capsules' ? `<svg class="icon layout-icon ${cls}" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">${name==='posters'?'<rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="18" rx="1.5"/>':'<rect x="3" y="3" width="18" height="7" rx="1.5"/><rect x="3" y="14" width="18" height="7" rx="1.5"/>'}</svg>` : `<span class="icon ${cls}" aria-hidden="true">${String.fromCodePoint(symbols[name] || symbols.info)}</span>`;
+const icon = (name: string, cls = '') => name==="file" ? `<svg class="icon ${cls}" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h4"/></svg>` : name==='posters'||name==='capsules' ? `<svg class="icon layout-icon ${cls}" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">${name==='posters'?'<rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="18" rx="1.5"/>':'<rect x="3" y="3" width="18" height="7" rx="1.5"/><rect x="3" y="14" width="18" height="7" rx="1.5"/>'}</svg>` : `<span class="icon ${cls}" aria-hidden="true">${String.fromCodePoint(symbols[name] || symbols.info)}</span>`;
 const tabs: { id: View; label: string; icon: string }[] = [
   { id: 'library', label: 'Library', icon: 'books' }, { id: 'presets', label: 'Presets', icon: 'sliders' }, { id: 'packages', label: 'Packages', icon: 'package' },
   { id: 'extras', label: 'Extras', icon: 'wrench' }, { id: 'settings', label: 'Settings', icon: 'gear' },
@@ -41,6 +45,14 @@ const preferenceChanges: Record<string, unknown> = {};
 let extraSource = '', extraRecords: Record<string, unknown>[] = [], packageSource = '';
 let liveCatalog: (Record<string, unknown> & { id: string; name: string; version: string })[] | null = null;
 const batchSelection = new Set<string>();
+interface DlssInventory { files: { title: string; path: string; current: string; provenance?: string }[]; blocked?: string }
+const fileInventories = new Map<string,DlssInventory>();
+const overviewChecks = new Map<string,{cards:OverviewCard[]; extras:string[]}>();
+let modalOrigin: {view:View; content:number; details:number; results:number; focus:string|null} | undefined;
+function focusSelector(node:HTMLElement|null){
+  return node ? (node.id ? '#' + CSS.escape(node.id) : [...node.attributes].filter(a=>a.name.startsWith('data-')).map(a=>`[${a.name}="${CSS.escape(a.value)}"]`).join('')) : null;
+}
+let bulkMode=false;
 const noteDrafts = new Map<string, string>();
 let hintsTimeout: ReturnType<typeof setTimeout> | undefined;
 let toastTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -64,6 +76,9 @@ let renderedView: View | undefined, renderedGame = '';
 let adaptiveMainSource="",adaptiveMainAccent="";
 let preferencesLoading = false, steamAdded:boolean|undefined, steamChecking=false;
 let libraryScroll = 0;
+let appearanceReady=false,appearanceStored="",appearanceTimer:ReturnType<typeof setTimeout>|undefined;
+let appearanceWrites:Promise<void>=Promise.resolve();
+let disposeViewportArtwork=()=>{};
 let pendingInstall:{params:Record<string,unknown>;settings:Record<string,unknown>;rows:EngineRow[]}|null=null;
 let libraryFilter = 'all', libraryChecking = false, libraryMode: string | undefined;
 
@@ -75,7 +90,8 @@ function announce(message: string) {
 function showHints() { document.documentElement.dataset.hints = 'visible'; if (hintsTimeout) clearTimeout(hintsTimeout); if ((preferenceChanges.controller_hints ?? sharedPreferences?.controller_hints ?? snapshot?.defaults.controller_hints) === 'auto') hintsTimeout = setTimeout(() => { document.documentElement.dataset.hints = 'hidden'; }, 2500); }
 function applyAppearance() {
   const root = document.documentElement;
-  root.dataset.theme = appearance.theme;
+  const gameDetails = view === 'details' || view === 'operation' && operation?.origin === 'details';
+  root.dataset.theme = gameDetails && appearance.detailsTheme !== 'same' ? appearance.detailsTheme : appearance.theme;
   root.dataset.libraryScale=String(appearance.libraryScale);
   appearance.tint=appearance.accentMode!=='theme'&&appearance.tintStrength>0;
   root.dataset.tint = String(appearance.tint);
@@ -90,6 +106,7 @@ function applyAppearance() {
   root.dataset.detailsNavigation = appearance.detailsNavigation;
   root.dataset.buttonGlyphs = String(currentPreferences().button_glyphs !== false);
   root.style.setProperty('--accent', appearance.accent);
+  root.style.setProperty('--section-heading-color',sectionHeadingColor(appearance.accent,root.dataset.theme==='light'));
   root.style.setProperty('--shell-accent', appearance.accent);
   root.style.setProperty('--primary-ink',selectionInk(appearance.accent));
   root.dataset.customBackground=String(Boolean(appearance.background));
@@ -111,7 +128,26 @@ function applyAppearance() {
       if(appliedZoom!==zoom){appliedZoom=zoom;void import('@tauri-apps/api/webview').then(({getCurrentWebview})=>getCurrentWebview().setZoom(zoom)).catch(()=>{appliedZoom=undefined;announce('The interface scale could not be applied.');});}
     }
   }
-  try { localStorage.setItem('rtxforge-game-mode-prototype', JSON.stringify({...appearance,detailsNavigationVersion:1,appearanceDefaultsVersion:2,libraryScaleVersion:1})); } catch { /* Session preferences still work when storage is unavailable. */ }
+  const stored=serializeAppearance();
+  try { localStorage.setItem('rtxforge-game-mode-prototype',stored); } catch { /* Session preferences remain usable. */ }
+  if(appearanceReady&&'__TAURI_INTERNALS__' in window){
+    clearTimeout(appearanceTimer);
+    appearanceTimer=setTimeout(()=>{void flushAppearance().catch(()=>announce('Appearance could not be saved to Desktop Mode. Try changing it again.'));},250);
+  }
+}
+function serializeAppearance(){
+  return JSON.stringify({...appearance,detailsNavigationVersion:1,appearanceDefaultsVersion:2,libraryScaleVersion:1});
+}
+function flushAppearance(){
+  clearTimeout(appearanceTimer);
+  const pending=appearanceWrites.catch(()=>{}).then(async()=>{
+    const stored=serializeAppearance();
+    if(stored===appearanceStored)return;
+    await (await import('@tauri-apps/api/core')).invoke('appearance_write',{value:JSON.parse(stored)});
+    appearanceStored=stored;
+  });
+  appearanceWrites=pending;
+  return pending;
 }
 function selectedGame(): Game | undefined { return snapshot?.games.find(game => game.id === selectedId) || snapshot?.games[0]; }
 function setView(next: View, focus = true) {
@@ -119,15 +155,27 @@ function setView(next: View, focus = true) {
   if (operation?.stage === 'running' && next !== 'operation') { announce('The operation is running. Request cancellation to stop safely.'); return; }
   if (view === 'operation' && next !== 'operation' && operation?.stage === 'checking') operation.dismissed = true;
   const previousView = view;
-  if(view==='details'&&next!=='details'){heroFocusDrafts.clear();heroAdjustment=undefined;}
+  if(next==='operation'&&previousView!=='operation'&&operation?.kind){
+    modalOrigin={view:previousView,content:app.querySelector('#content')?.scrollTop||0,details:app.querySelector('.details-scroll')?.scrollTop||0,results:app.querySelector('#game-results')?.scrollTop||0,focus:focusSelector(document.activeElement as HTMLElement|null)};
+  }
+  if(view==='details'&&next!=='details'){heroFocusDrafts.clear();gameAccentDrafts.clear();heroAdjustment=undefined;}
   if (view === 'library') libraryScroll=app.querySelector<HTMLElement>('#game-results')?.scrollTop||app.querySelector<HTMLElement>('#content')?.scrollTop||0;
   librarySizeOpen = false; shellMenuOpen = false; detailsMenuOpen=false; view = next; render();
   if (focus) document.querySelector<HTMLElement>('#page-title')?.focus();
-  const content=app.querySelector<HTMLElement>('#content');if(content)content.scrollTop=next==='library'?libraryScroll:0;
+  const content=app.querySelector<HTMLElement>('#content');if(content&&!(next==='operation'&&modalOrigin))content.scrollTop=next==='library'?libraryScroll:0;
   if(next==='library'){const results=app.querySelector<HTMLElement>('#game-results');if(results)results.scrollTop=libraryScroll;}
   if(next==='library'&&previousView==='details'&&focus) [...app.querySelectorAll<HTMLElement>('[data-game]')].find(node=>node.dataset.game===selectedId)?.focus({preventScroll:true});
+  if(previousView==='operation'&&next!=='operation'&&modalOrigin){
+    const origin=modalOrigin;modalOrigin=undefined;
+    if(origin.view===next){
+      for(const [selector,offset] of [['#content',origin.content],['.details-scroll',origin.details],['#game-results',origin.results]] as const){
+        const pane=app.querySelector<HTMLElement>(selector);if(pane)pane.scrollTop=offset;
+      }
+      if(origin.focus)app.querySelector<HTMLElement>(origin.focus)?.focus({preventScroll:true});
+    }
+  }
   if (next === 'settings' && backend.enabled && !sharedPreferences) void loadPreferences();
-  if(next==='details'&&backend.enabled){const game=selectedGame();if(game)void getEngineRows(game).then(()=>{if(view==='details'&&selectedId===game.id)render();}).catch(problem=>announce(problem.message));}
+  if(next==='details'&&backend.enabled){const game=selectedGame();if(game)void getEngineRows(game).then(rows=>{if(view==='details'&&selectedId===game.id){render();if(detailsSection==='overview'&&rows[0])void loadOverviewExtras(game,rows[0]);}}).catch(problem=>announce(problem.message));}
 }
 async function loadPreferences() {
   if (preferencesLoading || !backend.enabled) return;
@@ -167,7 +215,7 @@ function library() {
     `<button class="quiet" data-action="refresh" ${loading ? 'disabled' : ''}>${icon('refresh')}<span>${loading ? 'Refreshing…' : 'Refresh library'}</span></button>`) + `<div class="library-actions-host">${batchSelection.size?`<div class="library-actions-placeholder" aria-hidden="true" inert>${libraryOperations()}</div>`:libraryOperations()}${batchSelection.size?`<div class="selection-bar inner-card"><span>${batchSelection.size} selected</span>${presetSelection ? `<button class="primary" data-action="apply-selected-presets" ${!backend.enabled?'disabled':''}>Apply presets to selected</button><button class="quiet" data-action="end-preset-selection">End preset selection</button>` : ''}<button class="primary" data-operation="install" data-batch="true" ${!backend.enabled ? 'disabled' : ''}>Review selected install</button><button class="quiet" data-operation="uninstall" data-batch="true" ${!backend.enabled ? 'disabled' : ''}>Review selected restore</button><button class="quiet" data-action="remove-selected-entries" ${!backend.enabled?'disabled':''}>Remove entries</button><button class="quiet" data-action="clear-selection">Clear selection</button></div>`:''}</div>` +
     (error ? notice('Library reader unavailable', e(error), 'warning') : '') +
     (snapshot?.warnings.length ? notice('Some library data is unavailable', snapshot.warnings.map(e).join(' '), 'warning') : '') +
-    `<div class="library-tools"><label class="search">${icon('search')}<input id="library-search" type="search" placeholder="Search your library" aria-label="Search your library" value="${e(query)}" /></label><label class="library-filter"><span>Show</span><select id="library-filter" aria-label="Filter library" ${!backend.enabled||libraryChecking?'disabled':''}>${[['all','All games'],['available','Available'],['installed','Installed']].map(([key,label])=>`<option value="${key}" ${libraryFilter===key?'selected':''}>${label}</option>`).join('')}</select></label><div class="library-size-control" data-open="${librarySizeOpen}"><button id="library-size-button" class="library-size-button" data-action="library-size-menu" aria-label="Card size" aria-expanded="${librarySizeOpen}" aria-controls="library-size-panel" ${libraryView==='list'?'disabled':''}>${icon('sliders')}</button><div id="library-size-panel" class="library-size-panel"><label class="library-size"><span>Card size</span><input id="library-size" type="range" min="70" max="140" step="5" value="${appearance.libraryScale}" aria-label="Library item size" aria-valuetext="${appearance.libraryScale}%" ${libraryView==='list'?'disabled':''}/><output for="library-size">${appearance.libraryScale}%</output></label></div></div><div class="view-switch" role="group" aria-label="Library layout"><button data-layout="grid" aria-label="Poster grid" aria-pressed="${libraryView === 'grid'}">${icon('posters')}</button><button data-layout="capsules" aria-label="Wide capsules" aria-pressed="${libraryView === 'capsules'}">${icon('capsules')}</button><button data-layout="list" aria-label="Game list" aria-pressed="${libraryView === 'list'}">${icon('list')}</button></div></div>` +
+    `<div class="library-tools"><label class="search">${icon('search')}<input id="library-search" type="search" placeholder="Search your library" aria-label="Search your library" value="${e(query)}" /></label><label class="library-filter"><span>Show</span><select id="library-filter" aria-label="Filter library" ${!backend.enabled||libraryChecking?'disabled':''}>${[['all','All games'],['available','Available'],['installed','Installed']].map(([key,label])=>`<option value="${key}" ${libraryFilter===key?'selected':''}>${label}</option>`).join('')}</select></label><div class="library-size-control" data-open="${librarySizeOpen}"><button id="library-size-button" class="library-size-button" data-action="library-size-menu" aria-label="Card size" aria-expanded="${librarySizeOpen}" aria-controls="library-size-panel" ${libraryView==='list'?'disabled':''}>${icon('sliders')}</button><div id="library-size-panel" class="library-size-panel"><label class="library-size"><span>Card size</span><input id="library-size" type="range" min="70" max="140" step="5" value="${appearance.libraryScale}" aria-label="Library item size" aria-valuetext="${appearance.libraryScale}%" ${libraryView==='list'?'disabled':''}/><output for="library-size">${appearance.libraryScale}%</output></label></div></div><div class="library-view-controls"><button class="quiet" data-action="bulk-select" aria-pressed="${bulkMode||presetSelection}" ${!backend.enabled?'disabled':''}>${bulkMode||presetSelection?'Done selecting':'Select games'}</button><div class="view-switch" role="group" aria-label="Library layout"><button data-layout="grid" aria-label="Poster grid" aria-pressed="${libraryView === 'grid'}">${icon('posters')}</button><button data-layout="capsules" aria-label="Wide capsules" aria-pressed="${libraryView === 'capsules'}">${icon('capsules')}</button><button data-layout="list" aria-label="Game list" aria-pressed="${libraryView === 'list'}">${icon('list')}</button></div></div></div>` +
 
     `<div id="game-results" aria-live="polite">${gameResults(filtered, games.length)}</div>`;
 }
@@ -190,7 +238,7 @@ function gameResults(filtered: Game[], total: number) {
     const profile=record?.installed?String(record.profile||'Configured'):record?.installed===false?'Not configured':'Not checked';
     const state=actual?actual.blocked?String(actual.blocked):actual.installed?'Installed':'Available':record?.installed?'Installed':'Not checked';
     const color=detailsAccent(game)||'var(--ink)';
-    return `<article class="game-item" data-library-game="${e(game.id)}" data-selected="${batchSelection.has(game.id)}" style="--game-accent:${e(color)};--game-selected-ink:${selectionInk(color)}">${art?`<img class="artwork-glow glow-core" src="${e(art)}" alt="" aria-hidden="true"/><img class="artwork-glow glow-bloom" src="${e(art)}" alt="" aria-hidden="true"/>`:''}<button class="game-card" data-game="${e(game.id)}" aria-label="Open ${e(game.name)} details"><div class="poster">${thumbnail({...game,art:art||null})}${libraryView==='list'?'':osBadges}</div><div class="game-copy"><h3 class="game-title">${e(game.name)}</h3><span class="game-source">${e(game.source)}</span>${libraryView!=='list'?`<span class="library-card-status" title="${actual?'Current engine check':'Saved library check'}">${icon(actual?.blocked?'warning':record?.installed?'check':'info')}<span>${e(record?.installed?profile:actual?state:'Not checked')}</span></span>`:''}</div>${libraryView==='list'?`<span class="library-profile-chip" title="${actual?'Current engine check':'Saved library check'}">${e(profile)}</span><span class="library-row-state" title="${actual?'Current engine check':'Saved library check'}"><i class="state-dot ${record?.installed?'configured':''}"></i><span>${e(state)}</span>${osBadges}</span><span class="library-open-chip">Details</span>`:''}</button><button class="select-game" data-select-game="${e(game.id)}" aria-label="Select ${e(game.name)} for batch review" aria-pressed="${batchSelection.has(game.id)}"><span class="selection-check" aria-hidden="true">${batchSelection.has(game.id)?icon('check'):''}</span></button></article>`;
+    return `<article class="game-item" data-library-game="${e(game.id)}" data-selected="${batchSelection.has(game.id)}" style="--game-accent:${e(color)};--game-selected-ink:${selectionInk(color)}">${art?`<img class="artwork-glow glow-core" loading="lazy" src="${e(art)}" alt="" aria-hidden="true"/><img class="artwork-glow glow-bloom" loading="lazy" src="${e(art)}" alt="" aria-hidden="true"/>`:''}<button class="game-card" data-game="${e(game.id)}" aria-label="Open ${e(game.name)} details"><div class="poster">${thumbnail({...game,art:art||null})}${libraryView==='list'?'':osBadges}</div><div class="game-copy"><h3 class="game-title">${e(game.name)}</h3><span class="game-source">${e(game.source)}</span>${libraryView!=='list'?`<span class="library-card-status" title="${actual?'Current engine check':'Saved library check'}">${icon(actual?.blocked?'warning':record?.installed?'check':'info')}<span>${e(record?.installed?profile:actual?state:'Not checked')}</span></span>`:''}</div>${libraryView==='list'?`<span class="library-profile-chip" title="${actual?'Current engine check':'Saved library check'}">${e(profile)}</span><span class="library-row-state" title="${actual?'Current engine check':'Saved library check'}"><i class="state-dot ${record?.installed?'configured':''}"></i><span>${e(state)}</span>${osBadges}</span><span class="library-open-chip">Details</span>`:''}</button>${libraryView==='list'||bulkMode||presetSelection?`<button class="select-game" data-select-game="${e(game.id)}" aria-label="Select ${e(game.name)} for batch review" aria-pressed="${batchSelection.has(game.id)}"><span class="selection-check" aria-hidden="true">${batchSelection.has(game.id)?icon('check'):''}</span></button>`:''}</article>`;
   }).join('')}</div>`;
 }
 function presetValues() {
@@ -290,19 +338,66 @@ function details() {
   const body = detailsSection === 'overview' ? overviewDetails(game, row) : detailsSection === 'features' ? detailFeatures(game, row) : detailsSection === 'appearance' ? detailAppearance(game) : detailTools(game, row);
   const poster = game.art ? `<div class="detail-artwork"><img class="detail-artwork-light glow-core" src="${e(game.art)}" alt="" aria-hidden="true" /><img class="detail-artwork-light glow-bloom" src="${e(game.art)}" alt="" aria-hidden="true" />${thumbnail(game, 'detail-poster')}</div>` : '';
   const status = record?.installed === true ? String(record.profile || 'Features installed') : undefined;
-  return `<div class="details-page"><header class="details-hero">${game.hero ? `<div class="hero-artwork"><img class="details-hero-image" crossorigin="anonymous" src="${e(game.hero)}" alt="" /></div>` : ''}<button class="back quiet" data-route="library" aria-label="Back to Library" title="Back to Library">${icon('arrow')}<span>Back to Library</span></button><div class="details-identity">${poster}<div class="details-title-copy"><div class="details-name">${status ? `<span class="hero-status" title="${row?'Current engine check':'Saved library check'}">${e(status)}</span>` : ''}<h1 id="page-title" class="game-title ${game.name.length > 28 ? 'long-title' : ''}" title="${e(game.name)}" tabindex="-1">${e(game.name)}</h1><div class="hero-metadata hero-compact-metadata">${metadata}</div></div><div class="details-hero-bottom"><div class="details-hero-meta hero-info-card"><div class="hero-metadata">${metadata}</div>${game.description ? `<p class="hero-description">${e(game.description.replace(/<[^>]*>/g,''))}</p>` : ''}</div><div class="operation-actions hero-actions"><button class="primary" data-operation="install" ${!backend.enabled ? 'disabled' : ''}>${icon('download')}Install Features</button><button class="quiet" data-operation="uninstall" ${!backend.enabled || !row?.installed ? 'disabled' : ''}>${icon('refresh')}Restore Original Files</button><button class="quiet" data-contract="report_draft" ${!backend.enabled ? 'disabled' : ''}>${icon('warning')}Bug Report</button><div class="hero-more"><button class="quiet" data-action="game-menu" aria-label="More game options" aria-haspopup="menu" aria-expanded="${detailsMenuOpen}">${icon('dots')}</button><div class="game-menu glass-section" role="menu" ${detailsMenuOpen?'':'hidden'}><button role="menuitem" data-operation="update-dlss" ${!backend.enabled?'disabled':''}>${icon('download')}Update DLSS</button>${row?.adoption_available?`<button role="menuitem" data-operation="adopt">${icon('check')}Adopt with rtxForge</button><button role="menuitem" data-operation="adopt-clean">${icon('refresh')}Back up and clean install</button>`:''}<button role="menuitem" data-action="launch" ${!backend.enabled||!game.appid?'disabled':''}>${icon('controller')}Launch in Steam</button><button role="menuitem" data-action="open-game-folder" ${!backend.enabled?'disabled':''}>${icon('folder')}Open Folder</button><button role="menuitem" data-action="remove-current-entry" ${!backend.enabled?'disabled':''}>${icon('minus')}Remove from library</button></div></div></div></div></div></div></header><div class="details-layout"><nav class="detail-nav glass-section" aria-label="Game details">${sections.map(([key,label,glyph])=>`<button data-detail-section="${key}" aria-pressed="${detailsSection===key}">${icon(glyph)}<span>${label}</span></button>`).join('')}</nav><div class="details-scroll"><div class="hero-spacer" aria-hidden="true"></div><div class="detail-body">${body}</div></div></div></div>`;
+  return `<div class="details-page"><header class="details-hero">${game.hero ? `<div class="hero-artwork"><img class="details-hero-image" crossorigin="anonymous" src="${e(game.hero)}" alt="" /></div>` : ''}<button class="back quiet" data-route="library" aria-label="Back to Library" title="Back to Library">${icon('arrow')}<span>Back to Library</span></button><div class="details-identity">${poster}<div class="details-title-copy"><div class="details-name">${status ? `<span class="hero-status" title="${row?'Current engine check':'Saved library check'}">${e(status)}</span>` : ''}<h1 id="page-title" class="game-title ${game.name.length > 28 ? 'long-title' : ''}" title="${e(game.name)}" tabindex="-1">${e(game.name)}</h1><div class="hero-metadata hero-compact-metadata">${metadata}</div></div><div class="details-hero-bottom"><div class="details-hero-meta hero-info-card"><div class="hero-metadata">${metadata}</div>${game.description ? `<p class="hero-description">${e(game.description.replace(/<[^>]*>/g,''))}</p>` : ''}</div><div class="operation-actions hero-actions"><button class="primary" data-operation="${record?.installed ? 'repair' : 'install'}" ${!backend.enabled ? 'disabled' : ''}>${icon('download')}${record?.installed ? 'Update Features' : 'Install Features'}</button><button class="quiet" data-operation="uninstall" ${!backend.enabled || !row?.installed ? 'disabled' : ''}>${icon('refresh')}Restore Original Files</button><button class="quiet" data-contract="report_draft" ${!backend.enabled ? 'disabled' : ''}>${icon('warning')}Bug Report</button><div class="hero-more"><button class="quiet" data-action="game-menu" aria-label="More game options" aria-haspopup="menu" aria-expanded="${detailsMenuOpen}">${icon('dots')}</button><div class="game-menu glass-section" role="menu" ${detailsMenuOpen?'':'hidden'}><button role="menuitem" data-action="launch" ${!backend.enabled||!game.appid?'disabled':''}>${icon('controller')}Launch in Steam</button>
+    <button role="menuitem" data-action="open-game-folder" ${!backend.enabled?'disabled':''}>${icon('folder')}Open folder</button>
+    <button role="menuitem" data-action="copy-game-path">${icon('file')}Copy game location</button>
+    <div class="menu-divider" role="separator"></div>
+    <button role="menuitem" data-detail-section="overlay">${icon('sliders')}Overlay settings</button>
+    <button role="menuitem" data-operation="update-dlss" ${!backend.enabled?'disabled':''}>${icon('download')}Update DLSS</button>
+    ${row?.adoption_available?`<button role="menuitem" data-operation="adopt">${icon('check')}Adopt with rtxForge</button><button role="menuitem" data-operation="adopt-clean">${icon('refresh')}Back up and clean install</button>`:''}
+    <div class="menu-divider" role="separator"></div>
+    <button role="menuitem" data-action="remove-current-entry" ${!backend.enabled?'disabled':''}>${icon('minus')}Remove from library</button></div></div></div></div></div></div></header><div class="details-layout"><nav class="detail-nav glass-section" aria-label="Game details">${sections.map(([key,label,glyph])=>`<button data-detail-section="${key}" aria-pressed="${detailsSection===key}">${icon(glyph)}<span>${label}</span></button>`).join('')}</nav><div class="details-scroll"><div class="hero-spacer" aria-hidden="true"></div><div class="detail-body">${body}</div></div></div></div>`;
+}
+async function loadOverviewExtras(game: Game, row: EngineRow) {
+  try {
+    const result = await engineRequest<{cards:OverviewCard[];extras:string[]}>('overview_inspect',{row});
+    if(!Array.isArray(result?.cards) || !Array.isArray(result?.extras))return;
+    overviewChecks.set(game.id,result);
+    if(view==='details' && selectedId===game.id && detailsSection==='overview'){
+      const facts = app.querySelector('#overview-facts');
+      if(facts) facts.outerHTML=overviewFacts(result.cards,result.extras);
+    }
+  } catch {
+    // Saved facts remain available when the optional live inspection fails.
+  }
+}
+async function loadDlssFiles(game: Game) {
+  try {
+    let result: DlssInventory | DlssInventory[];
+    if(backend.enabled){
+      const rows=await getEngineRows(game);
+      if(!rows[0])throw new Error('This installation is unavailable to the engine.');
+      result=await engineRequest<DlssInventory|DlssInventory[]>('dlss_inventory',{row:rows[0]});
+    } else if(!('__TAURI_INTERNALS__' in window)){
+      const response=await fetch('/api/dll-inventory?id='+encodeURIComponent(game.id));
+      if(!response.ok)throw new Error('File inventory is unavailable in this preview.');
+      result=await response.json();
+    } else return;
+    fileInventories.set(game.id,Array.isArray(result)?result[0]:result);
+  }catch(problem){
+    fileInventories.set(game.id,{files:[],blocked:problem instanceof Error?problem.message:String(problem)});
+  }
+  if(view==='details'&&selectedId===game.id&&detailsSection==='files')render();
+}
+function overviewFacts(cards: OverviewCard[], extras: string[]) {
+  const glyphs:Record<string,string>={Features:"package",Compatibility:"check","Neural rendering":"cpu","Multi-Frame Generation":"sliders"};
+  const pills=(values:string[])=>values.map(value=>`<span class="hero-pill">${e(value)}</span>`).join('');
+  return `<div id="overview-facts"><div class="fact-grid native-facts" data-facts="${cards.length}">
+    ${cards.map(({title,values})=>`<article class="glass-section overview-fact"><div class="overview-heading">${icon(glyphs[title]||"info")}<strong>${e(title)}</strong></div><div class="overview-pills">${pills(values)}</div></article>`).join('')}
+    </div>${extras.length?`<div class="inner-card overview-location overview-extras">${icon("wrench")}<div><strong>Extras</strong><div class="overview-pills">${pills(extras)}</div></div></div>`:''}</div>`;
 }
 function overviewDetails(game: Game, row?: EngineRow) {
   const saved = row || game.savedRecord;
-  const facts: [string,unknown][] = [];
-  if (saved) {
-    if (saved.installed === false) facts.push(['Feature package','Not installed']);
-    else if (saved.runtime_provider) facts.push(['Feature package',snapshot?.catalog?.find(item=>item.id===saved.runtime_provider)?.name || saved.runtime_provider]);
-    const compat = saved.compat as Record<string,unknown> | undefined;
-    if (compat?.verdict) facts.push(['Compatibility',String(compat.verdict)+(compat.source==='list'?' · rtxForge list':' · your result')]);
-    if(saved.dlss_version) facts.push(['DLSS file version',saved.dlss_version]);
-  }
-  return `${facts.length?`<div class="fact-grid native-facts">${facts.map(([label,value])=>`<article class="glass-section"><span>${label}</span><strong>${e(value)}</strong></article>`).join('')}</div>`:''}<section class="glass-section"><h2>Game folder</h2><div class="inner-card detail-action-row"><span class="path">${e(game.path)}</span><button class="quiet" data-action="copy-game-path" ${!backend.enabled?'disabled':''}>Copy location</button></div><label class="field"><span><strong>Game executable</strong><small>${saved?.exe?e(saved.exe):'No saved executable information'}</small></span><input id="executable-source" type="text" placeholder="Full or game-relative EXE path" ${!backend.enabled?'disabled':''}/></label><div class="operation-actions extra-actions"><button class="quiet" data-action="executable-review" ${!backend.enabled||snapshot?.platform!=='Windows'?'disabled':''}>Choose EXE…</button><button class="quiet" data-action="executable-reset" ${!backend.enabled||snapshot?.platform!=='Windows'?'disabled':''}>Use detected</button></div></section><section class="glass-section"><h2>Testing</h2><p>How this game runs with rtxForge. Something wrong? Prepare a bug report.</p><div class="inner-card"><label class="field"><span><strong>Test result</strong><small>Bench keeps this game out of bulk installs and repairs.</small></span><select id="test-result" ${!backend.enabled?'disabled':''}>${!game.testStatus?'<option value="">No saved result</option>':''}${['Untested','Working','Problem','Bench'].map(value=>`<option ${game.testStatus===value?'selected':''}>${value}</option>`).join('')}</select></label><div class="detail-action-row"><div><strong>${game.testActive?'Test running':'Test session'}</strong><p>${game.testActive?'Play for a minute, then finish here to check each component.':'Check package files, NR, MFG, the panel and helper, with evidence and suggested fixes.'}</p></div><div class="operation-actions"><button class="quiet" data-contract="${game.testActive?'test_finish':'test_start'}" ${!backend.enabled?'disabled':''}>${game.testActive?'Finish Test':'Start Test'}</button><button class="quiet" data-contract="report_draft" ${!backend.enabled?'disabled':''}>Bug Report</button></div></div></div></section>`;
+  const current = overviewChecks.get(game.id);
+  const cards = current?.cards || game.overviewCards || [{title:'Features',values:['Not checked']},{title:'Compatibility',values:['No compatibility result']}];
+  const chooseExe = backend.enabled && snapshot?.platform==='Windows';
+  return `${overviewFacts(cards,current?.extras||[])}
+    <div class="overview-locations">
+      <div class="inner-card overview-location">${icon('folder')}<div><strong>Game folder</strong><small class="path">${e(game.path)}</small></div><button class="quiet" data-action="open-game-folder" ${!backend.enabled?'disabled':''}>Open folder</button></div>
+      <div class="inner-card overview-location">${icon('file')}<div><strong>Game executable</strong><small>${saved?.exe?e(saved.exe)+(saved.executable_selected?' · Selected by you':' · Detected automatically'):'No executable detected'}</small></div>
+        <div class="operation-actions"><button class="quiet" data-action="executable-review" ${chooseExe?'':'disabled'}>Choose EXE…</button>${chooseExe&&saved?.executable_selected?`<button class="quiet" data-action="executable-reset">Use detected</button>`:''}</div>
+      </div>
+    </div><section class="glass-section"><h2>Testing</h2><p>How this game runs with rtxForge. Something wrong? Prepare a bug report.</p><div class="inner-card"><label class="field"><span><strong>Test result</strong><small>Bench keeps this game out of bulk installs and repairs.</small></span><select id="test-result" ${!backend.enabled?'disabled':''}>${!game.testStatus?'<option value="">No saved result</option>':''}${['Untested','Working','Problem','Bench'].map(value=>`<option ${game.testStatus===value?'selected':''}>${value}</option>`).join('')}</select></label><div class="detail-action-row"><div><strong>${game.testActive?'Test running':'Test session'}</strong><p>${game.testActive?'Play for a minute, then finish here to check each component.':'Check package files, NR, MFG, the panel and helper, with evidence and suggested fixes.'}</p></div><div class="operation-actions"><button class="quiet" data-contract="${game.testActive?'test_finish':'test_start'}" ${!backend.enabled?'disabled':''}>${game.testActive?'Finish Test':'Start Test'}</button><button class="quiet" data-contract="report_draft" ${!backend.enabled?'disabled':''}>Bug Report</button></div></div></div></section>`;
 }
 
 function detailFeatures(game: Game, row?: EngineRow) {
@@ -313,11 +408,11 @@ function detailFeatures(game: Game, row?: EngineRow) {
   return `<section class="glass-section"><div class="section-heading"><h2>Package</h2><span class="state-label" id="draft-label">${drafts.has(game.id)?'Draft · not applied':!backend.enabled?'Read-only preview':''}</span></div><div class="inner-card">${selectField('provider','Feature package',[['y4my','OptiScaler'],['skynizz','Skynizz NR'],['dlss-unlocked','DLSS-Unlocked'],['feeder','Feeder NR'],...(values.provider==='vulkan-native'||row?.vulkan_available?[['vulkan-native','Native Vulkan'] as [string,string]]:[])],values.provider,row?.installed?'Another package applies after you restore this game.':'Games without DLSS get their NR package automatically.',!backend.enabled||Boolean(row?.installed))}${selectField('profile','Feature mode',[['mfg-only','MFG only'],['nr-only','NR only'],['nr-mfg','NR + MFG']],values.profile,'',!backend.enabled||Boolean(row?.installed))}</div><button class="quiet extra-actions" data-detail-section="overlay">${icon('sliders')}Overlay settings</button></section><section class="glass-section"><h2>Features</h2>${external?`<p>${values.provider==='feeder'?'Use ReShade’s NR panel in the running game to adjust passes, resolution, tone and structure.':'Adjust Vulkan NR and MFG in the running game’s rtxForge overlay.'}</p>`:`<div class="inner-card">${selectField('mfg_enabled','Frame generation',[['true','On'],['false','Off']],values.mfg_enabled,'',!backend.enabled)}${selectField('mfg_mode','MFG mode',[['0','Automatic'],['1','Custom'],...(row?.dynamic_mfg_available?[['2','Dynamic'] as [string,string]]:[])],values.mfg_mode,'',!backend.enabled||values.mfg_enabled==='false')}${selectField('multiplier','MFG multiplier',[['2','2×'],['3','3×'],['4','4×'],['5','5×'],['6','6×']],values.multiplier,'',!backend.enabled||values.mfg_enabled==='false'||values.mfg_mode==='0')}${selectField('nr','Enable NR on launch',[['false','Off'],['true','On']],values.nr,'',!backend.enabled)}</div>${schemaControls(game,values.provider)}`}<div class="section-footer"><button class="quiet" data-operation="reset" ${!backend.enabled||!row?.installed?'disabled':''}>Use library defaults</button><button class="primary" data-operation="apply" ${!backend.enabled||!row?.installed?'disabled':''}>Apply to this game</button></div></section>`;
 }
 function detailsAccent(game?: Game) {
-  const accent = game && (game.accent || game.artworkAccent);
+  const accent = game && (gameAccentDrafts.get(game.id) || game.accent || game.artworkAccent);
   return accent && /^#[0-9a-f]{6}$/i.test(accent) ? accent : null;
 }
 function applyDetailsAccent() {
-  if (view !== 'details') return;
+  if (view !== 'details' && !(view==='operation'&&operation?.kind&&operation.origin==='details')) return;
   const content = document.querySelector<HTMLElement>('#content');
   if (!content) return;
   const game=selectedGame(),accent=detailsAccent(game);
@@ -343,7 +438,7 @@ function applyDetailsAccent() {
   const colors=heroColors(accent||'#d8d5ce',appearance.theme==='light',sampled||undefined,cardSample||undefined,appearance.tint);
   const badgeColors=heroBadge(image&&badge?sampleHero(image,badge.getBoundingClientRect())||undefined:undefined);
   content.style.setProperty('--game-title-color',colors.title);
-  content.style.setProperty('--section-heading-color',sectionHeadingColor(accent||'#d8d5ce',appearance.theme==='light'));
+  content.style.setProperty('--section-heading-color',sectionHeadingColor(accent||'#d8d5ce',document.documentElement.dataset.theme==='light'));
   content.style.setProperty('--title-veil',String(colors.titleVeil));
   content.style.setProperty('--hero-card-color',colors.card);
   content.style.setProperty('--hero-card-ink',colors.ink);
@@ -374,7 +469,7 @@ function heroFocusEditor(game:Game){
   return `<section class="glass-section hero-framing-editor"><div class="section-heading"><h2>Hero Framing</h2><span class="framing-state">${heroFocusDrafts.has(game.id)?'Unsaved framing':game.heroFocus?'Desktop framing':'Automatic framing'}</span></div><p>Keep your subject in view as the header gets shorter.</p><button id="hero-focal-preview" class="hero-focal-preview" data-focal-editor aria-label="Adjust hero framing" aria-pressed="${Boolean(heroAdjustment)}" aria-describedby="hero-framing-help"><img src="${e(game.hero)}" alt="Hero framing preview"/><i class="focal-point" aria-hidden="true"></i><span class="framing-preview-action">${icon('sliders')}<span class="framing-action-label">${heroAdjustment?'Done adjusting':'Adjust framing'}</span></span></button><div class="hero-framing-controls"><div class="hero-focus-sliders">${['Horizontal','Vertical'].map((axis,index)=>`<label class="library-size"><span>${axis}</span><input type="range" id="hero-focus-${index}" data-hero-focus="${index}" min="0" max="100" step="1" value="${Math.round(point[index]*100)}" aria-label="${axis} hero focal point"/><output for="hero-focus-${index}">${Math.round(point[index]*100)}%</output></label>`).join('')}</div><div class="operation-actions"><button class="quiet" data-action="reset-hero-framing">Use Desktop framing</button><button class="primary" data-action="save-hero-framing" ${!backend.enabled||!heroFocusDrafts.has(game.id)?'disabled':''}>Review hero framing</button></div></div><p id="hero-framing-help" class="framing-help">${framingHelp()}</p></section>`;
 }
 function framingHelp(){
-  if(controller)return heroAdjustment?`D-pad or left stick moves the focal point. ${controllerGlyph(controllerFamily(),0)} Done ${controllerGlyph(controllerFamily(),1)} Cancel`:`${controllerGlyph(controllerFamily(),0)} Adjust on the preview. Sliders also work with the D-pad.`;
+  if(controller)return heroAdjustment?`D-pad moves the focal point. ${controllerGlyph(controllerFamily(),0)} Done ${controllerGlyph(controllerFamily(),1)} Cancel`:`${controllerGlyph(controllerFamily(),0)} Adjust on the preview. Sliders also work with the D-pad.`;
   return heroAdjustment?'Arrow keys move the focal point. Enter finishes; Escape cancels.':'Select the preview to adjust with arrow keys, or use the sliders.';
 }
 function updateHeroPoint(point:[number,number]){
@@ -417,7 +512,7 @@ function applyHeroFraming(){
 }
 function detailAppearance(game: Game) {
   const accent = detailsAccent(game);
-  return `<section class="glass-section"><h2>Game Accent</h2><p>${game.accent ? `Saved in rtxForge · ${e(game.accent.toUpperCase())}` : game.artworkAccent ? 'Automatic color from your library poster.' : 'No artwork color available. This game uses neutral surfaces and controls.'}</p><div class="inner-card"><label class="field color-field"><span><strong>Game accent</strong><small>Shared with Desktop Mode. Changes are saved after review.</small></span><input type="color" id="game-accent-color" value="${gameAccentDrafts.get(game.id)||accent||'#b4b4b4'}" aria-label="Game accent" ${!backend.enabled?'disabled':''}/></label>${surfaceTintControls(appearance.accentMode,appearance.tintStrength)}</div><div class="operation-actions extra-actions"><button class="primary" data-action="review-game-accent" ${!backend.enabled||!gameAccentDrafts.has(game.id)?'disabled':''}>Review accent color</button><button class="quiet" data-action="reset-game-accent" ${!backend.enabled||!game.accent?'disabled':''}>Use artwork color</button></div></section>${heroFocusEditor(game)}${screenshotChoices(game)}${artworkEditor(game)}`;
+  return `<section class="glass-section game-accent-section"><h2>Game Accent</h2><p>${game.accent ? `Saved in rtxForge · ${e(game.accent.toUpperCase())}` : game.artworkAccent ? 'Automatic color from your library poster.' : 'No artwork color available. This game uses neutral surfaces and controls.'}</p><div class="inner-card"><div class="field color-field"><span><strong>Game accent</strong><small>Preview a color, then save it to Desktop and Game Mode.</small></span>${colorPicker('game-accent-color',gameAccentDrafts.get(game.id)||accent||'#b4b4b4',game.art||'',!backend.enabled)}</div>${surfaceTintControls(appearance.accentMode,appearance.tintStrength)}</div><div class="operation-actions extra-actions"><button class="quiet" data-action="reset-game-accent" ${!backend.enabled||!game.accent?'disabled':''}>Use artwork color</button></div></section>${heroFocusEditor(game)}${screenshotChoices(game)}${artworkEditor(game)}`;
 }
 function setupHero() {
   heroResize?.disconnect();
@@ -481,7 +576,7 @@ function schemaControls(game: Game, provider: string) {
   const row = engineRows.find(row => pathKey(row.game) === pathKey(game.path));
   const saved = (row?.feature_controls || snapshot?.defaults.feature_controls || {}) as Record<string, number>;
   const draft = drafts.get(game.id) || {};
-  return `<details class="schema-controls"><summary>Advanced feature controls</summary><p class="subtle">The same control schema used by the overlay and existing Game Mode. Runtime units are preserved.</p>${schema.groups.filter(group => group.name !== 'Frame generation').map(group => {
+  return `<details class="schema-controls"><summary>${icon('sliders')}Advanced feature controls</summary><p class="subtle">The same control schema used by the overlay and existing Game Mode. Runtime units are preserved.</p>${schema.groups.filter(group => group.name !== 'Frame generation').map(group => {
     const controls = schema.controls.filter(control => control.group === group.name);
     if (!controls.length) return '';
     return `<section class="schema-group"><h3>${e(group.name)}</h3><div class="inner-card">${controls.map(control => {
@@ -501,9 +596,31 @@ function detailTools(game: Game, row?: EngineRow) {
   if (detailsSection === 'artwork') return artworkEditor(game);
   if (detailsSection === 'overlay') return gameOverlaySettings(game);
   const actionCard=(title:string,copy:string,attributes:string,caption:string)=>`<article class="inner-card action-card"><div><h3>${title}</h3><p>${e(copy)}</p></div><button class="quiet" ${attributes} ${!backend.enabled?'disabled':''}>${caption}</button></article>`;
-  if (detailsSection === 'files') return `<section class="glass-section"><h2>File Management</h2><div class="package-columns detail-card-row">${actionCard('Update DLSS','Update older DLSS files. Backups are kept for restoration.','data-operation="update-dlss"','Update')}${actionCard('Restore original DLSS files','Review the existing updater backups for this game.','data-contract="dlss_restore_review"','Restore')}</div></section><section class="glass-section"><h2>Installed DLSS Files</h2><div class="inner-card detail-action-row"><span>${e(row?.dlss_version || game.savedRecord?.dlss_version || 'File inventory has not been loaded in this preview.')}</span><button class="quiet" data-contract="dlss_inventory" ${!backend.enabled?'disabled':''}>Inspect files</button></div></section>`;
+  if (detailsSection === 'files') {
+    const inventory=fileInventories.get(game.id);
+    const files=inventory?.files || [];
+    const byComponent=files.reduce((groups,file)=>{
+      const copies=groups.get(file.title)||[];copies.push(file);groups.set(file.title,copies);return groups;
+    },new Map<string,DlssInventory["files"]>());
+    const cards=[...byComponent].map(([title, copies])=>`<article class="inner-card dlss-file-card">
+      <h3>${e(title)}</h3>
+      <ul>${[...new Map(copies.map(file=>{
+        const name=file.path.split('/').at(-1)||file.title;
+        return [name+'|'+file.current,{name,current:file.current}];
+      })).values()].map(({name,current})=>`<li><strong class="dll-name">${e(name)}</strong><span class="hero-pill">${e(current==='Unknown'?'Version unavailable':current)}</span></li>`).join('')}</ul>
+    </article>`).join('');
+    return `<section class="glass-section"><h2 class="panel-heading">${icon('file')}Installed DLSS Files</h2>
+      ${cards?`<div class="dlss-file-grid">${cards}</div>`:`<p>${e(inventory?.blocked || (inventory ? 'No supported DLSS DLLs were found.' : backend.enabled || !('__TAURI_INTERNALS__' in window) ? 'Checking installed DLLs…' : 'File inventory is available in the installed app.'))}</p>`}</section>
+      <section class="glass-section"><h2 class="panel-heading">${icon('wrench')}File Management</h2><div class="package-columns detail-card-row">${actionCard('Update DLSS','Update older DLSS files. Backups are kept for restoration.','data-operation="update-dlss"','Update')}${actionCard('Restore original DLSS files','Review the existing updater backups for this game.','data-contract="dlss_restore_review"','Restore')}</div></section>`;
+  }
   if (detailsSection === 'notes') return `<section class="glass-section"><h2>Your Notes</h2><p>Kept with this game in rtxForge. Included in bug reports when you choose.</p><label class="notes-field"><span>Notes</span><textarea id="game-notes" rows="10" ${!backend.enabled||!notesLoaded.has(game.id)?'disabled':''}>${e(noteDrafts.get(game.id) ?? game.notes ?? '')}</textarea></label><button class="primary extra-actions" data-action="save-notes" ${!backend.enabled||!notesLoaded.has(game.id)?'disabled':''}>Save Notes</button></section>`;
-  return `<section class="glass-section"><h2>Tools</h2><div class="package-columns detail-card-row">${actionCard('Game Folder',game.path,'data-action="copy-game-path"','Copy location')}${actionCard('Diagnose NR','Read the saved NR settings, runtime hashes and log evidence.','data-contract="diagnose"','Diagnose')}</div></section><section class="glass-section"><h2>RenoDX HDR</h2><p>The matching HDR mod and its dependencies, managed together.</p><div class="inner-card detail-action-row"><div><strong>HDR enhancement</strong><p>Review the matching mod and required ReShade files for this game.</p></div><div class="operation-actions"><button class="quiet" data-contract="hdr_review" ${!backend.enabled?'disabled':''}>Install HDR</button><button class="quiet" data-contract="hdr_review" data-remove="true" ${!backend.enabled?'disabled':''}>Remove HDR</button></div></div><div class="inner-card detail-action-row extra-actions"><div><strong>Custom HDR package</strong><p>Choose a RenoDX .addon64 or .addon32 file. Architecture and exact files are checked before installation.</p></div><button class="quiet" data-tool-kind="hdr-custom" ${!backend.enabled?'disabled':''}>Use custom package…</button></div></section><section class="glass-section"><h2>Graphics Tools</h2><p>Check NR or add ReShade to this game. Existing graphics files are kept safe.</p><div class="package-columns detail-card-row">${actionCard('Install ReShade','Download and install the official ReShade runtime for this game.','data-action="official-reshade"','Install')}${actionCard('Import ReShade package','Add a ZIP, custom runtime, add-on, shader or preset INI. Review the exact files before importing.','data-tool-kind="reshade-import"','Choose…')}${actionCard('Install Add-on','Choose another .addon64 file. RenoDX HDR is managed above.','data-tool-kind="addon"','Choose…')}</div>${toolImportOpen?`<div class="inner-card tool-import"><label class="field"><span><strong>${extraKind==='hdr-custom'?'Custom RenoDX package':extraKind==='addon'?'Add-on file':'ReShade package'}</strong></span><input id="extra-source" type="text" value="${e(extraSource)}" ${!backend.enabled?'disabled':''}/></label><button class="primary" data-action="review-extra" ${!backend.enabled||!extraSource?'disabled':''}>Review exact files</button></div>`:''}<div class="operation-actions extra-actions"><button class="quiet" data-action="extra-records" ${!backend.enabled?'disabled':''}>Show tool recovery records</button></div><div class="tool-records">${extraRecords.map((record,index)=>`<button class="quiet" data-extra-restore="${index}" ${!backend.enabled?'disabled':''}>Restore ${e(record.title||record.kind)}</button>`).join('')}</div></section>`;
+  return `<section class="glass-section"><h2>Tools</h2><div class="tool-utilities">${actionCard('Game Folder',game.path,'data-action="copy-game-path"','Copy location')}${actionCard('Diagnose NR','Read saved NR settings, runtime hashes and log evidence.','data-contract="diagnose"','Diagnose')}</div></section>
+  <section class="glass-section reshade-tools"><h2>ReShade &amp; add-ons</h2><p>Manage ReShade, RenoDX, shaders and presets for this game.</p><div class="inner-card tool-options">
+    <div class="detail-action-row"><div><strong>ReShade runtime</strong><p>Install the official runtime or import your own package, shaders or preset.</p></div><div class="operation-actions"><button class="primary" data-action="official-reshade" ${!backend.enabled?'disabled':''}>Install ReShade</button><button class="quiet" data-tool-kind="reshade-import" ${!backend.enabled?'disabled':''}>Import package&hellip;</button></div></div>
+    <div class="detail-action-row"><div><strong>RenoDX</strong><p>Install the matching game add-on and its required ReShade files.</p></div><div class="operation-actions"><button class="quiet" data-contract="hdr_review" ${!backend.enabled?'disabled':''}>Install RenoDX</button><button class="quiet" data-contract="hdr_review" data-remove="true" ${!backend.enabled?'disabled':''}>Remove RenoDX</button><button class="quiet" data-tool-kind="hdr-custom" ${!backend.enabled?'disabled':''}>Use custom add-on&hellip;</button></div></div>
+    <div class="detail-action-row"><div><strong>Other add-ons</strong><p>Choose a ReShade .addon64 file.</p></div><button class="quiet" data-tool-kind="addon" ${!backend.enabled?'disabled':''}>Choose add-on&hellip;</button></div>
+  </div>${toolImportOpen?`<div class="inner-card tool-import"><label class="field"><span><strong>${extraKind==='hdr-custom'?'Custom RenoDX add-on':extraKind==='addon'?'Add-on file':'ReShade package'}</strong></span><input id="extra-source" type="text" value="${e(extraSource)}" ${!backend.enabled?'disabled':''}/></label><button class="primary" data-action="review-extra" ${!backend.enabled?'disabled':''}>Review installation</button></div>`:''}
+  <div class="operation-actions extra-actions"><button class="quiet" data-action="extra-records" ${!backend.enabled?'disabled':''}>Recovery records</button></div><div class="tool-records">${extraRecords.map((record,index)=>`<button class="quiet" data-extra-restore="${index}" ${!backend.enabled?'disabled':''}>Restore ${e(record.title||record.kind)}</button>`).join('')}</div></section>`;
 }
 
 function approvedImageUrl(raw: unknown) {
@@ -516,7 +633,7 @@ function gameOverlaySettings(game: Game) {
   const overrides = (sharedPreferences?.game_overlay_settings || {}) as Record<string, Record<string, unknown>>;
   const identity = Object.keys(overrides).find(key => pathKey(key) === pathKey(game.path)) || game.path;
   const current = mergeOverlay({...snapshot?.preferences,...sharedPreferences},overrides[identity],gameOverlayDrafts.get(game.id));
-  return `<section class="glass-section"><h2>Overlay for this game</h2><p>${overrides[identity] ? 'This game has its own overlay choices.' : 'This game currently inherits app settings.'} Changes are reviewed before saving. Restart the game after applying an overlay update.</p>${!sharedPreferences ? '<button class="quiet" data-action="load-settings">Load current overlay settings</button>' : ''}</section>${settingsContent({category:'overlay',preferences:current,changes:{},glassDefaults:snapshot?.overlayDefaults||{},enabled:backend.enabled&&Boolean(sharedPreferences),platform:snapshot?.platform,icon,gridConnected,games:snapshot?.games||[],game,reportSelection:supportSelection})}${current.overlay_renderer==='optiscaler'?`<section class="glass-section"><h3>Use native menus for this game</h3><p>The review will keep the original menus available. Other games keep their choices.</p><label><input id="overlay-make-default" type="checkbox"/> Make this my default</label></section>`:''}<div class="operation-actions extra-actions"><button class="primary" data-action="save-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review this game's preferences</button><button class="quiet" data-action="inherit-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Use app settings</button><button class="quiet" data-action="apply-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review overlay update</button></div>`;
+  return `<div class="overlay-game-note"><p>${overrides[identity] ? 'This game has its own overlay settings.' : 'This game uses the app’s overlay settings.'}</p>${!sharedPreferences&&backend.enabled ? '<button class="quiet" data-action="load-settings">Load settings</button>' : ''}</div>${settingsContent({category:'overlay',preferences:current,changes:{},glassDefaults:snapshot?.overlayDefaults||{},enabled:backend.enabled&&Boolean(sharedPreferences),platform:snapshot?.platform,icon,gridConnected,games:snapshot?.games||[],game,reportSelection:supportSelection})}${current.overlay_renderer==='optiscaler'?`<section class="glass-section"><h3>Use native menus for this game</h3><p>The review will keep the original menus available. Other games keep their choices.</p><label><input id="overlay-make-default" type="checkbox"/> Make this my default</label></section>`:''}<div class="operation-actions extra-actions"><button class="primary" data-action="save-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review this game's preferences</button><button class="quiet" data-action="inherit-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Use app settings</button><button class="quiet" data-action="apply-game-overlay" ${!backend.enabled || !sharedPreferences ? 'disabled' : ''}>Review overlay update</button></div>`;
 }
 function startupSettingsView() {
   if(!pendingInstall)return '';
@@ -533,7 +650,7 @@ function startupSettingsView() {
 function applyOperationAccent() {
   if(view!=='operation'||!operation?.kind)return;
   const progress=operation.progress||{},game=flowGame({...progress,name:progress.game||progress.name},snapshot?.games||[])||(operation.targets?.length===1?operation.targets[0]:undefined),accent=game?detailsAccent(game):null;
-  const content=app.querySelector<HTMLElement>('#content');if(content){
+  const content=app.querySelector<HTMLElement>('.operation-modal, #content:not(.shell[inert] #content)');if(content){
     for(const key of ['--accent','--accent-ink','--primary-ink'])content.style.removeProperty(key);
     if(accent){content.style.setProperty('--accent',accent);content.style.setProperty('--accent-ink',appearance.theme==='light'?'var(--ink)':accent);content.style.setProperty('--primary-ink',selectionInk(accent));}
   }
@@ -548,6 +665,7 @@ function applyOperationAccent() {
 function operationView() {
   if (!operation) return heading('Operations', 'No operation is active.');
   const state = operation, review = state.review;
+  if(state.method==='overlay_status'&&state.stage==='done')return heading('Overlay Status','Installed versions and recorded update times.')+overlayStatusView(state.result as OverlayStatus);
   if(state.kind)return operationFlow(state,snapshot?.games||[],icon,startupSettingsView(),supportedReviews(review));
   const entries = review?.rows || review?.items || [];
   return heading(e(state.title), state.stage === 'checking' ? 'Checking the exact selection with the shared engine…' : state.stage === 'running' ? 'The existing engine is applying the reviewed changes.' : state.stage === 'review' ? 'Your files change only after you confirm this exact review.' : '') +
@@ -642,12 +760,12 @@ function packages() {
   const pair = records.find(item=>item.id==='skynizz');
   const versions = (pair?.mfg_versions||{}) as Record<string,string>;
   const mfg = [['universal','Universal MFG','OptiScaler plugin','Keeps NVIDIA’s DLSS Frame Generation and unlocks 3× to 6× where the driver allows 2×.'],['integrated','Integrated MFG unlock','Built into the bridge','Patches NVIDIA’s DLSS Frame Generation for 3× to 6× with no extra plugin.'],['mfg-unlock','MFG Unlock','ReShade add-on','Raises NVIDIA’s DLSS Frame Generation multiplier through ReShade.']];
-  return heading('Packages','Choose what rtxForge installs. Every game change is reviewed before it is applied.')+`<div class="package-columns"><section class="glass-section"><h2>NR packages</h2><p>Choose one for games with DLSS. Feeder and Vulkan packages are used automatically for the games they cover.</p><div class="package-options">${nr.length?nr.map(item=>packageCard(item,Boolean(item.automatic))).join(''):fallback.filter(item=>item.id==='skynizz').map(item=>packageCard(item as unknown as Record<string,unknown>)).join('')}</div></section><section class="glass-section"><h2>MFG packages</h2><p>Native NVIDIA frame generation for Skynizz NR.</p><div class="package-options">${mfg.map(([id,name,kind,summary])=>`<article class="inner-card package-option"><div><h3 class="game-title">${name}</h3><p class="version">${e(versions[id]||kind)}</p></div><p>${summary}</p><button class="quiet" data-mfg-default="${id}" ${!backend.enabled?'disabled':''}>Use with Skynizz NR</button></article>`).join('')}</div></section></div><section class="glass-section unified-packages"><h2>Unified packages</h2><p>NR and MFG together in one package.</p><div class="package-columns">${unified.map(item=>packageCard(item as Record<string,unknown>)).join('')}</div></section><section class="glass-section package-policy"><h2>Your own package</h2><p>Inspect a ZIP archive and review its settings before using it. Instructions are never run.</p><label class="field"><span><strong>Archive path</strong></span><input id="package-source" value="${e(packageSource)}" ${!backend.enabled?'disabled':''}/></label><button class="quiet" data-action="inspect-package" ${!backend.enabled?'disabled':''}>Choose archive</button></section>`;
+  return heading('Packages','Choose what rtxForge installs. Every game change is reviewed before it is applied.')+`<div class="package-columns"><section class="glass-section"><h2>NR packages</h2><p>Choose one for games with DLSS. Feeder and Vulkan packages are used automatically for the games they cover.</p><div class="package-options">${nr.length?nr.map(item=>packageCard(item,Boolean(item.automatic))).join(''):fallback.filter(item=>item.id==='skynizz').map(item=>packageCard(item as unknown as Record<string,unknown>)).join('')}</div></section><section class="glass-section"><h2>MFG packages</h2><p>Native NVIDIA frame generation for Skynizz NR.</p><div class="package-options">${mfg.map(([id,name,kind,summary])=>`<article class="inner-card package-option"><div><h3 class="game-title">${name}</h3><p class="version">${e(versions[id]||kind)}</p></div><p>${summary}</p><button class="quiet" data-mfg-default="${id}" ${!backend.enabled?'disabled':''}>Use with Skynizz NR</button></article>`).join('')}</div></section></div><div class="package-columns package-sources"><section class="glass-section unified-packages"><h2>Unified packages</h2><p>NR and MFG together in one package.</p><div class="package-options">${unified.map(item=>packageCard(item as Record<string,unknown>)).join('')}</div></section><section class="glass-section package-policy"><h2>Your own package</h2><p>Inspect a ZIP archive and review its settings before using it. Instructions are never run.</p><label class="field"><span><strong>Archive path</strong></span><input id="package-source" value="${e(packageSource)}" ${!backend.enabled?'disabled':''}/></label><button class="quiet" data-action="inspect-package" ${!backend.enabled?'disabled':''}>Choose archive</button></section></div>`;
 }
 
 function extras() {
-  const tool = (title:string,copy:string,action:string,caption:string,glyph:string) => `<article class="glass-section tool-card"><div class="tool-heading">${icon(glyph)}<h2>${title}</h2></div><p>${copy}</p><button class="quiet" data-action="${action}" ${!backend.enabled?'disabled':''}>${caption}</button></article>`;
-  return heading('Extras','Tools for your whole library. Every game change is reviewed before it is applied.')+`<div class="extra-top-tools">${tool('Update the rtxForge Overlay','Bring the in-game overlay in your installed games up to date. Tuning and restore backups are kept.','overlay-package-review','Review overlay updates','sliders')}${tool('Update DLSS files','Replace older DLSS files across your library. Originals are backed up.','extras-dlss','Review games','download')}${tool('Undo previous changes','Restore the files from an earlier install, update or restore.','recoveries','Show changes','refresh')}</div>${tool('RenoDX HDR','Install matching HDR mods automatically, or import a custom RenoDX package for a game.','extras-hdr','Choose game','palette')}<div class="package-columns extras-bottom"><section class="glass-section"><h2>Global Settings</h2><p>Turn neural rendering or frame generation on or off, or set the multiplier, in every game with a package installed. Defaults for future installs stay the same.</p><div class="inner-card"><label class="field"><span><strong>Neural rendering</strong></span><select id="global-nr" ${!backend.enabled?'disabled':''}><option value="keep">Leave as is</option><option value="false">Off</option><option value="true">On</option></select></label><label class="field"><span><strong>Multi-Frame Generation</strong></span><select id="global-mfg" ${!backend.enabled?'disabled':''}><option value="keep">Leave as is</option><option value="0">Off</option>${[2,3,4,5,6].map(value=>`<option value="${value}">${value}×</option>`).join('')}<option value="-1">Follow game</option></select></label></div><button class="primary extra-actions" data-action="global-review" ${!backend.enabled?'disabled':''}>Review changes</button></section>${tool('App storage','Downloads, backups and caches rtxForge keeps. Clean up what no game needs.','storage-inventory','View usage','folder')}</div>`;
+  const tool = (title:string,copy:string,action:string,caption:string,glyph:string) => `<article class="glass-section tool-card"><div class="tool-heading"><h2 class="panel-heading">${icon(glyph)}${title}</h2></div><p>${copy}</p><button class="quiet" data-action="${action}" ${!backend.enabled?'disabled':''}>${caption}</button></article>`;
+  return heading('Extras','Tools for your whole library. Every game change is reviewed before it is applied.')+`<div class="extra-top-tools">${tool('Update the rtxForge Overlay','Bring the in-game overlay in your installed games up to date. Tuning and restore backups are kept.','overlay-package-review','Review overlay updates','sliders')}${tool('Update DLSS files','Replace older DLSS files across your library. Originals are backed up.','extras-dlss','Review games','download')}${tool('Undo previous changes','Restore the files from an earlier install, update or restore.','recoveries','Show changes','refresh')}</div>${tool('RenoDX','Install the matching RenoDX add-on, or choose a custom add-on for a game.','extras-hdr','Choose game','palette')}<div class="package-columns extras-bottom"><section class="glass-section"><h2>Global Settings</h2><p>Turn neural rendering or frame generation on or off, or set the multiplier, in every game with a package installed. Defaults for future installs stay the same.</p><div class="inner-card"><label class="field"><span><strong>Neural rendering</strong></span><select id="global-nr" ${!backend.enabled?'disabled':''}><option value="keep">Leave as is</option><option value="false">Off</option><option value="true">On</option></select></label><label class="field"><span><strong>Multi-Frame Generation</strong></span><select id="global-mfg" ${!backend.enabled?'disabled':''}><option value="keep">Leave as is</option><option value="0">Off</option>${[2,3,4,5,6].map(value=>`<option value="${value}">${value}×</option>`).join('')}<option value="-1">Follow game</option></select></label></div><button class="primary extra-actions" data-action="global-review" ${!backend.enabled?'disabled':''}>Review changes</button></section>${tool('App storage','Downloads, backups and caches rtxForge keeps. Clean up what no game needs.','storage-inventory','View usage','folder')}</div>`;
 }
 function toggle(id: string, title: string, description: string, on: boolean) {
   return `<div class="field"><span><strong id="${id}-label">${title}</strong><small id="${id}-help">${description}</small></span><button class="toggle" role="switch" aria-labelledby="${id}-label" aria-describedby="${id}-help" aria-checked="${on}" data-toggle="${id}"><span></span></button></div>`;
@@ -661,16 +779,18 @@ function settings() {
   return markup.slice(0,start)+`<div class="settings-workspace">${markup.slice(start,end)}<div class="settings-body">${markup.slice(end)}</div></div>`;
 }
 function originalSettings() {
-  const menu = `<nav class="settings-tabs" aria-label="Settings sections">${settingsSections.map(([category,label,glyph]) => `<button data-settings-category="${category}" aria-pressed="${settingsCategory === category}">${icon(glyph)}<span>${label}</span></button>`).join('')}</nav>`;
+  const menu = `<nav class="settings-tabs" aria-label="Settings sections">${settingsGroups.map(([label,sections],index) =>
+    `<div class="settings-tab-group" role="group" aria-labelledby="settings-group-${index}"><span id="settings-group-${index}" class="settings-tab-caption">${e(label)}</span>${sections.map(([category,name,glyph]) =>
+      `<button data-settings-category="${category}" aria-pressed="${settingsCategory === category}">${icon(glyph)}<span>${name}</span></button>`).join('')}</div>`).join('')}</nav>`;
   return heading('Settings', 'Make room for the way you play.') + menu + (settingsCategory !== 'appearance' ? sharedSettings() :
     appearanceSettings());
 }
 function appearanceSettings() {
   const group=(title:string,copy:string,body:string,extra='')=>`<section class="glass-section setting-group ${extra}"><h2>${title}</h2>${copy?`<p>${copy}</p>`:''}${body}</section>`;
   const select=(id:string,title:string,copy:string,options:[string,string][],value:string)=>`<label class="field"><span><strong>${title}</strong>${copy?`<small>${copy}</small>`:''}</span><select id="${id}">${options.map(([key,label])=>`<option value="${key}" ${value===key?'selected':''}>${label}</option>`).join('')}</select></label>`;
-  const themes=`<div class="theme-options" role="group" aria-label="Color theme">${(['light','clear','dark'] as const).map(theme=>`<button class="theme-choice theme-${theme}" data-theme-choice="${theme}" aria-pressed="${appearance.theme===theme}"><span class="material-sample" aria-hidden="true"><i></i><i></i></span><span>${theme[0].toUpperCase()+theme.slice(1)}</span>${appearance.theme===theme?icon('check'):''}</button>`).join('')}</div>`;
+  const themes=surfaceCards(appearance.theme, "theme-choice", "Color theme", icon);
   const scale='__TAURI_INTERNALS__' in window?select('display-scale','Interface scale','Size of the interface on this display.',[['auto','Automatic'],...[100,125,130,150,175,200].map(n=>[String(n),n+'%'] as [string,string])],String(appearance.scale)):'';
-  return `<div class="settings-groups appearance-groups">${group('Surface','Choose the glass material for Game Mode.',themes,'appearance')}${group('Main interface','Color for the main navigation, buttons and focus.',`<div class="inner-card"><label class="field color-field"><span><strong>Accent color</strong><small>Independent of each game’s artwork color.</small></span><input type="color" id="accent-color" value="${appearance.accent}" aria-label="Accent color" /></label><div class="background-field"><span><strong>Background</strong><small>Your image for the main Game Mode interface.</small></span><div class="background-picker"><div class="background-preview"><img src="${e(appearance.background||(appearance.theme==='light'?'/app-hero-light.png':'/app-hero-dark.png'))}" alt="Current Game Mode background"/></div><div class="background-actions"><button class="quiet" data-action="choose-background">Choose image…</button><button class="quiet" data-action="reset-background" ${appearance.background?'':'disabled'}>Use default</button></div><input type="file" id="background-image-file" accept="image/png,image/jpeg,image/webp" hidden /></div></div></div>`)}${group('Game Details','Uses the color saved in your library for each game.',`<div class="inner-card">${surfaceTintControls(appearance.accentMode,appearance.tintStrength)}${select('details-navigation','Game Details navigation','',['sidebar','tabs'].map(key=>[key,key==='sidebar'?'Sidebar':'Tabs']),appearance.detailsNavigation)}</div>`)}${group('Reading and motion','',`<div class="inner-card">${select('text-size','Text size','',[['standard','Standard'],['large','Large']],appearance.text)}${toggle('motion','Motion','Follows your system’s reduced-motion preference.',appearance.motion)}</div>`)}${group('Layout','',`<div class="inner-card">${select('navigation-position','Navigation placement','Main sections at the top or bottom.',[['top','Top'],['bottom','Bottom']],appearance.navigation)}${scale}</div>`)}${group('Controls','',controlGuide())}${group('Library reader','',`<dl class="reader-facts"><dt>Connection</dt><dd>${loading?'Reading…':snapshot?'Connected · read-only':'Unavailable'}</dd><dt>Platform</dt><dd>${e(snapshot?.platform||'Not reported')}</dd><dt>Steam libraries</dt><dd>${snapshot?.libraryCount??'Not reported'}</dd><dt>Last snapshot</dt><dd>${snapshot?e(new Date(snapshot.capturedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})):'Not reported'}</dd></dl><button class="quiet" data-action="refresh" ${loading?'disabled':''}>${icon('refresh')}Refresh reader</button>${error?`<p class="reader-error">${e(error)}</p>`:''}`)}<div class="appearance-reset"><span class="subtle">Appearance changes are saved automatically.</span><button class="quiet" data-action="reset-appearance">Reset appearance</button></div></div>`;
+  return `<div class="settings-groups appearance-groups">${group('Surface','Choose the glass material for Game Mode.',themes,'appearance')}${group('Main interface','Color for the main navigation, buttons and focus.',`<div class="inner-card"><label class="field color-field"><span><strong>Accent color</strong><small>Independent of each game’s artwork color.</small></span><input type="color" id="accent-color" value="${appearance.accent}" aria-label="Accent color" /></label><div class="background-field"><span><strong>Background</strong><small>Your image for the main Game Mode interface.</small></span><div class="background-picker"><div class="background-preview"><img src="${e(appearance.background||(appearance.theme==='light'?'/app-hero-light.png':'/app-hero-dark.png'))}" alt="Current Game Mode background"/></div><div class="background-actions"><button class="quiet" data-action="choose-background">Choose image…</button><button class="quiet" data-action="reset-background" ${appearance.background?'':'disabled'}>Use default</button></div><input type="file" id="background-image-file" accept="image/png,image/jpeg,image/webp" hidden /></div></div></div>`)}${group('Game Details','Uses the color saved in your library for each game.',`<div class="inner-card">${select('details-theme','Game Details surface','',[['same','Match Game Mode'],['light','Light'],['clear','Clear'],['dark','Dark']],appearance.detailsTheme)}${surfaceTintControls(appearance.accentMode,appearance.tintStrength)}${select('details-navigation','Game Details navigation','',['sidebar','tabs'].map(key=>[key,key==='sidebar'?'Sidebar':'Tabs']),appearance.detailsNavigation)}</div>`)}${group('Reading and motion','',`<div class="inner-card">${select('text-size','Text size','',[['standard','Standard'],['large','Large']],appearance.text)}${toggle('motion','Motion','Follows your system’s reduced-motion preference.',appearance.motion)}</div>`)}${group('Layout','',`<div class="inner-card">${select('navigation-position','Navigation placement','Main sections at the top or bottom.',[['top','Top'],['bottom','Bottom']],appearance.navigation)}${scale}</div>`)}${group('Controls','',controlGuide())}${group('Library reader','',`<dl class="reader-facts"><dt>Connection</dt><dd>${loading?'Reading…':snapshot?'Connected · read-only':'Unavailable'}</dd><dt>Platform</dt><dd>${e(snapshot?.platform||'Not reported')}</dd><dt>Steam libraries</dt><dd>${snapshot?.libraryCount??'Not reported'}</dd><dt>Last snapshot</dt><dd>${snapshot?e(new Date(snapshot.capturedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})):'Not reported'}</dd></dl><button class="quiet" data-action="refresh" ${loading?'disabled':''}>${icon('refresh')}Refresh reader</button>${error?`<p class="reader-error">${e(error)}</p>`:''}`)}<div class="appearance-reset"><span class="subtle">Appearance changes are saved automatically.</span><button class="quiet" data-action="reset-appearance">Reset appearance</button></div></div>`;
 }
 async function chooseBackground(file:File) {
   if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>24*1024*1024){announce('Choose a PNG, JPEG or WebP image under 24 MB.');return;}
@@ -771,22 +891,26 @@ function render() {
   closeSelectMenu(false);
   disposeLibraryLayout();
   const sameSurface = renderedView === view && (view !== 'details' || renderedGame === selectedGame()?.id);
-  const contentScroll = sameSurface ? app.querySelector<HTMLElement>('#content')?.scrollTop || 0 : 0;
-  const detailsScroll = sameSurface ? app.querySelector<HTMLElement>('.details-scroll')?.scrollTop || 0 : 0;
-  const resultsScroll = sameSurface ? app.querySelector<HTMLElement>('#game-results')?.scrollTop || 0 : 0;
+  const contentScroll = view==='operation'&&modalOrigin ? modalOrigin.content : sameSurface ? app.querySelector<HTMLElement>('#content')?.scrollTop || 0 : 0;
+  const detailsScroll = view==='operation'&&modalOrigin ? modalOrigin.details : sameSurface ? app.querySelector<HTMLElement>('.details-scroll')?.scrollTop || 0 : 0;
+  const resultsScroll = view==='operation'&&modalOrigin ? modalOrigin.results : sameSurface ? app.querySelector<HTMLElement>('#game-results')?.scrollTop || 0 : 0;
   applyAppearance();
-  document.documentElement.dataset.surface = view;
-  const content = view === 'library' ? library() : view === 'presets' ? presets() : view === 'details' ? details() : view === 'packages' ? packages() : view === 'extras' ? extras() : view === 'operation' ? operationView() : settings();
-  app.innerHTML = `<div class="shell"><header class="app-header" data-tauri-drag-region><a href="#library" class="brand" data-route="library" aria-label="rtxForge library"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></a><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><span>${icon('eye')}<span>${backend.enabled?'Game Mode':'Read-only demo'}</span></span><div id="input-hints">${hints()}</div><span class="reader-state"><i class="${snapshot ? 'connected' : ''}"></i>${loading ? 'Reading library' : snapshot ? 'Local library loaded' : 'Reader unavailable'}</span></footer></div>`;
+  const modal = view==='operation' && !!operation?.kind;
+  const surface = modal ? operation?.origin || 'library' : view;
+  document.documentElement.dataset.surface = surface;
+  const pageContent = surface === 'library' ? library() : surface === 'presets' ? presets() : surface === 'details' ? details() : surface === 'packages' ? packages() : surface === 'extras' ? extras() : surface === 'operation' ? operationView() : settings();
+  const content = modal ? pageContent.replace('id="page-title"','id="background-page-title"') : pageContent;
+  const overlay = modal ? `<div class="operation-backdrop"><section class="operation-modal glass-section" role="dialog" aria-modal="true" aria-labelledby="page-title">${operationView()}</section></div>` : '';
+  app.innerHTML = `<div class="shell" ${modal?'inert aria-hidden="true"':''}><header class="app-header" data-tauri-drag-region><div class="brand"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></div><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><div id="input-hints">${hints()}</div></footer></div>${overlay}`;
   const game = selectedGame(), scene = document.querySelector<HTMLElement>('#scene')!;
   if(view==='details'&&snapshot&&game)prioritizeArtwork(snapshot,game.id);
-  applyStoreBackground(view==='details'&&currentPreferences().online_art!==false&&game&&(game.accent||game.artworkAccentReady)?game.appid:null,scene,game?.id,detailsAccent(game));
+  applyStoreBackground(surface==='details'&&currentPreferences().online_art!==false&&game&&(game.accent||game.artworkAccentReady)?game.appid:null,scene,game?.id,detailsAccent(game));
   applyDetailsAccent();
   applyOperationAccent();
   bind();
   setupHero();
   setupSettingsLayout();
-  disposeLibraryLayout = setupLibraryLayout(app);
+  disposeLibraryLayout = setupLibraryLayout(app);disposeViewportArtwork();disposeViewportArtwork=setupViewportArtwork(app);
   enhanceSelects(app);
   bindArtworkFailures(app);
   bindScreenshotThumbnails(app);
@@ -809,7 +933,38 @@ function hints() {
   const glyph=(index:number)=>controllerGlyph(controllerFamily(),index);
   return controller ? `<span>${glyph(0)} Select</span><span>${glyph(1)} Back</span><span>${glyph(2)}${glyph(3)} Sections</span>` : '<span><kbd>Enter</kbd> Select</span><span><kbd>Esc</kbd> Back</span><span><kbd>Tab</kbd> Navigate</span>';
 }
+const glyphRules: [RegExp, string][] = [
+  [/restore|reset|recovery|refresh|reload|use detected|load settings/i,'refresh'],
+  [/compatibility|verify|confirm|apply|save|done|use color/i,'check'],
+  [/install|update|download/i,'download'],
+  [/reshade|renodx|add-ons?|extras|tools|cleanup/i,'wrench'],
+  [/uninstall|remove|clear selection|disable/i,'minus'],
+  [/executable|files|notes|report|copy/i,'file'],
+  [/open folder|storage|folders?/i,'folder'],
+  [/appearance|theme|surface|accent|color|artwork|background/i,'palette'],
+  [/controller|steam|launch|play/i,'controller'],
+  [/features|presets|tuning|frame generation|graphics|controls/i,'sliders'],
+  [/neural rendering|hardware|system/i,'cpu'],
+  [/package|import/i,'package'],
+  [/add |new |choose|browse/i,'plus'],
+  [/about|guide|testing|details/i,'info'],
+  [/back|cancel|close/i,'arrow'],
+  [/library|layout/i,'grid'],
+];
+function consistentGlyph(label: string, fallback: string) {
+  return glyphRules.find(([match])=>match.test(label))?.[1] || fallback;
+}
 function enhanceActionLabels() {
+  for(const heading of app.querySelectorAll<HTMLElement>('#content :is(.glass-section,.inner-card,.action-card,.extra-detail) :is(h2,h3,h4), #content .glass-section>h2, #content .action-card>h3')) {
+    if(heading.closest('.dlss-file-card'))continue;
+    heading.classList.add('panel-heading');
+    if(heading.querySelector('.icon') || heading.previousElementSibling?.classList.contains('icon'))continue;
+    heading.insertAdjacentHTML('afterbegin',icon(consistentGlyph(heading.textContent||'', 'info')));
+  }
+  for(const button of app.querySelectorAll<HTMLButtonElement>('#content :is(.primary,.quiet,.setting-action), .operation-actions button')) {
+    if(button.querySelector('.icon') || !button.textContent?.trim())continue;
+    button.insertAdjacentHTML('afterbegin',icon(consistentGlyph(button.textContent,'arrow'),'button-glyph'));
+  }
   const selector='.operation-actions button,.library-operation-actions button,.selection-bar button,.page-heading>button,.shortcut-actions button,button.extra-actions,.detail-nav button,.app-header nav button,.settings-tabs button';
   for(const button of app.querySelectorAll<HTMLButtonElement>(selector)) {
     button.classList.add('accent-label-control');if(button.closest('nav'))button.classList.add('accent-nav-control');
@@ -831,7 +986,8 @@ function bind() {
   app.querySelector<HTMLInputElement>('#background-image-file')?.addEventListener('change',event=>{const file=(event.target as HTMLInputElement).files?.[0];if(file)void chooseBackground(file);});
   app.querySelectorAll<HTMLElement>('[data-tool-kind]').forEach(node=>node.addEventListener('click',()=>{ extraKind=node.dataset.toolKind!; extraSource=''; toolImportOpen=true; render(); app.querySelector<HTMLInputElement>('#extra-source')?.focus(); }));
   app.querySelector<HTMLSelectElement>('#test-result')?.addEventListener('change',event=>{ const game=selectedGame(); if(game) void engineRequest('notes_save',{game:game.path,status:(event.target as HTMLSelectElement).value,notes:noteDrafts.get(game.id)??game.notes??''}).then(()=>announce('Test result saved.')).catch(problem=>announce(problem.message)); });
-  app.querySelector<HTMLInputElement>('#game-accent-color')?.addEventListener('input',event=>{const game=selectedGame();if(game){gameAccentDrafts.set(game.id,(event.target as HTMLInputElement).value);const review=app.querySelector<HTMLButtonElement>('[data-action="review-game-accent"]');if(review)review.disabled=false;}});
+  const accentGame=selectedGame();
+  if(accentGame)bindColorPicker(app,'game-accent-color',accentGame.art||undefined,color=>{if(color===(accentGame.accent||accentGame.artworkAccent))gameAccentDrafts.delete(accentGame.id);else gameAccentDrafts.set(accentGame.id,color);applyAppearance();},color=>saveGameAccent(accentGame,color));
   app.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLButtonElement>('[data-preset-key]').forEach(node => node.addEventListener(node instanceof HTMLButtonElement ? 'click' : 'change',()=>{ drafts.set(presetId,{...drafts.get(presetId),[node.dataset.presetKey!]:node.dataset.presetValue ?? node.value}); render(); app.querySelector<HTMLElement>(`[data-preset-key="${node.dataset.presetKey}"]${node.dataset.presetValue ? `[data-preset-value="${node.dataset.presetValue}"]` : ''}`)?.focus(); }));
   app.querySelectorAll<HTMLElement>('[data-route]').forEach(node => node.addEventListener('click', event => { event.preventDefault(); setView(node.dataset.route as View); }));
   app.querySelectorAll<HTMLElement>('[data-game]').forEach(node => node.addEventListener('click', () => { selectedId = node.dataset.game!; detailsSection='overview'; extraRecords=[];extraSource='';toolImportOpen=false; setView('details'); }));
@@ -839,7 +995,7 @@ function bind() {
   app.querySelectorAll<HTMLElement>('[data-library-mode]').forEach(node=>node.addEventListener('click',()=>{libraryMode=node.dataset.libraryMode;const group=node.closest<HTMLElement>('.feature-mode-segments')!;group.style.setProperty('--selected-mode',String(['nr-only','mfg-only','nr-mfg'].indexOf(libraryMode!)));group.querySelectorAll<HTMLElement>('button').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.libraryMode===libraryMode)));}));
   app.querySelector<HTMLSelectElement>('#library-filter')?.addEventListener('change',event=>void filterLibrary((event.target as HTMLSelectElement).value));
   app.querySelector<HTMLInputElement>('#library-size')?.addEventListener('input',event=>{const input=event.target as HTMLInputElement;appearance.libraryScale=Number(input.value);const results=app.querySelector<HTMLElement>('#game-results');if(results)results.scrollTop=0;input.setAttribute('aria-valuetext',input.value+'%');const output=app.querySelector<HTMLOutputElement>('.library-size output');if(output)output.value=input.value+'%';applyAppearance();disposeLibraryLayout();disposeLibraryLayout=setupLibraryLayout(app);requestAnimationFrame(()=>{if(results?.isConnected)results.scrollTop=0;});});
-  app.querySelector<HTMLInputElement>('#library-search')?.addEventListener('input', event => { query = (event.target as HTMLInputElement).value; disposeLibraryLayout(); app.querySelector('#game-results')!.innerHTML = gameResults(filteredLibrary(), snapshot?.games.length || 0); bindResults(); disposeLibraryLayout = setupLibraryLayout(app); });
+  app.querySelector<HTMLInputElement>('#library-search')?.addEventListener('input', event => { query = (event.target as HTMLInputElement).value; disposeLibraryLayout(); app.querySelector('#game-results')!.innerHTML = gameResults(filteredLibrary(), snapshot?.games.length || 0); bindResults(); disposeLibraryLayout = setupLibraryLayout(app);disposeViewportArtwork();disposeViewportArtwork=setupViewportArtwork(app); });
   app.querySelectorAll<HTMLElement>('[data-number-step]').forEach(node=>node.addEventListener('click',()=>{const field=node.parentElement?.querySelector<HTMLInputElement>('input[type=number]');if(!field||field.disabled)return; if(node.dataset.numberStep==='1')field.stepUp();else field.stepDown();field.dispatchEvent(new Event('change',{bubbles:true}));}));
   app.querySelectorAll<HTMLInputElement>('[data-hero-focus]').forEach(field=>field.addEventListener('input',()=>{const game=selectedGame();if(!game)return;const point=[...heroPoint(game)] as [number,number];point[Number(field.dataset.heroFocus)]=Number(field.value)/100;updateHeroPoint(point);}));
   const focalEditor=app.querySelector<HTMLButtonElement>('[data-focal-editor]');
@@ -865,12 +1021,13 @@ function bind() {
   app.querySelector<HTMLInputElement>('#surface-tint-strength')?.addEventListener('input',event=>{const input=event.target as HTMLInputElement;appearance.tintStrength=Number(input.value);const output=input.parentElement?.querySelector('output');if(output)output.textContent=input.value+'%';applyAppearance();});
   app.querySelector<HTMLInputElement>('#accent-color')?.addEventListener('input', event => { appearance.accent = (event.target as HTMLInputElement).value; appearance.accentMode='custom'; applyAppearance(); });
   app.querySelector<HTMLSelectElement>('#text-size')?.addEventListener('change', event => { appearance.text = (event.target as HTMLSelectElement).value as Appearance['text']; applyAppearance(); });
+  app.querySelector<HTMLSelectElement>('#details-theme')?.addEventListener('change',event=>{appearance.detailsTheme=(event.target as HTMLSelectElement).value as Appearance['detailsTheme'];applyAppearance();});
   app.querySelector<HTMLSelectElement>('#details-navigation')?.addEventListener('change',event=>{appearance.detailsNavigation=(event.target as HTMLSelectElement).value as Appearance['detailsNavigation'];applyAppearance();});
   app.querySelector<HTMLSelectElement>('#navigation-position')?.addEventListener('change', event => { appearance.navigation = (event.target as HTMLSelectElement).value as Appearance['navigation']; applyAppearance(); });
   app.querySelector<HTMLSelectElement>('#display-scale')?.addEventListener('change', event => { const value = (event.target as HTMLSelectElement).value; appearance.scale = value === 'auto' ? 'auto' : Number(value); applyAppearance(); });
   app.querySelectorAll<HTMLSelectElement | HTMLInputElement>('[data-draft]').forEach(node => node.addEventListener('change', () => { const game = selectedGame(); if (!game) return; drafts.set(game.id, { ...drafts.get(game.id), [node.dataset.draft!]: node.value }); app.querySelector('#draft-label')!.textContent = 'Draft · not applied'; if (['mfg_mode', 'mfg_enabled', 'provider'].includes(node.dataset.draft!)) { render(); app.querySelector<HTMLElement>(`[data-draft="${node.dataset.draft}"]`)?.focus(); } announce('Preview choice changed. Nothing applied.'); }));
   app.querySelectorAll<HTMLElement>('[data-extra]').forEach(node => node.addEventListener('click', () => { extraKind = node.dataset.extra!; render(); app.querySelector<HTMLElement>(`[data-extra="${extraKind}"]`)?.focus(); }));
-  app.querySelectorAll<HTMLElement>('[data-detail-section]').forEach(node => node.addEventListener('click', () => { detailsSection = node.dataset.detailSection!; render(); app.querySelector<HTMLElement>(`[data-detail-section="${detailsSection}"]`)?.focus(); const game = selectedGame(); if (detailsSection === 'notes' && backend.enabled && game && !notesLoaded.has(game.id)) void engineRequest<Record<string, unknown>>('notes_get', { game: game.path }).then(record => { if (!noteDrafts.has(game.id)) noteDrafts.set(game.id, String(record.notes || '')); notesLoaded.add(game.id); if (view === 'details' && detailsSection === 'notes' && selectedId === game.id) render(); }).catch(problem => announce(problem.message)); }));
+  app.querySelectorAll<HTMLElement>('[data-detail-section]').forEach(node => node.addEventListener('click', () => { if(detailsSection!==node.dataset.detailSection)gameAccentDrafts.clear(); detailsSection = node.dataset.detailSection!; detailsMenuOpen=false; render(); app.querySelector<HTMLElement>(`[data-detail-section="${detailsSection}"]`)?.focus(); const game = selectedGame(); if(detailsSection==='files'&&game)void loadDlssFiles(game); if(detailsSection==='overview'&&game&&backend.enabled){const row=engineRows.find(record=>pathKey(record.game)===pathKey(game.path));if(row)void loadOverviewExtras(game,row);} if (detailsSection === 'notes' && backend.enabled && game && !notesLoaded.has(game.id)) void engineRequest<Record<string, unknown>>('notes_get', { game: game.path }).then(record => { if (!noteDrafts.has(game.id)) noteDrafts.set(game.id, String(record.notes || '')); notesLoaded.add(game.id); if (view === 'details' && detailsSection === 'notes' && selectedId === game.id) render(); }).catch(problem => announce(problem.message)); }));
   app.querySelectorAll<HTMLElement>('[data-operation]').forEach(node => node.addEventListener('click', () => void runOperation(node.dataset.operation!, node.dataset.batch === 'true', node.dataset.libraryScope === 'true')));
   app.querySelectorAll<HTMLElement>('[data-contract]').forEach(node => node.addEventListener('click', async () => {
     const game = selectedGame(); if (!game) return;
@@ -930,7 +1087,7 @@ function bind() {
   app.querySelectorAll<HTMLElement>('[data-provider-default]').forEach(node => node.addEventListener('click', () => void withOperation('Review default package', 'settings_review', { changes: { runtime_provider: node.dataset.providerDefault } })));
   app.querySelectorAll<HTMLElement>('[data-mfg-default]').forEach(node => node.addEventListener('click', () => void withOperation('Review MFG package', 'settings_review', { changes: { mfg_provider: node.dataset.mfgDefault } })));
   if ('__TAURI_INTERNALS__' in window) {
-    for (const [id, kind] of [['package-source', 'package'], ['extra-source', ['hdr-custom','addon'].includes(extraKind) ? 'addon' : 'tool'], ['executable-source', 'executable'], ['artwork-source', 'image']]) {
+    for (const [id, kind] of [['package-source', 'package'], ['extra-source', extraKind==='hdr-custom' ? 'renodx-addon' : extraKind==='addon' ? 'addon' : 'tool'], ['artwork-source', 'image']]) {
       const field = app.querySelector<HTMLInputElement>('#' + id);
       if (!field) continue;
       const browse = document.createElement('button'); browse.className = 'quiet'; browse.textContent = 'Browse…'; browse.type = 'button'; browse.disabled = !backend.enabled;
@@ -938,7 +1095,7 @@ function bind() {
       field.parentElement?.append(browse);
     }
   }
-  if (!backend.enabled) app.querySelectorAll<HTMLInputElement>('#package-source,#extra-source,#executable-source').forEach(field => { field.disabled = true; });
+  if (!backend.enabled) app.querySelectorAll<HTMLInputElement>('#package-source,#extra-source').forEach(field => { field.disabled = true; });
   bindSelections();
 }
 function bindResults() {
@@ -949,12 +1106,32 @@ function bindResults() {
 function bindSelections() {
   app.querySelectorAll<HTMLElement>('[data-select-game]').forEach(node => node.addEventListener('click', () => { const id = node.dataset.selectGame!; if (batchSelection.has(id)) batchSelection.delete(id); else batchSelection.add(id); render(); app.querySelector<HTMLElement>(`[data-select-game="${CSS.escape(id)}"]`)?.focus(); }));
 }
+let appearanceSave:Promise<void>=Promise.resolve();
+function saveGameAccent(game:Game,color:string|null):Promise<void>{
+  const pending=appearanceSave.catch(()=>{}).then(async()=>{
+    const settings=await engineRequest<Record<string,unknown>>('settings_get');
+    const colors={...(settings.game_accents||{}) as Record<string,string>};
+    const identity=Object.keys(colors).find(key=>pathKey(key)===pathKey(game.path))||game.path;
+    if(color===null)delete colors[identity];else colors[identity]=color;
+    const review=await engineRequest<Review>('settings_review',{changes:{game_accents:colors}});
+    await engineRequest('run',{token:review.token,trusted:true});
+    game.accent=color||undefined;gameAccentDrafts.delete(game.id);
+    sharedPreferences={...settings,game_accents:colors};
+    if(snapshot)snapshot.preferences={...snapshot.preferences,game_accents:colors};
+    applyAppearance();
+    const editingGame=view==='details'&&selectedId===game.id;
+    const reset=editingGame?app.querySelector<HTMLButtonElement>('[data-action=reset-game-accent]'):null;if(reset)reset.disabled=!color;
+    const description=editingGame?app.querySelector('.game-accent-section>p'):null;if(description)description.textContent=color?'Saved in rtxForge · '+color.toUpperCase():'Automatic color from your library poster.';
+    announce(color?'Accent color saved.':'Artwork color restored.');
+  });
+  appearanceSave=pending;return pending;
+}
 function action(name: string) {
   if(name==='reset-hero-framing'){const game=selectedGame();if(game)heroFocusDrafts.delete(game.id);heroAdjustment=undefined;render();app.querySelector<HTMLElement>('[data-action="reset-hero-framing"]')?.focus();return;}
   if(name==='save-hero-framing'){const game=selectedGame(),point=game?heroFocusDrafts.get(game.id):undefined;if(!game||!point||!backend.enabled)return;void engineRequest<Record<string,unknown>>('settings_get').then(settings=>{const choices={...(settings.game_hero_focus||{}) as Record<string,number[]>};const identity=Object.keys(choices).find(key=>pathKey(key)===pathKey(game.path))||game.path;choices[identity]=point;return withOperation('Review hero framing','settings_review',{changes:{game_hero_focus:choices}});}).catch(problem=>announce(problem.message));return;}
   if(name==='toggle-window-mode'&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke<boolean>('toggle_fullscreen')).then(fullscreen=>{backend.fullscreen=fullscreen;render();}).catch(problem=>announce(String(problem)));return;}
   if(name==='minimize-app'&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke('minimize_app')).catch(problem=>announce(String(problem)));return;}
-  if(name==='review-game-accent'||name==='reset-game-accent') { const game=selectedGame();if(!game||!backend.enabled)return;void engineRequest<Record<string,unknown>>('settings_get').then(settings=>{const colors={...(settings.game_accents||{}) as Record<string,string>};const identity=Object.keys(colors).find(key=>pathKey(key)===pathKey(game.path))||game.path;if(name==='reset-game-accent')delete colors[identity];else{const color=gameAccentDrafts.get(game.id);if(!color)return;colors[identity]=color;}return withOperation('Review game accent','settings_review',{changes:{game_accents:colors}});}).catch(problem=>announce(problem.message));return; }
+  if(name==='reset-game-accent'){const game=selectedGame();if(game&&backend.enabled)void saveGameAccent(game,null).then(()=>render()).catch(problem=>announce(problem.message));return;}
   if (name === 'reset-presets') { drafts.delete(presetId); render(); return; }
   if (name === 'select-preset-games') { presetSelection=true; batchSelection.clear(); setView('library'); announce('Select configured games, then review their preset changes.'); return; }
   if (name === 'end-preset-selection') { presetSelection=false; batchSelection.clear(); setView('presets'); return; }
@@ -963,7 +1140,7 @@ function action(name: string) {
   if(name==='reset-background'){delete appearance.background;applyAppearance();render();return;}
   if(name==='desktop-mode'||name==='exit-app'){
     if(operation?.stage==='running'){announce('Wait for the operation to finish or request cancellation first.');return;}
-    if('__TAURI_INTERNALS__' in window)void import('@tauri-apps/api/core').then(({invoke})=>invoke(name==='desktop-mode'?'desktop_mode':'exit_app')).catch(problem=>announce(String(problem)));
+    if('__TAURI_INTERNALS__' in window)void flushAppearance().then(()=>import('@tauri-apps/api/core')).then(({invoke})=>invoke(name==='desktop-mode'?'desktop_mode':'exit_app')).catch(problem=>announce(String(problem)));
     return;
   }
   if (name === 'library-size-menu') { librarySizeOpen=!librarySizeOpen; const control=app.querySelector<HTMLElement>('.library-size-control'); if(control)control.dataset.open=String(librarySizeOpen); app.querySelector('#library-size-button')?.setAttribute('aria-expanded',String(librarySizeOpen)); if(librarySizeOpen)app.querySelector<HTMLElement>('#library-size')?.focus(); return; }
@@ -973,6 +1150,7 @@ function action(name: string) {
   if (name === 'extras-dlss') { void runOperation('update-dlss', true); return; }
   if (name === 'refresh') void refresh();
   if (name === 'clear-search') { query = ''; render(); app.querySelector<HTMLInputElement>('#library-search')?.focus(); }
+  if (name === 'bulk-select') { if(presetSelection){action('end-preset-selection');return;} bulkMode=!bulkMode;if(!bulkMode)batchSelection.clear();render();app.querySelector<HTMLElement>('[data-action=bulk-select]')?.focus();return; }
   if (name === 'clear-selection') { batchSelection.clear(); render(); }
   if (name === 'reset-draft') { const game = selectedGame(); if (game) drafts.delete(game.id); render(); app.querySelector<HTMLElement>('[data-action="reset-draft"]')?.focus(); announce('Preview choices reset.'); }
   if (name === 'reset-appearance') { appearance = { ...appearanceDefaults }; applyAppearance(); render(); app.querySelector<HTMLElement>('[data-action="reset-appearance"]')?.focus(); announce('Appearance reset to Clear.'); }
@@ -1003,7 +1181,7 @@ function action(name: string) {
   if (name === 'reset-panel-shortcut' || name === 'disable-panel-shortcut') { const value=name==='disable-panel-shortcut'?'Disabled':snapshot?.preferenceDefaults?.panel_hotkey;if(typeof value==='string'){editOverlayPreference('panel_hotkey',value);render();} }
   if (name === 'inspect-package') void withOperation('Inspect local package', 'package_inspect', { path: packageSource }, 'inspect-package');
   if (name === 'use-package') { const result = operation?.result as Record<string, unknown>; if (result?.token && app.querySelector<HTMLInputElement>('#package-trust')?.checked) void withOperation('Choose package', 'package_use', { token: result.token, trusted: true }, 'inspect'); }
-  if (name === 'copy-game-path') { const game=selectedGame(); if(game&&backend.enabled)void navigator.clipboard.writeText(game.path).then(()=>announce('Location copied.')).catch(()=>announce('Clipboard unavailable.')); }
+  if (name === 'copy-game-path') { const game=selectedGame(); if(game)void navigator.clipboard.writeText(game.path).then(()=>announce('Location copied.')).catch(()=>announce('Clipboard unavailable.')); }
   if (name === 'official-reshade') { extraKind='reshade'; extraSource=''; void extraAction('review-extra'); }
   if (name === 'review-extra' || name === 'extra-records') void extraAction(name);
   if (name === 'save-notes') { const game = selectedGame(); if (game) void engineRequest('notes_save', { game: game.path, notes: noteDrafts.get(game.id) || '' }).then(() => announce('Game notes saved.')).catch(problem => announce(problem.message)); }
@@ -1011,6 +1189,7 @@ function action(name: string) {
   if (name === 'global-review') { const nr = app.querySelector<HTMLSelectElement>('#global-nr')?.value, mfg = app.querySelector<HTMLSelectElement>('#global-mfg')?.value; void withOperation('Review bulk graphics changes', 'global_review', { ...(nr === 'keep' ? {} : { nr: nr === 'true' }), ...(mfg === 'keep' ? {} : { mfg: Number(mfg) }) }); }
   if (name === 'overlay-menu-review') { const values = { ...sharedPreferences, ...preferenceChanges }; void withOperation('Review game menus', 'overlay_ui_review', Object.fromEntries(['optiscaler_ui', 'optiscaler_intro', 'reshade_ui', 'reshade_intro', 'optiscaler_hotkey'].map(key => [key, values[key]]))); }
   if (name === 'overlay-defaults-all') void withOperation('Review applying overlay defaults to every game','settings_review',{changes:{...preferenceChanges,game_overlay_settings:{}}});
+  if(name==='overlay-status')void withOperation('Overlay Status','overlay_status',{},'inspect');
   if (name === 'overlay-package-review') void withOperation('Review overlay packages', 'overlay_package_review', { ...sharedPreferences, ...preferenceChanges });
   if (name === 'storage-inventory') void withOperation('App storage', 'storage_inventory', {}, 'inspect');
   if (name === 'storage-review') void withOperation('Review download cleanup', 'storage_review', {});
@@ -1018,7 +1197,19 @@ function action(name: string) {
   if (name === 'check-packages') void engineRequest<{catalog: typeof liveCatalog}>('packages').then(result => { liveCatalog = result.catalog; render(); announce('Engine package availability loaded.'); }).catch(problem => announce(problem.message));
   if (name === 'feeder-status') void withOperation('Managed Feeder files', 'feeder_storage', {}, 'inspect');
   if (name === 'feeder-legacy') void withOperation('Get managed DirectX support', 'feeder_storage', { legacy: true }, 'inspect');
-  if (name === 'executable-review' || name === 'executable-reset') { const path = name === 'executable-reset' ? null : app.querySelector<HTMLInputElement>('#executable-source')?.value; void getEngineRows().then(rows => { if (!rows[0]) throw new Error('This game could not be inspected.'); return withOperation('Review game executable', 'executable_review', { row: rows[0], path }); }).catch(problem => announce(problem.message)); }
+  if (name === 'executable-review' || name === 'executable-reset') {
+    const game = selectedGame();
+    if(!game) return;
+    void (async()=>{
+      const path = name === 'executable-reset' ? null : '__TAURI_INTERNALS__' in window
+        ? await (await import('@tauri-apps/api/core')).invoke<string|null>('choose_path',{kind:'executable'})
+        : window.prompt('Game executable path');
+      if(name==='executable-review' && !path?.trim()) return;
+      const rows = await getEngineRows(game);
+      if(!rows[0]) throw new Error('This game could not be inspected.');
+      await withOperation('Review game executable','executable_review',{row:rows[0],path});
+    })().catch(problem=>announce(problem.message));
+  }
   if (['save-game-overlay', 'inherit-game-overlay', 'apply-game-overlay'].includes(name)) {
     const game = selectedGame(); if (!game || !sharedPreferences) return;
     const overrides = { ...(sharedPreferences.game_overlay_settings || {}) as Record<string, Record<string, unknown>> };
@@ -1098,7 +1289,7 @@ async function extraAction(name: string) {
     const row = rows.find(row => pathKey(row.game) === pathKey(game.path));
     if (!row) throw new Error('This game is unavailable to the engine. Check its executable in the existing app.');
     if (name === 'extra-records') { extraRecords = await engineRequest('extras_list', { row }); render(); announce(extraRecords.length ? 'Tool recovery records loaded.' : 'No tool recovery records for this game.'); }
-    else if(extraKind==='hdr-custom') await withOperation('Review custom RenoDX HDR','hdr_review',{row,custom_path:extraSource});
+    else if(extraKind==='hdr-custom') await withOperation('Review custom RenoDX add-on','hdr_review',{row,custom_path:extraSource});
     else await withOperation('Review tool installation', 'extra_review', { row, path: extraSource, kind: extraKind });
   } catch (problem) { announce(problem instanceof Error ? problem.message : 'The extra could not be reviewed.'); }
 }
@@ -1177,12 +1368,19 @@ document.addEventListener('pointerdown',event=>{
 });
 document.addEventListener('keydown',event=>{if(event.key==='F11'&&'__TAURI_INTERNALS__' in window){event.preventDefault();action('toggle-window-mode');}});
 function closeLibrarySize(restoreFocus=true){librarySizeOpen=false;const control=app.querySelector<HTMLElement>('.library-size-control');if(control)control.dataset.open='false';app.querySelector('#library-size-button')?.setAttribute('aria-expanded','false');if(restoreFocus)app.querySelector<HTMLElement>('#library-size-button')?.focus();}
-installInput(() => { if(heroAdjustment){finishHeroAdjustment(true);return;} if(librarySizeOpen){closeLibrarySize();return;} if(selectMenuOpen()){closeSelectMenu();return;} if(detailsMenuOpen){detailsMenuOpen=false;render();app.querySelector<HTMLElement>('[data-action="game-menu"]')?.focus();return;} if (shellMenuOpen) { shellMenuOpen=false; const menu=app.querySelector<HTMLElement>('#shell-menu'); if(menu)menu.hidden=true; app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false'); app.querySelector<HTMLElement>('#shell-menu-button')?.focus(); return; } if (view === 'operation' && operation?.stage === 'running') { announce('The operation is running. Use Request cancellation to stop safely.'); return; } if (view === 'operation' && (operation?.stage === 'review'||operation?.stage==='startup'||operation?.stage==='checking')) { void discardReview(); return; } if (view !== 'library') setView('library'); else app.querySelector<HTMLElement>('[data-route="library"]')?.focus(); }, delta => {
-  if(heroAdjustment||librarySizeOpen||selectMenuOpen()||shellMenuOpen||detailsMenuOpen||view==='operation')return;
+installInput(() => { const colorCancel=app.querySelector<HTMLButtonElement>('.color-editor:not([hidden]) [data-color-cancel]');if(colorCancel){colorCancel.click();return;} if(heroAdjustment){finishHeroAdjustment(true);return;} if(librarySizeOpen){closeLibrarySize();return;} if(selectMenuOpen()){closeSelectMenu();return;} if(detailsMenuOpen){detailsMenuOpen=false;render();app.querySelector<HTMLElement>('[data-action="game-menu"]')?.focus();return;} if (shellMenuOpen) { shellMenuOpen=false; const menu=app.querySelector<HTMLElement>('#shell-menu'); if(menu)menu.hidden=true; app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false'); app.querySelector<HTMLElement>('#shell-menu-button')?.focus(); return; } if (view === 'operation' && operation?.stage === 'running') { announce('The operation is running. Use Request cancellation to stop safely.'); return; } if (view === 'operation' && (operation?.stage === 'review'||operation?.stage==='startup'||operation?.stage==='checking')) { void discardReview(); return; } if(view==='operation'){action('operation-back');return;} if (view !== 'library') setView('library'); else app.querySelector<HTMLElement>('[data-route="library"]')?.focus(); }, delta => {
+  if(app.querySelector('.color-editor:not([hidden])')||heroAdjustment||librarySizeOpen||selectMenuOpen()||shellMenuOpen||detailsMenuOpen||view==='operation')return;
   const index = tabs.findIndex(tab => tab.id === (view === 'details' ? 'library' : view));
   setView(tabs[(index + delta + tabs.length) % tabs.length].id);
 }, (state, id) => { document.documentElement.dataset.controller=String(state); controller = state; controllerId = id || ''; const hint = app.querySelector('#input-hints'); if (hint) hint.innerHTML = hints(); const framing=app.querySelector('#hero-framing-help');if(framing)framing.innerHTML=framingHelp(); }, showHints);
-void refresh();
+async function initialize(){
+  if('__TAURI_INTERNALS__' in window){try{
+    const saved=await (await import('@tauri-apps/api/core')).invoke<unknown>('appearance_read');
+    if(saved){appearance=readAppearance(saved);appearanceStored=JSON.stringify({...appearance,detailsNavigationVersion:1,appearanceDefaultsVersion:2,libraryScaleVersion:1});}
+  }catch{appearanceStored=JSON.stringify({...appearance,detailsNavigationVersion:1,appearanceDefaultsVersion:2,libraryScaleVersion:1});announce('Shared appearance is unavailable. Your existing preferences are retained.');}}
+  appearanceReady=true;applyAppearance();await refresh();
+}
+void initialize();
 void engineStatus().then(status => { backend = status;if(status.appearance){settingsCategory="appearance";view="settings";} render(); }).catch(() => { backend = { enabled: false, reason: 'The reviewed host adapter is unavailable. Refresh the local preview.' }; });
 
 window.addEventListener('rtxforge-background-ready',()=>applyAppearance());

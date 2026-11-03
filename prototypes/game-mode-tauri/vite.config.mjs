@@ -59,6 +59,13 @@ function bridge() {
       try{return res.end(JSON.stringify(await collectSnapshot(args,60000)));}
       catch{res.statusCode=503;return res.end('{}');}
     }
+    if (req.url?.split('?')[0] === '/api/dll-inventory') {
+      res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
+      const id=new URL(req.url,'http://127.0.0.1:1420').searchParams.get('id')||'';
+      if(req.method!=='GET'||!id||id.length>100){res.statusCode=400;return res.end('{}');}
+      try {return res.end(JSON.stringify(await collectSnapshot(['--dll-inventory',id])));}
+      catch {res.statusCode=503;return res.end('{}');}
+    }
     if (req.url?.split('?')[0] === '/api/artwork') {
       res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
       const query=new URL(req.url,'http://127.0.0.1:1420').searchParams,id=query.get('id')||'',role=query.get('role')||'';

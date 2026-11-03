@@ -20,7 +20,7 @@ await page.route('**/api/engine',async route=>{
 });
 try{
  await page.goto('http://127.0.0.1:1420');await page.waitForSelector('.game-card');await nav('Settings').click();
- expect(await page.locator('[data-settings-category]>span:not(.icon)').allTextContents()).toEqual(['Graphics','Overlay','Appearance','Library','Gaming Mode','System','Recovery','About']);
+ expect(await page.locator('[data-settings-category]>span:not(.icon)').allTextContents()).toEqual(['Appearance','Library','Graphics','Game Mode','Overlay','About','System','Recovery']);
  await expect(page.getByRole('group',{name:'Color theme'})).toBeVisible();
  await section('Graphics').click();await expect(page.getByRole('switch',{name:'Recognize existing features',exact:true})).toBeEnabled();
  await expect(page.getByRole('switch',{name:'Borderless on install',exact:true})).toBeVisible();

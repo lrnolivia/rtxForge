@@ -2,10 +2,16 @@ import {surfaceTintControls,type AccentMode} from './surface-tint';
 import {overlaySurface} from './overlay-settings';
 import { escape as e, type Game } from './model';
 
-export const settingsSections = [
-  ['appearance','Appearance','palette'], ['library','Library','books'], ['gaming','Game Mode','controller'],
-  ['graphics','Graphics','cpu'], ['overlay','Overlay','sliders'], ['system','System','gear'],
-  ['recovery','Recovery','refresh'], ['about','About','info'],
+export const settingsGroups = [
+  ['General', [
+    ['appearance','Appearance','palette'], ['library','Library','books'], ['graphics','Graphics','cpu'],
+  ]],
+  ['Interfaces', [
+    ['gaming','Game Mode','controller'], ['overlay','Overlay','sliders'],
+  ]],
+  ['App & support', [
+    ['about','About','info'], ['system','System','gear'], ['recovery','Recovery','refresh'],
+  ]],
 ] as const;
 
 interface Context {

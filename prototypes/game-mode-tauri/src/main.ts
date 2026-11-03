@@ -17,7 +17,7 @@ import { bindScreenshotThumbnails } from './screenshot-crop';
 import { controllerGlyph, type ControllerFamily } from './controller-glyphs';
 import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero, sectionHeadingColor } from './art-accent';
 import { enhanceSelects, closeSelectMenu, selectMenuOpen } from './select-menu';
-import { settingsSections, settingsContent } from './settings-content';
+import { settingsGroups, settingsContent } from './settings-content';
 import {mergeOverlay, overlaySurface, surfaceChanges, overlayPreferenceChanges} from './overlay-settings';
 let overlayPreviewId = '';
 
@@ -740,7 +740,9 @@ function settings() {
   return markup.slice(0,start)+`<div class="settings-workspace">${markup.slice(start,end)}<div class="settings-body">${markup.slice(end)}</div></div>`;
 }
 function originalSettings() {
-  const menu = `<nav class="settings-tabs" aria-label="Settings sections">${settingsSections.map(([category,label,glyph]) => `<button data-settings-category="${category}" aria-pressed="${settingsCategory === category}">${icon(glyph)}<span>${label}</span></button>`).join('')}</nav>`;
+  const menu = `<nav class="settings-tabs" aria-label="Settings sections">${settingsGroups.map(([label,sections],index) =>
+    `<div class="settings-tab-group" role="group" aria-labelledby="settings-group-${index}"><span id="settings-group-${index}" class="settings-tab-caption">${e(label)}</span>${sections.map(([category,name,glyph]) =>
+      `<button data-settings-category="${category}" aria-pressed="${settingsCategory === category}">${icon(glyph)}<span>${name}</span></button>`).join('')}</div>`).join('')}</nav>`;
   return heading('Settings', 'Make room for the way you play.') + menu + (settingsCategory !== 'appearance' ? sharedSettings() :
     appearanceSettings());
 }

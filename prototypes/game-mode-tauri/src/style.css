@@ -793,3 +793,18 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 @media(max-width:760px){.library-view-controls{grid-column:-2/-1;flex-wrap:wrap}}
 
 .native-facts[data-facts="4"]{grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr))}.overview-extras:not([hidden]){display:flex;gap:18px;align-items:baseline;flex-wrap:wrap}.overview-extras p{margin:0}
+
+.settings-tabs{gap:18px;max-height:calc(100dvh - 180px);overflow:auto;padding:3px;scrollbar-width:thin}
+.settings-tab-group{display:grid;gap:5px;min-width:0}
+.settings-tab-group + .settings-tab-group{border-top:1px solid var(--rim);padding-top:12px}
+.settings-tab-caption{color:var(--muted);font-size:.76rem;font-weight:600;padding:2px 10px 4px}
+.settings-tab-group button{min-height:44px;padding-block:8px;box-shadow:none}
+.settings-tab-group button:hover{transform:none}
+@media(max-width:760px){
+  .settings-tabs{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:none;overflow:visible}
+  .settings-tab-group{align-content:start}
+  .settings-tab-group + .settings-tab-group{border-top:0;padding-top:0}
+  .settings-tab-caption{padding-inline:6px}
+  .settings-tab-group button{padding-inline:8px;gap:6px}
+}
+@media(max-width:440px){.settings-tab-group button .icon{display:none}}

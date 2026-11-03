@@ -16,12 +16,15 @@ try{
     for(const value of [100,105]){
       await page.getByRole('slider',{name:'Library item size'}).fill(String(value));
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      await expect(page.locator('[data-select-game]')).toHaveCount(0);
+      await page.getByRole('button',{name:'Select games',exact:true}).click();
       const before=await geometry();
       await page.locator('[data-select-game]').first().click();
       await expect(page.getByRole('button',{name:'Clear selection',exact:true})).toBeVisible();
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       expect(await geometry(),`${layout} ${value}% stays stable in selection mode`).toEqual(before);
       await page.getByRole('button',{name:'Clear selection',exact:true}).click();
+      await page.getByRole('button',{name:'Done selecting',exact:true}).click();
     }
   }
   await page.locator('.game-card').first().click();

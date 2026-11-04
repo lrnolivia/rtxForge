@@ -4,6 +4,8 @@
 // come from ReShade (feeder_panel::Host, set by rtxforge-panel.cpp).
 #include <windows.h>
 #include <dxgi1_6.h>
+#include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -92,9 +94,46 @@ public:
     static Config *Instance() { static Config config; return &config; }
     Unused<bool> FGDLSSGOverrideForceDMFG;
 
-    float Get(const char *key, float fallback) { return feeder_panel::host.get(key, fallback); }
-    // RenoDX loads these when the game starts.
-    void Set(const char *key, float value, bool integer) { feeder_panel::host.set(key, value, integer); }
+    // A RenoDX build with rtxForge's live interface (providers/renodx-dlss5)
+    // reads and applies settings in the running game. Stock RenoDX loads them
+    // only when the game starts, so values are saved for the next launch.
+    float Get(const char *key, float fallback)
+    {
+        float value = 0;
+        if (Live() && live.get(key, &value, nullptr) && std::isfinite(value)) return value;
+        return feeder_panel::host.get(key, fallback);
+    }
+    void Set(const char *key, float value, bool integer)
+    {
+        if (!Live()) { feeder_panel::host.set(key, value, integer); return; }
+        float applied = 0;
+        uint64_t generation = 0;
+        const int result = live.set(key, value, &applied, &generation);
+        if (result == 1) { feeder_panel::host.set(key, value, integer); return; }  // Not live in this build.
+        if (result != 0)
+        {
+            feeder_panel::host.log("RenoDX refused a live setting change");
+            unconfirmedAt = GetTickCount64();
+            return;
+        }
+        if (generation > rebuildTarget) { rebuildTarget = generation; rebuildSent = GetTickCount64(); }
+    }
+    // Whether the running RenoDX applies settings live (version 1 interface).
+    bool Live()
+    {
+        if (live.version) return live.version == 1;
+        if (GetTickCount64() < nextLookup) return false;
+        nextLookup = GetTickCount64() + 2000;
+        const HMODULE module = GetModuleHandleW(L"renodx-dlss5.addon64");
+        if (!module) return false;
+        const auto version = reinterpret_cast<uint32_t(__cdecl *)()>(GetProcAddress(module, "RenoDXNrApiVersion"));
+        live.get = reinterpret_cast<decltype(live.get)>(GetProcAddress(module, "RenoDXNrGetV1"));
+        live.set = reinterpret_cast<decltype(live.set)>(GetProcAddress(module, "RenoDXNrSetV1"));
+        live.applied = reinterpret_cast<decltype(live.applied)>(GetProcAddress(module, "RenoDXNrAppliedGenerationV1"));
+        live.version = version && live.get && live.set && live.applied ? version() : UINT32_MAX;
+        feeder_panel::host.log(live.version == 1 ? "RenoDX live settings interface found" : "RenoDX has no supported live settings interface");
+        return live.version == 1;
+    }
     // Neural rendering switches live through RenoDX's own toggle key. RenoDX
     // writes NeuralUplift back when it handles the key, which is the only
     // confirmation this route has. Until that readback arrives (or times out)
@@ -117,14 +156,36 @@ public:
     int LiveState()
     {
         Pending();
-        if (toggleTarget >= 0) return 1;
+        if (toggleTarget >= 0 || Rebuilding()) return 1;
         return unconfirmedAt && GetTickCount64() - unconfirmedAt < 4000 ? 2 : 0;
     }
 
 private:
-    static constexpr ULONGLONG ConfirmTimeout = 2000;
+    static constexpr ULONGLONG ConfirmTimeout = 2000, RebuildTimeout = 8000;
     int toggleTarget = -1;
-    ULONGLONG toggleSent = 0, unconfirmedAt = 0;
+    ULONGLONG toggleSent = 0, unconfirmedAt = 0, nextLookup = 0, rebuildSent = 0;
+    uint64_t rebuildTarget = 0;
+    struct
+    {
+        uint32_t version = 0;
+        bool(__cdecl *get)(const char *, float *, uint64_t *) = nullptr;
+        int(__cdecl *set)(const char *, float, float *, uint64_t *) = nullptr;
+        uint64_t(__cdecl *applied)() = nullptr;
+    } live;
+    // A preset, pass or resolution change rebuilds the NR feature. It has
+    // applied once every live feature reports the requested generation; with
+    // no feature yet (NR off), the next one is built with it.
+    bool Rebuilding()
+    {
+        if (!rebuildTarget || !Live()) return false;
+        const uint64_t built = live.applied();
+        if (built == 0 || built >= rebuildTarget) { rebuildTarget = 0; return false; }
+        if (GetTickCount64() - rebuildSent < RebuildTimeout) return true;
+        feeder_panel::host.log("RenoDX did not finish rebuilding NR for a setting change");
+        rebuildTarget = 0;
+        unconfirmedAt = GetTickCount64();
+        return false;
+    }
     bool Pending()
     {
         if (toggleTarget < 0) return false;

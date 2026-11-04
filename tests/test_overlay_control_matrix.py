@@ -55,8 +55,9 @@ class FeederLiveToggle(unittest.TestCase):
         self.assertIn('ConfirmTimeout', shim)
         self.assertIn('RenoDX did not confirm', shim)
         # Readback stays truthful: Get never reports the requested value.
-        get = re.search(r'float Get\(const char \*key, float fallback\) \{([^}]*)\}', shim).group(1)
+        get = re.search(r'float Get\(const char \*key, float fallback\)\s*\{(.*?)\n    \}', shim, re.S).group(1)
         self.assertNotIn('toggleTarget', get)
+        self.assertNotIn('rebuildTarget', get)
 
     def test_glass_shows_waiting_and_unconfirmed(self):
         runtime = source('windows/overlay-rmlui/GlassRuntime.cpp')
@@ -87,6 +88,40 @@ class ReShadeAcknowledgment(unittest.TestCase):
         self.assertIn('Pending(index,true)', effects)
         self.assertIn('ReShade reloaded its effects before', effects)
         self.assertIn('id="effects-result"', source('prototypes/overlay-rmlui/overlay.rml'))
+
+
+class RenoDXLiveInterface(unittest.TestCase):
+    def test_export_bounds_match_the_helper(self):
+        live = source('providers/renodx-dlss5/rtxforge_live.hpp')
+        bounds = {key: (float(lo), hi) for key, lo, hi in
+                  re.findall(r'\{"(NR\w+)", ([\d.]+)f, ([^,]+), (?:true|false)\}', live)}
+        for key, (ini, low, high) in feeder_provider.TUNING.items():
+            self.assertIn(ini, bounds, key)
+            self.assertEqual(bounds[ini][0], float(low), key)
+            if ini != 'NRPasses':
+                self.assertEqual(float(bounds[ini][1].rstrip('f')), float(high), key)
+        # NR on/off stays on RenoDX's toggle key, which also resets its latches.
+        self.assertNotIn('"NeuralUplift"', live)
+
+    def test_resolution_floor_matches_renodx(self):
+        self.assertEqual(feeder_provider.TUNING['work_scale'][1], 0.33)
+        self.assertIn("work_scale = @{ ini = 'NRResolutionScale'; min = 0.33; max = 1 }",
+                      source('windows/build/Build-FeederPanel.ps1'))
+
+    def test_panel_is_live_only_with_the_interface(self):
+        shim = source('windows/feeder-panel/shim/Config.h')
+        self.assertIn('"RenoDXNrApiVersion"', shim)
+        self.assertIn('live.version == 1', shim)
+        self.assertIn('RenoDXNrAppliedGenerationV1', shim)
+        self.assertIn('ForgePanel::liveTuning = Config::Instance()->Live();', source('windows/feeder-panel/panel.cpp'))
+
+    def test_candidate_never_replaces_the_pin(self):
+        import json
+        spec = json.loads(source('providers/renodx-dlss5/source.json'))
+        self.assertTrue(spec['candidate_only'])
+        self.assertFalse(spec['replaces_pinned_asset'])
+        pinned = json.loads(source('providers/feeder.json'))['assets']['renodx-dlss5.addon64']['sha256']
+        self.assertEqual(pinned, 'dcd93881e976ad033d83c2bb01f4bc3e4ddc59c15fe0dd4ca165bc5fc7d1ac68')
 
 
 class FeederPointer(unittest.TestCase):

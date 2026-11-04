@@ -104,6 +104,8 @@ bool Draw(const Frame &frame)
     // Startup/per-game replies must reach the shortcut even with the UI closed.
     // Otherwise a delayed hello remains unread until the old shortcut opens it.
     ForgePanel::PollHelper();
+    // Live only with a RenoDX build that applies and reads back settings.
+    ForgePanel::liveTuning = Config::Instance()->Live();
     if (!ForgePanel::CapturingShortcut() && ForgePanel::ShortcutReleased()) visible = !visible;
     ForgePanelChannel::Visible(visible);
     LARGE_INTEGER now;

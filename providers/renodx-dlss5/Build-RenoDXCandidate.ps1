@@ -22,6 +22,14 @@ function Head([string]$path) { (git -C $path rev-parse HEAD).Trim() }
 if ((Head $RenoDX) -ne $spec.renodx.commit) { throw "RenoDX checkout is not at $($spec.renodx.commit)" }
 if ((Head $AddonSource) -ne $spec.addon_source.commit) { throw "Add-on source is not at $($spec.addon_source.commit)" }
 
+# Build against the ReShade Feeder ships; RenoDX's own pin predates the ImGui
+# wrappers (reshade_overlay.hpp) the add-on calls.
+$reshade = Join-Path $RenoDX 'external\reshade'
+git -C $reshade fetch --quiet origin $spec.reshade.commit
+git -C $reshade checkout --quiet $spec.reshade.commit
+git -C $reshade submodule update --init --recursive --quiet
+if ((Head $reshade) -ne $spec.reshade.commit) { throw "ReShade is not at $($spec.reshade.commit)" }
+
 # The add-on lives at src/addons/dlss5; RenoDX builds every src/*/*/addon.cpp.
 $target = Join-Path $RenoDX 'src\addons\dlss5'
 if (Test-Path $target) { throw "$target already exists" }
@@ -61,7 +69,7 @@ foreach ($name in 'RenoDXNrApiVersion', 'RenoDXNrGetV1', 'RenoDXNrSetV1', 'RenoD
 
 $receipt = [ordered]@{
     schema = 1; id = $spec.id; addon_version = $spec.addon_version; api_version = $spec.api_version
-    addon_source = $spec.addon_source.commit; renodx = $spec.renodx.commit
+    addon_source = $spec.addon_source.commit; renodx = $spec.renodx.commit; reshade = $spec.reshade.commit
     patch_sha256 = (Get-FileHash -LiteralPath (Join-Path $here $spec.patch) -Algorithm SHA256).Hash.ToLowerInvariant()
     compat_sha256 = (Get-FileHash -LiteralPath (Join-Path $here $spec.compat) -Algorithm SHA256).Hash.ToLowerInvariant()
     rtxforge_commit = (git -C (Join-Path $here '..\..') rev-parse HEAD).Trim()

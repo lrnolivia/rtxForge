@@ -13,6 +13,11 @@
     "note": "Last main commit before the add-on source was imported (2026-09-28). The exact rc10 base, 3a6cfc6, is not in this repository.",
     "license": "MIT"
   },
+  "reshade": {
+    "repository": "https://github.com/crosire/reshade",
+    "commit": "18deaa52de0c425a78b329e9cb3c497281cd00ec",
+    "note": "ReShade 6.8.0, which Feeder ships. The add-on uses ImGui wrappers newer than RenoDX's own ReShade pin."
+  },
   "patch": "rtxforge_live.hpp",
   "compat": "renodx_compat.hpp",
   "api_version": 1,

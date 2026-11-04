@@ -92,7 +92,7 @@ $feeder = [ordered]@{
     preset = @{ ini = 'NRPreset' }
     passes = @{ ini = 'NRPasses'; max = 4; values = @(1, 2, 3, 4); choices = @('1 pass', '2 passes', '3 passes', '4 passes') }
     structure = @{ ini = 'NRLocalStructure' }
-    work_scale = @{ ini = 'NRResolutionScale'; max = 1 }
+    work_scale = @{ ini = 'NRResolutionScale'; min = 0.33; max = 1 }
 }
 $schema = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $bridge 'controls.json') | ConvertFrom-Json
 $gen = Join-Path $Output 'gen'
@@ -103,6 +103,7 @@ $rows = [Collections.Generic.List[string]]::new()
 foreach ($control in $schema.controls) {
     if (-not $feeder.Contains($control.key)) { continue }
     $map = $feeder[$control.key]
+    $min = if ($map.ContainsKey('min')) { $map.min } else { $control.min }
     $max = if ($map.ContainsKey('max')) { $map.max } else { $control.max }
     $values = if ($map.ContainsKey('values')) { $map.values } else { $control.values }
     $labels = if ($map.ContainsKey('choices')) { $map.choices } else { $control.choices }
@@ -116,7 +117,7 @@ foreach ($control in $schema.controls) {
     $set = if ($control.key -eq 'enabled') { '[](Config& c, float n, bool) { c.SetNeuralRendering(n); }' }
            else { '[](Config& c, float n, bool) { c.Set("' + $map.ini + '", n, ' + ($(if ($control.kind -eq 'slider') { 'false' } else { 'true' })) + '); }' }
     $rows.Add('  { ' + (CppString $control.key) + ', ' + (CppString $control.label) + ', ' + (CppString $control.advanced) + ', ' + (CppString $control.group) +
-              ', Kind::' + $control.kind + ', ' + (CppFloat $control.min) + ', ' + (CppFloat $max) + ', ' + $get + ', ' + $set + ', ' + $choices + ', ' + (CppFloat $control.default) + ' },')
+              ', Kind::' + $control.kind + ', ' + (CppFloat $min) + ', ' + (CppFloat $max) + ', ' + $get + ', ' + $set + ', ' + $choices + ', ' + (CppFloat $control.default) + ' },')
 }
 $lines.Add('inline const Control controls[] = {'); $lines.AddRange($rows); $lines.Add('};')
 [IO.File]::WriteAllLines((Join-Path $gen 'ForgePanelBindings.h'), $lines, [Text.UTF8Encoding]::new($false))

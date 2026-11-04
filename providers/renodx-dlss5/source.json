@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "renodx-dlss5-live-candidate-1",
+  "release_tag": "renodx-dlss5-8.5.0-rc10-rtxforge-1",
+  "addon_version": "v8.5.0-rc10",
+  "addon_source": {
+    "repository": "https://github.com/Andarael/RenoDX-DLSS5-Generic",
+    "commit": "9bb6c0fec57ecb28c77938f3feb8155433396d93",
+    "license": "MIT"
+  },
+  "renodx": {
+    "repository": "https://github.com/clshortfuse/renodx",
+    "commit": "277d890ee5448b411b2611c3bf533dc378d0700f",
+    "note": "Last main commit before the add-on source was imported (2026-09-28). The exact rc10 base, 3a6cfc6, is not in this repository.",
+    "license": "MIT"
+  },
+  "reshade": {
+    "repository": "https://github.com/crosire/reshade",
+    "commit": "4a50d1eddace85734871d91792ff214f13f66c01",
+    "note": "RenoDX's own submodule pin, checked, not changed. ReShade 6.8.0 lacks add-on API the source uses."
+  },
+  "patch": "rtxforge_live.hpp",
+  "compat": "renodx_compat.hpp",
+  "api_version": 1,
+  "candidate_only": false,
+  "runtime_verified": "Mass Effect LE 1, RTX 4070, 2026-11-04: live strength, passes and resolution confirmed by RenoDX readback with NR engaged (CI build of the same source).",
+  "replaces_pinned_asset": true
+}

@@ -1,0 +1,78 @@
+name: RenoDX DLSS5 live candidate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - providers/renodx-dlss5/**
+      - .github/workflows/renodx-dlss5.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: RenoDX DLSS5 with live settings
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned sources
+        id: spec
+        shell: pwsh
+        run: |
+          $spec = Get-Content -Raw providers/renodx-dlss5/source.json | ConvertFrom-Json
+          "renodx=$($spec.renodx.commit)" >> $env:GITHUB_OUTPUT
+          "addon=$($spec.addon_source.commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: clshortfuse/renodx
+          ref: ${{ steps.spec.outputs.renodx }}
+          submodules: recursive
+          persist-credentials: false
+          path: windows/out/renodx
+      - uses: actions/checkout@v4
+        with:
+          repository: Andarael/RenoDX-DLSS5-Generic
+          ref: ${{ steps.spec.outputs.addon }}
+          persist-credentials: false
+          path: windows/out/renodx-dlss5-source
+      - name: Install ninja-build tool
+        uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Set up RenoDX shader tools
+        shell: pwsh
+        working-directory: windows/out/renodx
+        run: .\scripts\setup-dev-env.ps1 -Update -Tools dxc,slang,glslang
+      - name: Configure MSVC for amd64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      - name: Build the candidate add-on
+        shell: pwsh
+        run: ./providers/renodx-dlss5/Build-RenoDXCandidate.ps1 -RenoDX windows/out/renodx -AddonSource windows/out/renodx-dlss5-source
+      - uses: actions/upload-artifact@v4
+        with:
+          name: renodx-dlss5-live-candidate
+          path: windows/out/renodx-dlss5-candidate/**
+          if-no-files-found: error
+          retention-days: 14
+      # Feeder installs download this exact zip by hash (providers/feeder-runtime.json),
+      # so each release tag is published once and never replaced. The app's own
+      # updates read only the continuous and beta tags.
+      - name: Publish the add-on once per release tag
+        if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $spec = Get-Content -Raw providers/renodx-dlss5/source.json | ConvertFrom-Json
+          $tag = $spec.release_tag
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) { "Release $tag already exists; leaving it unchanged."; exit 0 }
+          $zip = "windows/out/$tag.zip"
+          Compress-Archive -Path windows/out/renodx-dlss5-candidate/* -DestinationPath $zip
+          $notes = "RenoDX DLSS5 $($spec.addon_version) built by rtxForge from MIT source $($spec.addon_source.commit) with the live settings interface (version $($spec.api_version)). Used by rtxForge Feeder installs; not an rtxForge app release."
+          gh release create $tag $zip --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA --title "RenoDX DLSS5 $($spec.addon_version) (rtxForge live settings $($spec.api_version))" --notes $notes --latest=false
+          if ($LASTEXITCODE) { throw 'Release publish failed' }
+          "sha256 $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()) size $((Get-Item $zip).Length)"

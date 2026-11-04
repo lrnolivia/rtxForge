@@ -45,7 +45,8 @@ STOCK_LIBRARIES = {'dbghelp.dll': {'abd6a38e9d73b0ed73372e80819eca9134534c17722c
 # rtxForge preset controls and the RenoDX keys they set. RenoDX reads these
 # once, when the game starts; the in-game panel writes the same keys.
 TUNING = {'intensity': ('NRIntensity', 0.0, 2.0), 'passes': ('NRPasses', 1, 4),
-          'work_scale': ('NRResolutionScale', 0.25, 1.0), 'preset': ('NRPreset', 0, 3),
+          # RenoDX clamps NRResolutionScale to 0.33-1.0 when it loads.
+          'work_scale': ('NRResolutionScale', 0.33, 1.0), 'preset': ('NRPreset', 0, 3),
           'style': ('NRStyle', 0, 2), 'structure': ('NRLocalStructure', 0.0, 2.0)}
 _hashes = {}
 # Reviews share work, on the reviewing thread only: each file stamp (size, mtime, ctime) is hashed

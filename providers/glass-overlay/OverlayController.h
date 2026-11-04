@@ -211,7 +211,9 @@ struct Controller : Rml::EventListener
     void RenderResolutionLabel() {auto* reading=Element("render-resolution-value");reading->SetInnerRML(RenderResolutionText());if(preview)reading->SetAttribute("title","Preview estimate from the canvas size; no game is connected.");else reading->RemoveAttribute("title");}
 
 
-    int pass=2;
+    // The connected runtime reports its own pass ceiling (Feeder NR allows 4,
+    // OptiScaler 3); the preview keeps OptiScaler's.
+    int pass=2,passesMax=3;
     int appearance=4;
     std::array<float,3> accent{.19f,.46f,.80f};
     std::string accentMode="adaptive",customAccent;
@@ -256,7 +258,7 @@ struct Controller : Rml::EventListener
         if((!nr&&(activeNavigation=="nav-neural"||activeNavigation=="nav-look"||activeNavigation=="nav-passes"))||(!fg&&activeNavigation=="nav-frame"))Page("nav-overview");
         Session(session);Reflow();
     }
-    void Welcome() {if(!showWelcome)return;Visible("toast-icon",false);Element("toast-message")->SetInnerRML("Press <span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span> for controls");Element("welcome")->SetProperty("width","500dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=0;}
+    void Welcome() {if(!showWelcome)return;Visible("toast-icon",false);Element("welcome")->SetClass("with-icon",false);Element("toast-message")->SetInnerRML("Press <span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span> for controls");Element("welcome")->SetProperty("width","500dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=0;}
     void ToggleOverlay() {if(primaryMenu=="optiscaler")return;if(setupStep>=0){if(Element("type-panel")->IsVisible()){Visible("type-panel",false);Visible("main-panel",false);}else UpdateSetup();return;}EndNrPreview();if(BarSettings())Settings(false);const bool show=!Element("main-panel")->IsVisible();Visible("main-panel",show);if(show){Raise("main-panel");Enter("main-panel");}else{Visible("inspector",false);Visible("type-panel",false);Welcome();}}
     void Settings(bool show) {
         EndNrPreview();const bool leaving=settingsOpen&&!show;if(show&&!settingsOpen)beforeSettingsNavigation=activeNavigation;
@@ -288,7 +290,7 @@ struct Controller : Rml::EventListener
     }
     void Metadata() {const auto view=document->GetContext()->GetDimensions();const auto size=std::to_string(view.x)+" × "+std::to_string(view.y);for(const auto* id:{"compact-size","overview-size","popup-size"})Element(id)->SetInnerRML(size);}
     double toastUntil=0;
-    void Notify(const std::string& text,const std::string& icon="info") {if(!showNotifications)return;Element("toast-icon")->SetAttribute("src","icons/"+icon+"-light.png");Visible("toast-icon",true);Element("toast-message")->SetInnerRML(Rml::StringUtilities::EncodeRml(text));Element("welcome")->SetProperty("width",std::to_string(std::clamp(234+int(text.size())*8,420,760))+"dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=Rml::GetSystemInterface()->GetElapsedTime()+3.;}
+    void Notify(const std::string& text,const std::string& icon="info") {if(!showNotifications)return;Element("toast-icon")->SetAttribute("src","icons/"+icon+"-light.png");Visible("toast-icon",true);Element("welcome")->SetClass("with-icon",true);Element("toast-message")->SetInnerRML(Rml::StringUtilities::EncodeRml(text));Element("welcome")->SetProperty("width",std::to_string(std::clamp(234+int(text.size())*8,420,760))+"dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=Rml::GetSystemInterface()->GetElapsedTime()+3.;}
     bool reducedMotion=false;
     float inspectorAnchorX=0;std::string inspectorSource;bool dragStarted=false;float dragThreshold=0;
     struct Entrance {double start;Rml::Vector2f target;float previous;};
@@ -659,7 +661,7 @@ struct Controller : Rml::EventListener
         RenderResolutionLabel();
         const int passCount=int(values.at("passes"));
         Element("pass-count")->SetInnerRML(std::to_string(passCount)+(passCount==1?" pass":" passes"));
-        Disabled("pass-minus",passCount<=1);Disabled("pass-plus",passCount>=3);if(passCount<3&&pass==3)pass=2;
+        Disabled("pass-minus",passCount<=1);Disabled("pass-plus",passCount>=passesMax);if(passCount<3&&pass==3)pass=2;
         const auto prefix="pass"+std::to_string(pass)+"_";
         for(const auto* key : {"strength","tone","structure","skin"})range((std::string("pass-")+key).c_str(),prefix+key);
         Element("inherit")->SetClass("on",values[prefix+"inherit"]!=0);Element("pass-fields")->SetProperty("opacity",values[prefix+"inherit"] ? ".35":"1");
@@ -696,7 +698,7 @@ struct Controller : Rml::EventListener
         Element("inspector")->SetClass("opening",true);
         Visible("inspector",true);Visible("pass-inspector",panel=="passes");Visible("look-inspector",panel=="look");Visible("extra-processing",panel=="processing");Visible("extra-frame-popup",panel=="frame");Visible("popup-metadata",panel=="overview");Visible("hdr-inspector",panel=="hdr");Visible("effects-inspector",panel=="effects");Element("inspector")->SetClass("session-inspector",panel=="overview");
         const auto icon=panel=="effects"?"stack":panel=="hdr"?"sun":panel=="overview"?"gauge":panel=="passes"?"stack":panel=="look"?"sliders-horizontal":panel=="frame"?"film-strip":"cpu";
-        const auto title=panel=="effects"?"RESHADE":panel=="hdr"?"HDR":panel=="overview"?"SESSION":panel=="processing"?"NEURAL RENDERING":panel=="passes"?"PASS TUNING":panel=="look"?"LOOK &amp; DETAIL":panel=="frame"?"FRAME GENERATION":"PROCESSING";
+        const auto title=panel=="effects"?"EFFECTS":panel=="hdr"?"HDR":panel=="overview"?"SESSION":panel=="processing"?"NEURAL RENDERING":panel=="passes"?"PASS TUNING":panel=="look"?"LOOK &amp; DETAIL":panel=="frame"?"FRAME GENERATION":"PROCESSING";
         Element("inspector-title")->SetInnerRML(std::string("<img class=\"glyph\" src=\"icons/")+icon+"-light.png\"/><span>"+title+"</span>");
         if(layout=="centered")Visible("overview",false);
         Reflow();Raise("inspector");Enter("inspector");inspectorAnchored=layout=="bar";Element("inspector")->SetClass("anchored",inspectorAnchored);
@@ -851,7 +853,7 @@ struct Controller : Rml::EventListener
             else if(id=="open-layout")QuickLayouts(true);
             else if(id.rfind("quick-",0)==0)Layout(id.substr(6));
             else if(id=="setting-original-labels"){originalLabels=!originalLabels;prefsDirty=true;Labels();}
-            else if(id=="pass-minus"||id=="pass-plus")Put("passes",std::clamp(values.at("passes")+(id=="pass-minus"?-1.f:1.f),1.f,3.f));
+            else if(id=="pass-minus"||id=="pass-plus")Put("passes",std::clamp(values.at("passes")+(id=="pass-minus"?-1.f:1.f),1.f,float(passesMax)));
             else if(id.rfind("group-toggle-",0)==0){auto* group=Element(id.substr(13).c_str());group->SetProperty("display",group->IsVisible()?"none":"flex");target->SetClass("expanded",group->IsVisible());}
             else if(id.rfind("reset-extra-",0)==0 && extraFields.contains(id.substr(6)))Put(extraFields.at(id.substr(6))->key,defaults.at(extraFields.at(id.substr(6))->key));
             else if(extraFields.contains(id)) {const auto* control=extraFields.at(id);if(std::string(control->kind)=="toggle")Put(control->key,values.at(control->key)==0?1.f:0.f);}

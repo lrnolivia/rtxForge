@@ -86,6 +86,7 @@ bool Init(ID3D11Device *game, HWND window, bool nr)
     seed_shortcut_name();
     ForgeGlassPanel::logSink=host.log;
     ForgeGlassPanel::runtimeKind=neuralRendering?2:3;
+    ForgeGlassPanel::readLiveState=[] { return Config::Instance()->LiveState(); };
     ForgeGlassPanel::Prepare(window);
     device = game;
     device->AddRef();
@@ -103,6 +104,8 @@ bool Draw(const Frame &frame)
     // Startup/per-game replies must reach the shortcut even with the UI closed.
     // Otherwise a delayed hello remains unread until the old shortcut opens it.
     ForgePanel::PollHelper();
+    // Live only with a RenoDX build that applies and reads back settings.
+    ForgePanel::liveTuning = Config::Instance()->Live();
     if (!ForgePanel::CapturingShortcut() && ForgePanel::ShortcutReleased()) visible = !visible;
     ForgePanelChannel::Visible(visible);
     LARGE_INTEGER now;
@@ -134,11 +137,25 @@ bool Draw(const Frame &frame)
             ForgePanelChannel::needsHello = false;
         drawn = ForgeGlassPanel::Draw(device, frame.target, visible);
     }
-    ImGui::EndFrame();
     if (!drawn) {
+        ImGui::EndFrame();
         visible = false;
         ForgePanelChannel::Visible(false);
+        return visible;
     }
+    // Glass draws no pointer, and games like Mass Effect hide the system
+    // cursor. ImGui has no windows here, so this pass draws only its software
+    // cursor (MouseDrawCursor) on top of the panel.
+    io.MouseDrawCursor = visible;
+    ImGui::Render();
+    ID3D11RenderTargetView *previous = nullptr;
+    ID3D11DepthStencilView *depth = nullptr;
+    immediate->OMGetRenderTargets(1, &previous, &depth);
+    immediate->OMSetRenderTargets(1, &frame.target, nullptr);
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    immediate->OMSetRenderTargets(1, &previous, depth);
+    if (previous) previous->Release();
+    if (depth) depth->Release();
     return visible;
 }
 

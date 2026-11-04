@@ -1003,7 +1003,9 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .wide-content #nr-body > .model-single { flex: 1 1 300dp; min-width: 0; margin: 0; }
 .wide-content #nr-body > .model-row { flex: 2 1 580dp; min-width: 0; margin: 0; }
 .welcome .toast-icon { width: 22dp; height: 22dp; margin: 0 2dp 0 auto; }
-.welcome .toast-icon + .welcome-message { margin-left: 0; }
+/* Only while a notification shows its icon: a hidden icon still matches the
+   sibling selector, which left the welcome prompt beside the logo. */
+.welcome.with-icon .toast-icon + .welcome-message { margin-left: 0; }
 
 /* Open selects share the current material hue and choose legible menu ink. */
 .glass select selectbox, .glass.dark select selectbox, .glass.clear select selectbox { padding: 6dp; background: var(--menu-fill); color: var(--menu-ink); border: 0; border-radius: 12dp; box-shadow: 0dp 8dp 24dp #100e0c38; }
@@ -1024,3 +1026,14 @@ select selectbox { opacity: 0; }
 
 .save-status { flex-shrink: 0; margin-top: 8dp; font-size: 12dp; line-height: 1.4; }
 .save-badge { display: inline-block; background-color: var(--control-fill); border-radius: 8dp; padding: 2dp 8dp; margin-right: 8dp; }
+
+/* Effects page: one group per effect, readable names that wrap, and an
+   entry row whose Apply button keeps its size beside the field. */
+.effect-group .group-body { flex-direction: column; }
+.effect-row label { white-space: normal; word-break: break-word; }
+.effect-row .field-heading label { flex: 1 1 auto; min-width: 0; }
+.effect-category { margin: 18dp 0 4dp; font-size: var(--hint-size); font-weight: 600; color: var(--accent-ink); }
+.effect-entry { display: flex; align-items: center; gap: 10dp; margin-top: 8dp; }
+.effect-entry .effect-number { flex: 1 1 auto; min-width: 0; }
+.effect-entry .quiet { flex: 0 0 auto; }
+#effects-section .hint { margin-top: 6dp; }

@@ -14,6 +14,7 @@
     "license": "MIT"
   },
   "patch": "rtxforge_live.hpp",
+  "compat": "renodx_compat.hpp",
   "api_version": 1,
   "candidate_only": true,
   "runtime_verified": false,

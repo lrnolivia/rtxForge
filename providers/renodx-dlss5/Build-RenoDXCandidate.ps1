@@ -31,9 +31,11 @@ $version = Select-String -LiteralPath (Join-Path $target 'dlssnr.hpp') -Pattern 
 if (-not $version -or $version.Matches[0].Groups[1].Value -ne $spec.addon_version) { throw 'Add-on source version differs from source.json' }
 
 Copy-Item -LiteralPath (Join-Path $here $spec.patch) -Destination $target
+Copy-Item -LiteralPath (Join-Path $here $spec.compat) -Destination $target
 $addon = Join-Path $target 'addon.cpp'
 $text = [IO.File]::ReadAllText($addon)
 if ($text -notmatch '#include "dlssnr.hpp"') { throw 'addon.cpp no longer includes dlssnr.hpp' }
+$text = $text.Replace('#include "dlssnr.hpp"', "#include `"$($spec.compat)`"`n#include `"dlssnr.hpp`"")
 [IO.File]::WriteAllText($addon, $text.TrimEnd() + "`n`n#include `"$($spec.patch)`"`n", [Text.UTF8Encoding]::new($false))
 
 Push-Location $RenoDX
@@ -61,6 +63,7 @@ $receipt = [ordered]@{
     schema = 1; id = $spec.id; addon_version = $spec.addon_version; api_version = $spec.api_version
     addon_source = $spec.addon_source.commit; renodx = $spec.renodx.commit
     patch_sha256 = (Get-FileHash -LiteralPath (Join-Path $here $spec.patch) -Algorithm SHA256).Hash.ToLowerInvariant()
+    compat_sha256 = (Get-FileHash -LiteralPath (Join-Path $here $spec.compat) -Algorithm SHA256).Hash.ToLowerInvariant()
     rtxforge_commit = (git -C (Join-Path $here '..\..') rev-parse HEAD).Trim()
     files = [ordered]@{ 'renodx-dlss5.addon64' = [ordered]@{
         sha256 = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant()

@@ -22,7 +22,7 @@
   "patch": "rtxforge_live.hpp",
   "compat": "renodx_compat.hpp",
   "api_version": 1,
-  "candidate_only": true,
-  "runtime_verified": false,
-  "replaces_pinned_asset": false
+  "candidate_only": false,
+  "runtime_verified": "Mass Effect LE 1, RTX 4070, 2026-11-04: live strength, passes and resolution confirmed by RenoDX readback with NR engaged (CI build of the same source).",
+  "replaces_pinned_asset": true
 }

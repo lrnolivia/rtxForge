@@ -126,13 +126,19 @@ class RenoDXLiveInterface(unittest.TestCase):
         self.assertIn('RenoDXNrAppliedGenerationV1', shim)
         self.assertIn('ForgePanel::liveTuning = Config::Instance()->Live();', source('windows/feeder-panel/panel.cpp'))
 
-    def test_candidate_never_replaces_the_pin(self):
+    def test_feeder_installs_the_published_live_build(self):
         import json
         spec = json.loads(source('providers/renodx-dlss5/source.json'))
-        self.assertTrue(spec['candidate_only'])
-        self.assertFalse(spec['replaces_pinned_asset'])
-        pinned = json.loads(source('providers/feeder.json'))['assets']['renodx-dlss5.addon64']['sha256']
-        self.assertEqual(pinned, 'dcd93881e976ad033d83c2bb01f4bc3e4ddc59c15fe0dd4ca165bc5fc7d1ac68')
+        lock = json.loads(source('providers/feeder.json'))
+        runtime = json.loads(source('providers/feeder-runtime.json'))
+        renodx = next(s for s in runtime['sources'] if 'renodx-dlss5.addon64' in s['members'].values())
+        self.assertIn('/releases/download/' + spec['release_tag'] + '/', renodx['url'])
+        self.assertEqual(lock['version'], runtime['recipe'])
+        self.assertEqual(lock['assets']['renodx-dlss5.addon64']['sha256'],
+                         '1e4823637965d3e01ff4840a222a5853fec191b2fa0c9001e2076b5bcf25fdd5')
+        # Games installed with stock rc10 keep passing checks until repaired.
+        previous = {item['sha256'] for item in lock['previous_assets']['renodx-dlss5.addon64']}
+        self.assertIn('dcd93881e976ad033d83c2bb01f4bc3e4ddc59c15fe0dd4ca165bc5fc7d1ac68', previous)
 
 
 class WelcomeToast(unittest.TestCase):

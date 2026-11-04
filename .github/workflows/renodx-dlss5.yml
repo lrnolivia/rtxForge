@@ -1,0 +1,58 @@
+name: RenoDX DLSS5 live candidate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - providers/renodx-dlss5/**
+      - .github/workflows/renodx-dlss5.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: RenoDX DLSS5 with live settings
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned sources
+        id: spec
+        shell: pwsh
+        run: |
+          $spec = Get-Content -Raw providers/renodx-dlss5/source.json | ConvertFrom-Json
+          "renodx=$($spec.renodx.commit)" >> $env:GITHUB_OUTPUT
+          "addon=$($spec.addon_source.commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: clshortfuse/renodx
+          ref: ${{ steps.spec.outputs.renodx }}
+          submodules: recursive
+          persist-credentials: false
+          path: windows/out/renodx
+      - uses: actions/checkout@v4
+        with:
+          repository: Andarael/RenoDX-DLSS5-Generic
+          ref: ${{ steps.spec.outputs.addon }}
+          persist-credentials: false
+          path: windows/out/renodx-dlss5-source
+      - name: Install ninja-build tool
+        uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Set up RenoDX shader tools
+        shell: pwsh
+        working-directory: windows/out/renodx
+        run: .\scripts\setup-dev-env.ps1 -Update -Tools dxc,slang,glslang
+      - name: Configure MSVC for amd64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      - name: Build the candidate add-on
+        shell: pwsh
+        run: ./providers/renodx-dlss5/Build-RenoDXCandidate.ps1 -RenoDX windows/out/renodx -AddonSource windows/out/renodx-dlss5-source
+      - uses: actions/upload-artifact@v4
+        with:
+          name: renodx-dlss5-live-candidate
+          path: windows/out/renodx-dlss5-candidate/**
+          if-no-files-found: error
+          retention-days: 14

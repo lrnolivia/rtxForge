@@ -124,6 +124,18 @@ class RenoDXLiveInterface(unittest.TestCase):
         self.assertEqual(pinned, 'dcd93881e976ad033d83c2bb01f4bc3e4ddc59c15fe0dd4ca165bc5fc7d1ac68')
 
 
+class WelcomeToast(unittest.TestCase):
+    def test_prompt_stays_opposite_the_logo(self):
+        # A hidden icon still matches a sibling selector, so the rule that
+        # pulls the message left must require a shown icon.
+        rcss = source('prototypes/overlay-rmlui/overlay.rcss')
+        self.assertNotIn('\n.welcome .toast-icon + .welcome-message', rcss)
+        self.assertIn('.welcome.with-icon .toast-icon + .welcome-message { margin-left: 0; }', rcss)
+        controller = source('providers/glass-overlay/OverlayController.h')
+        self.assertIn('Element("welcome")->SetClass("with-icon",false);', controller)
+        self.assertIn('Element("welcome")->SetClass("with-icon",true);', controller)
+
+
 class FeederPointer(unittest.TestCase):
     def test_glass_route_still_draws_the_software_cursor(self):
         # Glass draws no pointer; games that hide the system cursor rely on

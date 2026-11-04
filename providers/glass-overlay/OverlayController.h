@@ -258,7 +258,7 @@ struct Controller : Rml::EventListener
         if((!nr&&(activeNavigation=="nav-neural"||activeNavigation=="nav-look"||activeNavigation=="nav-passes"))||(!fg&&activeNavigation=="nav-frame"))Page("nav-overview");
         Session(session);Reflow();
     }
-    void Welcome() {if(!showWelcome)return;Visible("toast-icon",false);Element("toast-message")->SetInnerRML("Press <span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span> for controls");Element("welcome")->SetProperty("width","500dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=0;}
+    void Welcome() {if(!showWelcome)return;Visible("toast-icon",false);Element("welcome")->SetClass("with-icon",false);Element("toast-message")->SetInnerRML("Press <span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span> for controls");Element("welcome")->SetProperty("width","500dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=0;}
     void ToggleOverlay() {if(primaryMenu=="optiscaler")return;if(setupStep>=0){if(Element("type-panel")->IsVisible()){Visible("type-panel",false);Visible("main-panel",false);}else UpdateSetup();return;}EndNrPreview();if(BarSettings())Settings(false);const bool show=!Element("main-panel")->IsVisible();Visible("main-panel",show);if(show){Raise("main-panel");Enter("main-panel");}else{Visible("inspector",false);Visible("type-panel",false);Welcome();}}
     void Settings(bool show) {
         EndNrPreview();const bool leaving=settingsOpen&&!show;if(show&&!settingsOpen)beforeSettingsNavigation=activeNavigation;
@@ -290,7 +290,7 @@ struct Controller : Rml::EventListener
     }
     void Metadata() {const auto view=document->GetContext()->GetDimensions();const auto size=std::to_string(view.x)+" × "+std::to_string(view.y);for(const auto* id:{"compact-size","overview-size","popup-size"})Element(id)->SetInnerRML(size);}
     double toastUntil=0;
-    void Notify(const std::string& text,const std::string& icon="info") {if(!showNotifications)return;Element("toast-icon")->SetAttribute("src","icons/"+icon+"-light.png");Visible("toast-icon",true);Element("toast-message")->SetInnerRML(Rml::StringUtilities::EncodeRml(text));Element("welcome")->SetProperty("width",std::to_string(std::clamp(234+int(text.size())*8,420,760))+"dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=Rml::GetSystemInterface()->GetElapsedTime()+3.;}
+    void Notify(const std::string& text,const std::string& icon="info") {if(!showNotifications)return;Element("toast-icon")->SetAttribute("src","icons/"+icon+"-light.png");Visible("toast-icon",true);Element("welcome")->SetClass("with-icon",true);Element("toast-message")->SetInnerRML(Rml::StringUtilities::EncodeRml(text));Element("welcome")->SetProperty("width",std::to_string(std::clamp(234+int(text.size())*8,420,760))+"dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=Rml::GetSystemInterface()->GetElapsedTime()+3.;}
     bool reducedMotion=false;
     float inspectorAnchorX=0;std::string inspectorSource;bool dragStarted=false;float dragThreshold=0;
     struct Entrance {double start;Rml::Vector2f target;float previous;};

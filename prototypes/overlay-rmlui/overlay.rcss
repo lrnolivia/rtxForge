@@ -1003,7 +1003,9 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .wide-content #nr-body > .model-single { flex: 1 1 300dp; min-width: 0; margin: 0; }
 .wide-content #nr-body > .model-row { flex: 2 1 580dp; min-width: 0; margin: 0; }
 .welcome .toast-icon { width: 22dp; height: 22dp; margin: 0 2dp 0 auto; }
-.welcome .toast-icon + .welcome-message { margin-left: 0; }
+/* Only while a notification shows its icon: a hidden icon still matches the
+   sibling selector, which left the welcome prompt beside the logo. */
+.welcome.with-icon .toast-icon + .welcome-message { margin-left: 0; }
 
 /* Open selects share the current material hue and choose legible menu ink. */
 .glass select selectbox, .glass.dark select selectbox, .glass.clear select selectbox { padding: 6dp; background: var(--menu-fill); color: var(--menu-ink); border: 0; border-radius: 12dp; box-shadow: 0dp 8dp 24dp #100e0c38; }

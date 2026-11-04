@@ -42,11 +42,11 @@ re-verified control by control. Treat them as S-only.
 | Control | OptiScaler | Feeder NR | Vulkan NR | Evidence |
 | --- | --- | --- | --- | --- |
 | NR on/off | Live, confirmed (volatile config, read back each frame) | **Live, unconfirmed → confirmed by readback**: the panel presses RenoDX's toggle key; RenoDX writes `NeuralUplift` back. This change waits up to 2 s for that readback, refuses a second press meanwhile, and shows *Waiting for the game…* or *Not confirmed* | Live in its own panel | S, T (source parity) |
-| Style, strength, preset | Live, confirmed; the model rebuilds, coalesced at 400 ms | Saved, restart (`NRStyle`, `NRIntensity`, `NRPreset`) | Live in its own panel | S |
-| Passes | Live, 1–3 | Saved, restart, **1–4**. Glass capped this at 3; it now takes the ceiling from the route (`__passes_max`) | Live in its own panel | S, T (`Prototype.cpp` stepper check, parity test) |
+| Style, strength, preset | Live, confirmed; the model rebuilds, coalesced at 400 ms | **Live, confirmed** with rtxForge's RenoDX build (read back through `RenoDXNrGetV1`; preset waits for the rebuild). Saved, restart with stock rc10 | Live in its own panel | S, G (ME1: strength 1.70 → 1.51 → 1.40 live) |
+| Passes | Live, 1–3 | **Live, confirmed**, 1–4, waits for the rebuild. The panel capped this at 3; it now takes the ceiling from the route (`__passes_max`) | Live in its own panel | S, T, G (ME1: 1 → 2 live) |
 | Per-pass tuning (pass 2/3) | Live, DX12-backed OptiScaler builds only; disabled when the runtime omits the keys | Not mapped. RenoDX rc10 has per-pass keys for passes 2–4 (`NRPass2…NRPass4` Intensity, Structure, Skin, Style, FollowPass1 and others in `[RenoDX.DLSS5]`), but rtxForge's Feeder bindings don't expose them, so Glass disables Pass tuning. Adding them would be saved-until-restart, like the other Feeder tuning | Unsupported | S |
-| Resolution scale | Live, 0.25–2.0 | Saved, restart, 0.25–1.0 | Live | S |
-| Local structure | Live | Saved, restart | — | S |
+| Resolution scale | Live, 0.25–2.0 | **Live, confirmed**, 0.33–1.0 (RenoDX's own floor; rtxForge allowed 0.25, which RenoDX silently raised), waits for the rebuild | Live | S, G (ME1: 0.70 → 0.50 live) |
+| Local structure | Live | Live, confirmed with rtxForge's RenoDX build | — | S |
 | Cache / interval, processing stage | Live where the runtime reports the key; otherwise disabled with *Not available in this runtime* | Unsupported | — | S |
 | NR placement | Startup only (install recipe) | Startup only | Startup only | S |
 
@@ -96,7 +96,11 @@ re-verified control by control. Treat them as S-only.
 
 - **Feeder per-pass tuning.** Map RenoDX's `NRPass2…NRPass4` keys in `Build-FeederPanel.ps1` so Glass can offer pass tuning on Feeder (saved, restart). Glass only has pass 2/3 slots today, so pass 4 needs a UI slot as well.
 
-## Still blocked
+## Feeder live tuning
 
-- **Feeder live model tuning.** RenoDX itself applies every NR setting live, with no restart (see `feeder-live-tuning.md`); what's missing is an entry point for rtxForge. The shipped RenoDX DLSS5 rc10 add-on exports only `NAME`/`DESCRIPTION`. There is no versioned apply/readback API, and the exact rc10 build provenance is unresolved (review artifact `libfile_ffba3b4a3e988191ab8abc91dac4c515`). Style, strength, preset, passes, scale and structure therefore stay *Saved, restart*. No ABI was invented and no provider pin changed. Unblocking it needs RenoDX's maintainers to expose a supported interface, or a licensed source-built candidate qualified on an isolated Windows GPU environment.
+Feeder installs now use RenoDX DLSS5 8.5.0-rc10 built by rtxForge with a live settings interface (`providers/renodx-dlss5`, release `renodx-dlss5-8.5.0-rc10-rtxforge-1`). See `feeder-live-tuning.md`. Games still on stock rc10 keep the saved-until-restart behaviour until repaired.
+
+## Earlier blocker (resolved by the rtxForge build)
+
+- **Feeder live model tuning.** RenoDX itself applies every NR setting live, with no restart (see `feeder-live-tuning.md`); what was missing is an entry point for rtxForge. The stock RenoDX DLSS5 rc10 add-on exports only `NAME`/`DESCRIPTION`. There is no versioned apply/readback API, and the exact rc10 build provenance is unresolved (review artifact `libfile_ffba3b4a3e988191ab8abc91dac4c515`). Style, strength, preset, passes, scale and structure therefore stay *Saved, restart*. No ABI was invented and no provider pin changed. Unblocking it needs RenoDX's maintainers to expose a supported interface, or a licensed source-built candidate qualified on an isolated Windows GPU environment.
 - **Runtime proof.** None of the states above have gameplay evidence yet. Real renderer acknowledgment (NR toggle readback timing, ReShade acks, 4-pass rebuild stability) needs an authorized GPU test.

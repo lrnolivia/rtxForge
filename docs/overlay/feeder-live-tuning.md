@@ -53,7 +53,11 @@ clamped, so the host can report it.
 - `kRecreate` settings (passes, preset, resolution scale) briefly rebuild the model. The panel's existing 400 ms commit spacing still applies, so a slider drag doesn't rebuild every frame.
 - Per-pass settings (`NRPass2…NRPass4*`) become reachable the same way.
 
-## Ways to get the export
+## What shipped
+
+rtxForge builds the add-on itself (`providers/renodx-dlss5`, `.github/workflows/renodx-dlss5.yml`) and Feeder installs download release `renodx-dlss5-8.5.0-rc10-rtxforge-1` by hash. The source was imported from an unpublished RenoDX base, so `renodx_compat.hpp` supplies five utilities public RenoDX lacks. Tested in Mass Effect LE 1 on 2026-11-04 (RTX 4070): strength, passes and resolution changed live and RenoDX's own readback confirmed each, with NR engaged throughout. Asking the maintainers to adopt the interface upstream would still let rtxForge return to a community build.
+
+## Ways to get the export (as proposed)
 
 1. **Upstream.** Ask the RenoDX DLSS5 maintainers to add it. Cleanest, and it keeps the community build. The original repository is gone, and releases are distributed through RenoDX's Discord, so the contact route needs Lauren.
 2. **rtxForge-built add-on.** Apply the patch to the MIT source and build the `dlss5` target in a full RenoDX checkout on hosted Windows CI. This replaces the pinned rc10 binary with an rtxForge build, which is a provider pin change that needs Lauren's approval. The exact rc10 toolchain and RenoDX commit are unknown, so the build has to be qualified (NR engaged, settings parity, stability) before it ships.

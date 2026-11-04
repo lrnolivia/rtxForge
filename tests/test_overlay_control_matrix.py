@@ -89,6 +89,16 @@ class ReShadeAcknowledgment(unittest.TestCase):
         self.assertIn('id="effects-result"', source('prototypes/overlay-rmlui/overlay.rml'))
 
 
+class FeederPointer(unittest.TestCase):
+    def test_glass_route_still_draws_the_software_cursor(self):
+        # Glass draws no pointer; games that hide the system cursor rely on
+        # ImGui's software cursor, which is drawn only by an ImGui render pass.
+        panel = source('windows/feeder-panel/panel.cpp')
+        draw = panel[panel.index('bool Draw(const Frame &frame)'):panel.index('void Release()')]
+        self.assertIn('io.MouseDrawCursor = visible;', draw[draw.index('ForgeGlassPanel::Draw('):])
+        self.assertIn('ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());', draw)
+
+
 class FeederHelperTruth(unittest.TestCase):
     def test_desktop_status_never_claims_live_tuning(self):
         helper = source('windows/engine-host/feeder_controls.py')

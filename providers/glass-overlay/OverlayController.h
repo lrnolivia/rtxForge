@@ -211,7 +211,9 @@ struct Controller : Rml::EventListener
     void RenderResolutionLabel() {auto* reading=Element("render-resolution-value");reading->SetInnerRML(RenderResolutionText());if(preview)reading->SetAttribute("title","Preview estimate from the canvas size; no game is connected.");else reading->RemoveAttribute("title");}
 
 
-    int pass=2;
+    // The connected runtime reports its own pass ceiling (Feeder NR allows 4,
+    // OptiScaler 3); the preview keeps OptiScaler's.
+    int pass=2,passesMax=3;
     int appearance=4;
     std::array<float,3> accent{.19f,.46f,.80f};
     std::string accentMode="adaptive",customAccent;
@@ -659,7 +661,7 @@ struct Controller : Rml::EventListener
         RenderResolutionLabel();
         const int passCount=int(values.at("passes"));
         Element("pass-count")->SetInnerRML(std::to_string(passCount)+(passCount==1?" pass":" passes"));
-        Disabled("pass-minus",passCount<=1);Disabled("pass-plus",passCount>=3);if(passCount<3&&pass==3)pass=2;
+        Disabled("pass-minus",passCount<=1);Disabled("pass-plus",passCount>=passesMax);if(passCount<3&&pass==3)pass=2;
         const auto prefix="pass"+std::to_string(pass)+"_";
         for(const auto* key : {"strength","tone","structure","skin"})range((std::string("pass-")+key).c_str(),prefix+key);
         Element("inherit")->SetClass("on",values[prefix+"inherit"]!=0);Element("pass-fields")->SetProperty("opacity",values[prefix+"inherit"] ? ".35":"1");
@@ -851,7 +853,7 @@ struct Controller : Rml::EventListener
             else if(id=="open-layout")QuickLayouts(true);
             else if(id.rfind("quick-",0)==0)Layout(id.substr(6));
             else if(id=="setting-original-labels"){originalLabels=!originalLabels;prefsDirty=true;Labels();}
-            else if(id=="pass-minus"||id=="pass-plus")Put("passes",std::clamp(values.at("passes")+(id=="pass-minus"?-1.f:1.f),1.f,3.f));
+            else if(id=="pass-minus"||id=="pass-plus")Put("passes",std::clamp(values.at("passes")+(id=="pass-minus"?-1.f:1.f),1.f,float(passesMax)));
             else if(id.rfind("group-toggle-",0)==0){auto* group=Element(id.substr(13).c_str());group->SetProperty("display",group->IsVisible()?"none":"flex");target->SetClass("expanded",group->IsVisible());}
             else if(id.rfind("reset-extra-",0)==0 && extraFields.contains(id.substr(6)))Put(extraFields.at(id.substr(6))->key,defaults.at(extraFields.at(id.substr(6))->key));
             else if(extraFields.contains(id)) {const auto* control=extraFields.at(id);if(std::string(control->kind)=="toggle")Put(control->key,values.at(control->key)==0?1.f:0.f);}

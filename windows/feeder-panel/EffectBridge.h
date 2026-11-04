@@ -37,14 +37,19 @@ inline double Value(Runtime* runtime,const Field& f) {
     if(f.type==reshade::api::format::r32_uint){uint32_t v[16]{};runtime->get_uniform_value_uint(f.uniform,v,f.count);return v[f.component];}
     bool v[16]{};runtime->get_uniform_value_bool(f.uniform,v,f.count);return v[f.component]?1:0;
 }
-inline void Set(Runtime* runtime,const Field& f,double value) {
-    if(!std::isfinite(value))return;
-    if(f.technique.handle){runtime->set_technique_state(f.technique,value!=0);return;}
+inline bool Set(Runtime* runtime,const Field& f,double value) {
+    if(!std::isfinite(value))return false;
+    if(f.technique.handle){runtime->set_technique_state(f.technique,value!=0);return true;}
     if(f.type==reshade::api::format::r32_float){float v[16]{};runtime->get_uniform_value_float(f.uniform,v,f.count);v[f.component]=float(value);runtime->set_uniform_value_float(f.uniform,v,f.count);}
-    else if(f.type==reshade::api::format::r32_sint){if(value<INT32_MIN||value>INT32_MAX)return;int32_t v[16]{};runtime->get_uniform_value_int(f.uniform,v,f.count);v[f.component]=int32_t(value);runtime->set_uniform_value_int(f.uniform,v,f.count);}
-    else if(f.type==reshade::api::format::r32_uint){if(value<0||value>UINT32_MAX)return;uint32_t v[16]{};runtime->get_uniform_value_uint(f.uniform,v,f.count);v[f.component]=uint32_t(value);runtime->set_uniform_value_uint(f.uniform,v,f.count);}
+    else if(f.type==reshade::api::format::r32_sint){if(value<INT32_MIN||value>INT32_MAX)return false;int32_t v[16]{};runtime->get_uniform_value_int(f.uniform,v,f.count);v[f.component]=int32_t(value);runtime->set_uniform_value_int(f.uniform,v,f.count);}
+    else if(f.type==reshade::api::format::r32_uint){if(value<0||value>UINT32_MAX)return false;uint32_t v[16]{};runtime->get_uniform_value_uint(f.uniform,v,f.count);v[f.component]=uint32_t(value);runtime->set_uniform_value_uint(f.uniform,v,f.count);}
     else {bool v[16]{};runtime->get_uniform_value_bool(f.uniform,v,f.count);v[f.component]=value!=0;runtime->set_uniform_value_bool(f.uniform,v,f.count);}
+    return true;
 }
+// Every processed edit is acknowledged once, so the overlay can tell a queued
+// edit from one ReShade applied or refused. The sequence only increases.
+inline uint64_t ackSequence=0;
+inline Json ack=Json::object();
 inline void Reload(Runtime* runtime) {
     if(runtime!=current)return;
     std::lock_guard lock(mutex);++generation;fields.clear();pending=Json::array();snapshot="{}";rebuild=true;refreshed=0;
@@ -80,23 +85,26 @@ inline void IniFields() {
 inline void UpdateImpl(Runtime* runtime) {
     if(runtime!=current)return;
     Json edits;{std::lock_guard lock(mutex);edits=std::move(pending);pending=Json::array();}
-    bool changed=false;
+    bool changed=false;Json applied=Json::array(),rejected=Json::array();
+    const auto refuse=[&](const Json& edit,const char* reason){rejected.push_back({{"id",edit.value("id",uint64_t(0))},{"reason",reason}});};
     for(const auto& edit:edits) {
-        if(edit.value("generation",uint64_t(0))!=generation)continue;
-        const auto index=edit.value("id",size_t(-1));if(index>=fields.size()||!edit.contains("value"))continue;
+        if(edit.value("generation",uint64_t(0))!=generation){refuse(edit,"ReShade reloaded its effects first.");continue;}
+        const auto index=edit.value("id",size_t(-1));if(index>=fields.size()||!edit.contains("value")){refuse(edit,"This parameter is no longer available.");continue;}
         if(!fields[index].key.empty()) {
-            if(!edit["value"].is_string())continue;const auto value=edit["value"].get<std::string>();
-            if(value.size()>1024||value.find_first_of("\r\n\0",0,3)!=std::string::npos)continue;
-            reshade::set_config_value(nullptr,fields[index].section.c_str(),fields[index].key.c_str(),value.c_str());changed=true;continue;
+            if(!edit["value"].is_string()){refuse(edit,"This setting needs text.");continue;}const auto value=edit["value"].get<std::string>();
+            if(value.size()>1024||value.find_first_of("\r\n\0",0,3)!=std::string::npos){refuse(edit,"This text can't be saved.");continue;}
+            reshade::set_config_value(nullptr,fields[index].section.c_str(),fields[index].key.c_str(),value.c_str());changed=true;applied.push_back(index);continue;
         }
-        if(!edit["value"].is_number())continue;
+        if(!edit["value"].is_number()){refuse(edit,"This parameter needs a number.");continue;}
         const double v=edit["value"].get<double>();const auto& meta=schema[index];
-        if(meta.contains("minimum")&&(v<meta["minimum"].get<double>()||v>meta["maximum"].get<double>()))continue;
-        if(meta.contains("choices")&&(v<0||v>=meta["choices"].size()||std::floor(v)!=v))continue;
-        if(!std::isfinite(v))continue;Set(runtime,fields[index],v);changed=true;
+        if(meta.contains("minimum")&&(v<meta["minimum"].get<double>()||v>meta["maximum"].get<double>())){refuse(edit,"The value is outside this parameter's range.");continue;}
+        if(meta.contains("choices")&&(v<0||v>=meta["choices"].size()||std::floor(v)!=v)){refuse(edit,"Choose one of this parameter's options.");continue;}
+        if(!Set(runtime,fields[index],v)){refuse(edit,"ReShade can't store this value.");continue;}
+        changed=true;applied.push_back(index);
     }
     if(changed)runtime->save_current_preset();
-    if(!rebuild&&!changed&&GetTickCount64()-refreshed<250)return;
+    if(!edits.empty())ack={{"sequence",++ackSequence},{"applied",applied},{"rejected",rejected}};
+    if(!rebuild&&!changed&&edits.empty()&&GetTickCount64()-refreshed<250)return;
     refreshed=GetTickCount64();
     if(rebuild){
         rebuild=false;fields.clear();schema=Json::array();
@@ -127,7 +135,7 @@ inline void UpdateImpl(Runtime* runtime) {
         IniFields();
     }
     Json result=schema;for(size_t i=0;i<fields.size();++i){if(!fields[i].key.empty())result[i]["value"]=ConfigValue(fields[i]);else {const double v=Value(runtime,fields[i]);result[i]["value"]=std::isfinite(v)?v:0.;}}
-    const auto text=Json{{"generation",generation},{"fields",result},{"status","Shader changes are live and save to the current preset. Add-on INI settings may require restarting the game."}}.dump(-1,' ',false,Json::error_handler_t::replace);
+    const auto text=Json{{"generation",generation},{"fields",result},{"acknowledged",ack},{"status","Shader changes are live and save to the current preset. Add-on INI settings may require restarting the game."}}.dump(-1,' ',false,Json::error_handler_t::replace);
     {std::lock_guard lock(mutex);snapshot=text.size()<=1024*1024?text:"{}";}
 }
 inline void Update(Runtime* runtime) noexcept {

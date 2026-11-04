@@ -86,6 +86,7 @@ bool Init(ID3D11Device *game, HWND window, bool nr)
     seed_shortcut_name();
     ForgeGlassPanel::logSink=host.log;
     ForgeGlassPanel::runtimeKind=neuralRendering?2:3;
+    ForgeGlassPanel::readLiveState=[] { return Config::Instance()->LiveState(); };
     ForgeGlassPanel::Prepare(window);
     device = game;
     device->AddRef();

@@ -1,5 +1,6 @@
 #pragma once
 #include <json.hpp>
+#include <set>
 #include "HdrControls.h"
 
 namespace ForgeGlass {
@@ -9,7 +10,21 @@ struct EffectControls {
     Json fields=Json::array(),schema=Json::array();
     uint64_t generation{};
     std::map<size_t,std::string> drafts;
+    // Sent edits stay pending until the bridge acknowledges them. Bridges
+    // without acknowledgments leave the snapshot as the only readback.
+    std::set<size_t> pending;uint64_t acknowledged{};std::string result;
     bool syncing{};
+    void Result(const std::string& text){result=text;if(auto* e=E("effects-result")){e->SetInnerRML(Escape(text));e->SetProperty("display",text.empty()?"none":"block");}}
+    void Pending(size_t index,bool on){if(on)pending.insert(index);else pending.erase(index);if(auto* e=E("effect-field-"+std::to_string(index)))e->SetClass("pending",on);}
+    void Acknowledge(const Json& data){
+        const auto ack=data.value("acknowledged",Json::object());if(!ack.is_object()||!ack.contains("sequence"))return;
+        const auto sequence=ack.value("sequence",uint64_t(0));if(sequence==acknowledged)return;acknowledged=sequence;
+        for(const auto& id:ack.value("applied",Json::array()))if(id.is_number_unsigned())Pending(id.get<size_t>(),false);
+        std::string refused;
+        for(const auto& item:ack.value("rejected",Json::array())){if(!item.is_object())continue;const auto index=item.value("id",size_t(-1));if(!pending.contains(index))continue;Pending(index,false);
+            const auto label=index<fields.size()?fields[index].value("label",std::string("A parameter")):std::string("A parameter");refused="Couldn’t apply "+label+": "+item.value("reason",std::string("ReShade refused it."));}
+        if(!refused.empty())Result(refused);else if(pending.empty())Result("");
+    }
     std::function<bool(const std::string&)> send;
     Rml::Element* E(const std::string& id){return document->GetElementById(id);}
     static std::string Escape(const std::string& text){return Rml::StringUtilities::EncodeRml(text);}
@@ -19,7 +34,9 @@ struct EffectControls {
         auto next=data.value("fields",Json::array());if(!next.is_array()||next.size()>512)return;
         const auto version=data.value("generation",uint64_t(0));auto shape=next;
         for(auto& field:shape)field.erase("value");
-        const bool rebuild=shape!=schema||version!=generation;if(rebuild)drafts.clear();generation=version;schema=shape;fields=next;
+        const bool rebuild=shape!=schema||version!=generation;
+        if(rebuild){drafts.clear();if(!pending.empty())Result("ReShade reloaded its effects before "+std::to_string(pending.size())+(pending.size()==1?" change was":" changes were")+" applied. Try again.");pending.clear();}
+        generation=version;schema=shape;fields=next;
         const bool available=generation&&!fields.empty();
         for(const auto* id:{"open-effects","nav-effects"})E(id)->SetProperty("display",available?"flex":"none");
         E("effects-note")->SetInnerRML(Escape(data.value("status",std::string("No effect parameters are exposed by this ReShade runtime."))));
@@ -40,6 +57,7 @@ struct EffectControls {
             }
             if(group)markup+="</div>";E("effects-fields")->SetInnerRML(markup);
         }
+        Acknowledge(data);
         syncing=true;
         for(size_t i=0;i<fields.size();++i){const auto& f=fields[i];const auto id="effect-field-"+std::to_string(i);auto* element=E(id);if(!element)continue;
             const bool text=f.value("kind",std::string())=="text";
@@ -61,13 +79,13 @@ struct EffectControls {
             if(event.GetType()=="change"&&(field.value("kind",std::string())=="text"||field.value("kind",std::string())=="number")){if(auto* control=dynamic_cast<Rml::ElementFormControl*>(E("effect-field-"+std::to_string(index))))drafts[index]=control->GetValue();return true;}
             if(field.value("kind",std::string())=="text"){
                 if(!apply||event.GetType()!="click")return true;auto* control=dynamic_cast<Rml::ElementFormControl*>(E("effect-field-"+std::to_string(index)));if(!control)return true;const auto text=control->GetValue();if(text.size()>1024||text.find_first_of("\r\n\0",0,3)!=std::string::npos)return true;
-                if(send(Json{{"generation",generation},{"id",index},{"value",text}}.dump())){fields[index]["value"]=text;drafts.erase(index);}return true;
+                if(send(Json{{"generation",generation},{"id",index},{"value",text}}.dump())){fields[index]["value"]=text;drafts.erase(index);Pending(index,true);Result("");}else Result("ReShade is busy or reloading. Try again.");return true;
             }
             double value=field.value("value",0.);
             if(field.value("kind",std::string())=="toggle"){if(event.GetType()!="click")return true;value=value==0?1:0;}
             else {const bool number=field.value("kind",std::string())=="number";if(number?(!apply||event.GetType()!="click"):event.GetType()!="change")return true;auto* control=dynamic_cast<Rml::ElementFormControl*>(E("effect-field-"+std::to_string(index)));if(!control)return true;const auto text=control->GetValue();value=std::stod(text,&end);if(end!=text.size())return true;}
             if(!std::isfinite(value))return true;
-            if(send(Json{{"generation",generation},{"id",index},{"value",value}}.dump())){fields[index]["value"]=value;drafts.erase(index);}
+            if(send(Json{{"generation",generation},{"id",index},{"value",value}}.dump())){fields[index]["value"]=value;drafts.erase(index);Pending(index,true);Result("");}else Result("ReShade is busy or reloading. Try again.");
         }catch(const std::exception&){}
         return true;
     }

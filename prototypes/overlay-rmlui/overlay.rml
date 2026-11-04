@@ -279,7 +279,7 @@
         </div>
         <div id="save-status" class="save-status" style="display: none">
           <span id="save-badge" class="save-badge" style="display: none" />
-          <span id="restart-notice" style="display: none">Changes will take effect after restart</span>
+          <span id="restart-notice" style="display: none" title="Neural rendering on/off and ReShade effects still change live.">Model tuning is saved and applies after restarting the game</span>
         </div>
         <div id="tuning-footer" class="tuning-footer">
           <div class="footer">
@@ -306,7 +306,7 @@
           </button>
         </div>
         <div id="settings-modal-host" style="display: none"/>
-        <div id="effects-inspector" style="display: none"><p id="effects-note" class="hint"/><div id="effects-fields"/></div>
+        <div id="effects-inspector" style="display: none"><p id="effects-note" class="hint"/><p id="effects-result" class="hint" style="display: none"/><div id="effects-fields"/></div>
         <div id="hdr-inspector" style="display: none"><p id="hdr-popup-note" class="hint"/><div id="hdr-popup-fields"/></div>
         <div id="pass-inspector">
           <div class="segments pass-tabs">

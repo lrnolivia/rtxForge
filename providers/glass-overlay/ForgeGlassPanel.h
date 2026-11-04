@@ -8,12 +8,18 @@ inline HWND window{};
 inline void (*logSink)(const char*)=nullptr;
 inline bool (*readModelDimensions)(unsigned&,unsigned&)=nullptr;
 inline int runtimeKind=0;
+// A route's live control acknowledgment: 0 idle or applied, 1 waiting for the
+// renderer to confirm, 2 the renderer did not confirm (recent). Null routes
+// report nothing, and their live controls keep their own readback.
+inline int (*readLiveState)()=nullptr;
 inline bool Read(void*,ForgeGlass::Snapshot* out) {
     static ForgeWorkbench::Values values;static std::vector<ForgeGlass::Value> fields;
     auto& cfg=*Config::Instance();values=ForgePanel::Values(cfg);fields.clear();for(const auto& [key,value]:values)fields.push_back({key.c_str(),value});if(ForgePanel::mfgAllowed){fields.push_back({"__multiplier_max",float(State::Instance().dlssgMfgMax.value_or(0)+1)});fields.push_back({"__dynamic_supported",State::Instance().dlssgGameDMFGSupported?1.f:0.f});}
     ForgePanel::LiveStats stats;if(ForgePanel::readLiveStats)stats=ForgePanel::readLiveStats();
     fields.push_back({"__runtime_kind",float(runtimeKind)});
+    for(const auto& field:ForgePanel::controls)if(std::strcmp(field.key,"passes")==0&&ForgePanel::Available(field))fields.push_back({"__passes_max",field.high});
     fields.push_back({"__tuning_pending",ForgePanel::queued.empty()?0.f:1.f});
+    if(readLiveState)fields.push_back({"__live_state",float(readLiveState())});
     unsigned width=0,height=0;if(stats.nrRunning&&readModelDimensions&&readModelDimensions(width,height)&&width>0&&height>0&&width<=32768&&height<=32768){fields.push_back({"__nr_width",float(width)});fields.push_back({"__nr_height",float(height)});}
     auto prefs=ForgePanelChannel::settings;if(!prefs.contains("panel_key")){prefs["panel_key"]=ForgePanel::ShortcutKey();prefs["panel_modifiers"]=ForgePanel::modifiers;prefs["panel_hotkey"]=ForgePanel::ShortcutLabel();}
     static std::string title,accent;title=prefs.value("game_title",ForgePanel::title);char cachedAccent[8]{};std::snprintf(cachedAccent,sizeof(cachedAccent),"#%02X%02X%02X",unsigned(std::clamp(ForgePanel::accent.x,0.f,1.f)*255+.5f),unsigned(std::clamp(ForgePanel::accent.y,0.f,1.f)*255+.5f),unsigned(std::clamp(ForgePanel::accent.z,0.f,1.f)*255+.5f));accent=prefs.value("game_accent",std::string(cachedAccent));

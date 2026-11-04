@@ -44,7 +44,7 @@ re-verified control by control. Treat them as S-only.
 | NR on/off | Live, confirmed (volatile config, read back each frame) | **Live, unconfirmed → confirmed by readback**: the panel presses RenoDX's toggle key; RenoDX writes `NeuralUplift` back. This change waits up to 2 s for that readback, refuses a second press meanwhile, and shows *Waiting for the game…* or *Not confirmed* | Live in its own panel | S, T (source parity) |
 | Style, strength, preset | Live, confirmed; the model rebuilds, coalesced at 400 ms | Saved, restart (`NRStyle`, `NRIntensity`, `NRPreset`) | Live in its own panel | S |
 | Passes | Live, 1–3 | Saved, restart, **1–4**. Glass capped this at 3; it now takes the ceiling from the route (`__passes_max`) | Live in its own panel | S, T (`Prototype.cpp` stepper check, parity test) |
-| Per-pass tuning (pass 2/3) | Live, DX12-backed OptiScaler builds only; disabled when the runtime omits the keys | Unsupported (RenoDX has no per-pass keys); Glass disables Pass tuning | Unsupported | S |
+| Per-pass tuning (pass 2/3) | Live, DX12-backed OptiScaler builds only; disabled when the runtime omits the keys | Not mapped. RenoDX rc10 has per-pass keys for passes 2–4 (`NRPass2…NRPass4` Intensity, Structure, Skin, Style, FollowPass1 and others in `[RenoDX.DLSS5]`), but rtxForge's Feeder bindings don't expose them, so Glass disables Pass tuning. Adding them would be saved-until-restart, like the other Feeder tuning | Unsupported | S |
 | Resolution scale | Live, 0.25–2.0 | Saved, restart, 0.25–1.0 | Live | S |
 | Local structure | Live | Saved, restart | — | S |
 | Cache / interval, processing stage | Live where the runtime reports the key; otherwise disabled with *Not available in this runtime* | Unsupported | — | S |
@@ -91,6 +91,10 @@ re-verified control by control. Treat them as S-only.
 2. **Feeder NR toggle.** A second request while RenoDX hadn't yet written `NeuralUplift` back could press the toggle key again and switch NR back. Requests are now refused until RenoDX confirms or 2 s pass. Glass shows waiting and unconfirmed states and notifies when the game didn't confirm.
 3. **ReShade enqueue acknowledgment.** Out-of-range, stale-generation or unstorable edits were silently dropped, while Glass showed the value as set. Edits are now acknowledged as applied or refused, and Glass reports refusals and reload losses.
 4. **Restart label.** On Feeder it now names what restarts instead of saying all changes need a restart.
+
+## Follow-ups
+
+- **Feeder per-pass tuning.** Map RenoDX's `NRPass2…NRPass4` keys in `Build-FeederPanel.ps1` so Glass can offer pass tuning on Feeder (saved, restart). Glass only has pass 2/3 slots today, so pass 4 needs a UI slot as well.
 
 ## Still blocked
 

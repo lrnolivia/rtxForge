@@ -101,7 +101,7 @@ extern "C" __declspec(dllexport) int __cdecl RenoDXNrSetV1(
 // this reaches the generation RenoDXNrSetV1 returned.
 extern "C" __declspec(dllexport) uint64_t __cdecl RenoDXNrAppliedGenerationV1() {
   using namespace renodx::addons::dlss5::internal;
-  RuntimeLock lock(runtime_mutex);
+  renodx::addons::dlss5::RuntimeLock lock(runtime_mutex);
   uint64_t oldest = 0;
   bool any = false;
   for (auto& [_, feature] : features) {

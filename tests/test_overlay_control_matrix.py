@@ -86,8 +86,19 @@ class ReShadeAcknowledgment(unittest.TestCase):
         effects = source('providers/glass-overlay/EffectControls.h')
         self.assertIn('Acknowledge(data);', effects)
         self.assertIn('Pending(index,true)', effects)
-        self.assertIn('ReShade reloaded its effects before', effects)
+        self.assertIn('The effects reloaded before', effects)
         self.assertIn('id="effects-result"', source('prototypes/overlay-rmlui/overlay.rml'))
+
+    def test_effects_entry_does_not_crowd_hdr(self):
+        rml = source('prototypes/overlay-rmlui/overlay.rml')
+        actions = rml[rml.index('<div class="window-actions">'):rml.index('id="open-settings"')]
+        self.assertIn('id="open-hdr"', actions)
+        self.assertNotIn('id="open-effects"', actions)
+        section = rml[rml.index('<section id="effects-section"'):]
+        self.assertIn('id="open-effects"', section[:section.index('</section>')])
+        self.assertIn('<span class="button-label">Effects</span>', rml)
+        self.assertNotIn('>ReShade<', rml)
+        self.assertIn('"EFFECTS"', source('providers/glass-overlay/OverlayController.h'))
 
 
 class RenoDXLiveInterface(unittest.TestCase):

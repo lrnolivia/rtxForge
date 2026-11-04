@@ -88,18 +88,18 @@ inline void UpdateImpl(Runtime* runtime) {
     bool changed=false;Json applied=Json::array(),rejected=Json::array();
     const auto refuse=[&](const Json& edit,const char* reason){rejected.push_back({{"id",edit.value("id",uint64_t(0))},{"reason",reason}});};
     for(const auto& edit:edits) {
-        if(edit.value("generation",uint64_t(0))!=generation){refuse(edit,"ReShade reloaded its effects first.");continue;}
-        const auto index=edit.value("id",size_t(-1));if(index>=fields.size()||!edit.contains("value")){refuse(edit,"This parameter is no longer available.");continue;}
+        if(edit.value("generation",uint64_t(0))!=generation){refuse(edit,"The effects reloaded first.");continue;}
+        const auto index=edit.value("id",size_t(-1));if(index>=fields.size()||!edit.contains("value")){refuse(edit,"That setting is no longer available.");continue;}
         if(!fields[index].key.empty()) {
-            if(!edit["value"].is_string()){refuse(edit,"This setting needs text.");continue;}const auto value=edit["value"].get<std::string>();
-            if(value.size()>1024||value.find_first_of("\r\n\0",0,3)!=std::string::npos){refuse(edit,"This text can't be saved.");continue;}
+            if(!edit["value"].is_string()){refuse(edit,"That setting needs text.");continue;}const auto value=edit["value"].get<std::string>();
+            if(value.size()>1024||value.find_first_of("\r\n\0",0,3)!=std::string::npos){refuse(edit,"That text can't be saved.");continue;}
             reshade::set_config_value(nullptr,fields[index].section.c_str(),fields[index].key.c_str(),value.c_str());changed=true;applied.push_back(index);continue;
         }
-        if(!edit["value"].is_number()){refuse(edit,"This parameter needs a number.");continue;}
+        if(!edit["value"].is_number()){refuse(edit,"That setting needs a number.");continue;}
         const double v=edit["value"].get<double>();const auto& meta=schema[index];
-        if(meta.contains("minimum")&&(v<meta["minimum"].get<double>()||v>meta["maximum"].get<double>())){refuse(edit,"The value is outside this parameter's range.");continue;}
-        if(meta.contains("choices")&&(v<0||v>=meta["choices"].size()||std::floor(v)!=v)){refuse(edit,"Choose one of this parameter's options.");continue;}
-        if(!Set(runtime,fields[index],v)){refuse(edit,"ReShade can't store this value.");continue;}
+        if(meta.contains("minimum")&&(v<meta["minimum"].get<double>()||v>meta["maximum"].get<double>())){refuse(edit,"The value is outside its range.");continue;}
+        if(meta.contains("choices")&&(v<0||v>=meta["choices"].size()||std::floor(v)!=v)){refuse(edit,"Choose one of its options.");continue;}
+        if(!Set(runtime,fields[index],v)){refuse(edit,"That value can't be stored.");continue;}
         changed=true;applied.push_back(index);
     }
     if(changed)runtime->save_current_preset();
@@ -135,7 +135,7 @@ inline void UpdateImpl(Runtime* runtime) {
         IniFields();
     }
     Json result=schema;for(size_t i=0;i<fields.size();++i){if(!fields[i].key.empty())result[i]["value"]=ConfigValue(fields[i]);else {const double v=Value(runtime,fields[i]);result[i]["value"]=std::isfinite(v)?v:0.;}}
-    const auto text=Json{{"generation",generation},{"fields",result},{"acknowledged",ack},{"status","Shader changes are live and save to the current preset. Add-on INI settings may require restarting the game."}}.dump(-1,' ',false,Json::error_handler_t::replace);
+    const auto text=Json{{"generation",generation},{"fields",result},{"acknowledged",ack},{"status","Changes apply right away and are saved with your effects preset."}}.dump(-1,' ',false,Json::error_handler_t::replace);
     {std::lock_guard lock(mutex);snapshot=text.size()<=1024*1024?text:"{}";}
 }
 inline void Update(Runtime* runtime) noexcept {

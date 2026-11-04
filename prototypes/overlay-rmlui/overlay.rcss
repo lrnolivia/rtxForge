@@ -1026,3 +1026,14 @@ select selectbox { opacity: 0; }
 
 .save-status { flex-shrink: 0; margin-top: 8dp; font-size: 12dp; line-height: 1.4; }
 .save-badge { display: inline-block; background-color: var(--control-fill); border-radius: 8dp; padding: 2dp 8dp; margin-right: 8dp; }
+
+/* Effects page: one group per effect, readable names that wrap, and an
+   entry row whose Apply button keeps its size beside the field. */
+.effect-group .group-body { flex-direction: column; }
+.effect-row label { white-space: normal; word-break: break-word; }
+.effect-row .field-heading label { flex: 1 1 auto; min-width: 0; }
+.effect-category { margin: 18dp 0 4dp; font-size: var(--hint-size); font-weight: 600; color: var(--accent-ink); }
+.effect-entry { display: flex; align-items: center; gap: 10dp; margin-top: 8dp; }
+.effect-entry .effect-number { flex: 1 1 auto; min-width: 0; }
+.effect-entry .quiet { flex: 0 0 auto; }
+#effects-section .hint { margin-top: 6dp; }

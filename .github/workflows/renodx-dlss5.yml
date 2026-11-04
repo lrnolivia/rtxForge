@@ -8,7 +8,7 @@ on:
       - .github/workflows/renodx-dlss5.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -56,3 +56,23 @@ jobs:
           path: windows/out/renodx-dlss5-candidate/**
           if-no-files-found: error
           retention-days: 14
+      # Feeder installs download this exact zip by hash (providers/feeder-runtime.json),
+      # so each release tag is published once and never replaced. The app's own
+      # updates read only the continuous and beta tags.
+      - name: Publish the add-on once per release tag
+        if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $spec = Get-Content -Raw providers/renodx-dlss5/source.json | ConvertFrom-Json
+          $tag = $spec.release_tag
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) { "Release $tag already exists; leaving it unchanged."; exit 0 }
+          $zip = "windows/out/$tag.zip"
+          Compress-Archive -Path windows/out/renodx-dlss5-candidate/* -DestinationPath $zip
+          $notes = "RenoDX DLSS5 $($spec.addon_version) built by rtxForge from MIT source $($spec.addon_source.commit) with the live settings interface (version $($spec.api_version)). Used by rtxForge Feeder installs; not an rtxForge app release."
+          gh release create $tag $zip --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA --title "RenoDX DLSS5 $($spec.addon_version) (rtxForge live settings $($spec.api_version))" --notes $notes --latest=false
+          if ($LASTEXITCODE) { throw 'Release publish failed' }
+          "sha256 $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()) size $((Get-Item $zip).Length)"

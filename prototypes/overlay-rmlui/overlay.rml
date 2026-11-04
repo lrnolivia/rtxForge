@@ -21,7 +21,6 @@
           </div>
           <div id="bar-live" class="bar-live"/>
           <div class="window-actions">
-            <button id="open-effects" class="quiet hdr-entry" style="display: none" title="ReShade effects"><img class="glyph" src="icons/stack-light.png"/><span class="button-label">ReShade</span></button>
             <button id="open-hdr" class="quiet hdr-entry" title="HDR preferences"><img class="glyph" src="icons/sun-light.png"/><span class="button-label">HDR</span></button>
             <button id="open-layout" class="close" title="Change layout" aria-label="Change layout"><img class="glyph" src="icons/layout-light.png" /></button>
             <button id="open-settings" class="close" title="Settings">
@@ -46,7 +45,7 @@
             <img class="glyph" src="icons/stack-light.png" /><span class="button-label">Pass tuning</span></button>
           <button id="nav-frame">
             <img class="glyph" src="icons/film-strip-light.png" /><span class="button-label">Frame generation</span></button>
-          <button id="nav-effects" style="display: none"><img class="glyph" src="icons/stack-light.png"/><span class="button-label">ReShade</span></button>
+          <button id="nav-effects" style="display: none"><img class="glyph" src="icons/stack-light.png"/><span class="button-label">Effects</span></button>
           <button id="nav-hdr"><img class="glyph" src="icons/sun-light.png" /><span class="button-label">HDR</span></button>
           <button id="nav-settings"><img class="glyph" src="icons/sliders-light.png" /><span class="button-label">Settings</span></button>
         </div>
@@ -273,13 +272,24 @@
                 </div>
                 <div id="extra-neural" class="advanced-section" />
               </section>
+              <section id="effects-section" style="display: none">
+                <div class="section-heading">
+                  <h2><img class="glyph" src="icons/stack-light.png" /><span>EFFECTS</span></h2>
+                </div>
+                <p class="hint">Filters and shaders running in this game.</p>
+                <div class="inspector-links">
+                  <button id="open-effects" class="text-link">
+                    <img class="glyph" src="icons/sliders-horizontal-light.png" /><span class="button-label">Adjust effects</span><span class="chevron" />
+                  </button>
+                </div>
+              </section>
             </div>
             <p id="feedback" class="preview-note">Preview · no game connected.</p>
           </div>
         </div>
         <div id="save-status" class="save-status" style="display: none">
           <span id="save-badge" class="save-badge" style="display: none" />
-          <span id="restart-notice" style="display: none" title="Neural rendering on/off and ReShade effects still change live.">Model tuning is saved and applies after restarting the game</span>
+          <span id="restart-notice" style="display: none" title="Neural rendering on/off and effects still change live.">Model tuning is saved and applies after restarting the game</span>
         </div>
         <div id="tuning-footer" class="tuning-footer">
           <div class="footer">

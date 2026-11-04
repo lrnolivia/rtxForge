@@ -22,6 +22,10 @@
 
 #include <detours.h>
 
+// Before anything that includes reshade.hpp: ReShade defines its Dear ImGui
+// wrappers only when imgui.h is already included, as dlssnr.hpp arranges.
+#include <deps/imgui/imgui.h>
+
 #include "../../utils/directx.hpp"
 #include "../../utils/vtable.hpp"
 

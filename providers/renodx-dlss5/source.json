@@ -15,8 +15,8 @@
   },
   "reshade": {
     "repository": "https://github.com/crosire/reshade",
-    "commit": "18deaa52de0c425a78b329e9cb3c497281cd00ec",
-    "note": "ReShade 6.8.0, which Feeder ships. The add-on uses ImGui wrappers newer than RenoDX's own ReShade pin."
+    "commit": "4a50d1eddace85734871d91792ff214f13f66c01",
+    "note": "RenoDX's own submodule pin, checked, not changed. ReShade 6.8.0 lacks add-on API the source uses."
   },
   "patch": "rtxforge_live.hpp",
   "compat": "renodx_compat.hpp",

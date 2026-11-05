@@ -55,7 +55,7 @@ clamped, so the host can report it.
 
 ## What shipped
 
-rtxForge builds the add-on itself (`providers/renodx-dlss5`, `.github/workflows/renodx-dlss5.yml`) and Feeder installs download release `renodx-dlss5-8.5.0-rc10-rtxforge-1` by hash. The source was imported from an unpublished RenoDX base, so `renodx_compat.hpp` supplies five utilities public RenoDX lacks. Tested in Mass Effect LE 1 on 2026-11-04 (RTX 4070): strength, passes and resolution changed live and RenoDX's own readback confirmed each, with NR engaged throughout. Asking the maintainers to adopt the interface upstream would still let rtxForge return to a community build.
+rtxForge builds the add-on itself (`providers/renodx-dlss5`, `.github/workflows/renodx-dlss5.yml`) and Feeder installs download release `renodx-dlss5-8.5.0-rc10-rtxforge-2` by hash. Version 2 also accepts RenoDX's per-pass keys for passes 2-4 (follow pass 1, strength, transfer, colour, style, local tone, structure and skin), within the ranges RenoDX enforces when it loads them. Per-pass tuning has not yet been gameplay-tested. The source was imported from an unpublished RenoDX base, so `renodx_compat.hpp` supplies five utilities public RenoDX lacks. Tested in Mass Effect LE 1 on 2026-11-04 (RTX 4070): strength, passes and resolution changed live and RenoDX's own readback confirmed each, with NR engaged throughout. Asking the maintainers to adopt the interface upstream would still let rtxForge return to a community build.
 
 ## Ways to get the export (as proposed)
 

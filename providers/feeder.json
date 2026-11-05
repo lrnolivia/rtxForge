@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "feeder",
   "name": "Feeder NR",
-  "version": "Feeder 1.19.0 / RenoDX 8.5.0-rc10 (rtxForge live settings 1)",
+  "version": "Feeder 1.19.0 / RenoDX 8.5.0-rc10 (rtxForge live settings 2)",
   "platform": "windows-x64-d3d11",
   "distribution": "Pinned verified downloads managed by rtxForge; local imports are optional overrides.",
   "assets": {
@@ -15,8 +15,8 @@
       "size": 343552
     },
     "renodx-dlss5.addon64": {
-      "sha256": "1e4823637965d3e01ff4840a222a5853fec191b2fa0c9001e2076b5bcf25fdd5",
-      "size": 3091456
+      "sha256": "7fdc1872b5a8553a746b08538fd74990b374a7bcdd5c2c342786a093de6cba74",
+      "size": 3092480
     },
     "nvngx_dlss.dll": {
       "sha256": "d00b5b0ab29c3ca101b70c3a5ecb3a01b7ef33766a3383a28a18623083e6123e",
@@ -54,6 +54,11 @@
   "previous_assets": {
     "renodx-dlss5.addon64": [
       {
+        "version": "8.5.0-rc10 (rtxForge live settings 1)",
+        "sha256": "1e4823637965d3e01ff4840a222a5853fec191b2fa0c9001e2076b5bcf25fdd5",
+        "size": 3091456
+      },
+      {
         "version": "8.5.0-rc10",
         "sha256": "dcd93881e976ad033d83c2bb01f4bc3e4ddc59c15fe0dd4ca165bc5fc7d1ac68",
         "size": 3141632
@@ -89,9 +94,9 @@
     },
     {
       "name": "RenoDX DLSS5",
-      "version": "8.5.0-rc10 (rtxForge live settings 1)",
+      "version": "8.5.0-rc10 (rtxForge live settings 2)",
       "commit": "9bb6c0fec57ecb28c77938f3feb8155433396d93",
-      "url": "https://github.com/lrnolivia/rtxForge/releases/tag/renodx-dlss5-8.5.0-rc10-rtxforge-1",
+      "url": "https://github.com/lrnolivia/rtxForge/releases/tag/renodx-dlss5-8.5.0-rc10-rtxforge-2",
       "source": "https://github.com/Andarael/RenoDX-DLSS5-Generic/tree/9bb6c0fec57ecb28c77938f3feb8155433396d93",
       "license": "https://github.com/Andarael/RenoDX-DLSS5-Generic/blob/9bb6c0fec57ecb28c77938f3feb8155433396d93/LICENSE",
       "build": "providers/renodx-dlss5 (RenoDX 277d890, ReShade 4a50d1e)",

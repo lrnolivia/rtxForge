@@ -223,10 +223,10 @@ def execute(review):
             ui.progress('Verifying reviewed games', game=plan['name'], current=index, total=len(plans))
             _check(e, plan)
         session = Session(e.STATE_ROOT / 'desktop-operations')
-        completed = []
+        completed, failed = [], []
         try:
             for plan in plans:
-                ui.progress('Applying settings', game=plan['name'], current=len(completed) + 1, total=len(plans))
+                ui.progress('Applying settings', game=plan['name'], current=len(completed) + len(failed) + 1, total=len(plans))
                 _check(e, plan)
                 checkpoint = session.capture([Path(p) for p in plan['writes']], label=plan['name'])
                 try:
@@ -244,12 +244,16 @@ def execute(review):
                         t.need(t.digest(Path(filename)) == t.sha(data), 'A bulk change could not be verified.')
                     session.seal(checkpoint)
                     completed.append(plan['name'])
-                except BaseException:
+                except BaseException as error:
                     session.seal(checkpoint)
                     session.checkpoints[-1]['sealed'] = False; session.save()
                     t.need(not e._running_processes_under_root(Path(plan['root'])), 'Close the game before recovery. Backups: ' + str(session.root))
                     session.undo(checkpoint); session.seal(checkpoint)
-                    raise
+                    # A file held open in one game (the game itself, antivirus)
+                    # leaves that game as it was; the rest still update.
+                    if not isinstance(error, PermissionError):
+                        raise
+                    failed.append(plan)
         except Exception as error:
             if all(c['sealed'] for c in session.checkpoints):
                 session.status = 'failed'; session.save()
@@ -262,11 +266,15 @@ def execute(review):
         session.status = 'complete'; session.save()
         import operation_session
         operation_session.LIVE.discard(str(session.root))
-    errors = []
+    errors = [f"{plan['name']} was left unchanged because one of its files was in use. "
+              'Close the game and try again.' for plan in failed]
+    done = [plan for plan in plans if plan not in failed]
     if review.get('record_overlay_updates'):
         try:
             import overlay_status
-            overlay_status.record_updates(e.STATE_ROOT, plans)
+            overlay_status.record_updates(e.STATE_ROOT, done)
         except (OSError, ValueError) as error:
             errors.append('Overlays updated, but the update date could not be saved: ' + str(error))
-    return {'message': f'Updated {len(plans)} games. Other settings were preserved.', 'errors': errors}
+    return {'message': f'Updated {len(done)} games. Other settings were preserved.', 'errors': errors,
+            'failed': [{'title': plan['name'], 'detail': 'A file was in use. Close the game and try again.',
+                        'target': plan.get('target', '')} for plan in failed]}

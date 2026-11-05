@@ -25,12 +25,14 @@ def renodx_update(e, owned):
     if not stale:
         return {}, ''
     try:
-        item = (feeder.owned_stack(e) or feeder.download_stack(e))[RENODX]
-        data = t.safe(Path(item['path'])).read_bytes()
+        item = (feeder.owned_stack(e) or feeder.download_stack(e))['files'][RENODX]
+        data = t.safe(feeder.cached_input(e, item)).read_bytes()
         t.need(t.sha(data) == pinned, 'The downloaded RenoDX failed verification.')
     except (t.Refusal, OSError, KeyError, TypeError) as error:
-        return {}, ('RenoDX could not be updated, so this game keeps its current one and NR tuning '
-                    'still applies after a restart. ' + str(error))
+        # Stale and not updated is not current: the caller reports it so the
+        # required refresh stays pending and retries.
+        raise t.Refusal('RenoDX could not be updated to rtxForge’s build; this game keeps its current one. '
+                        + (str(error) if not isinstance(error, KeyError) else 'The stored Feeder stack is incomplete.')) from error
     return ({name: data for name in stale},
             'RenoDX is updated to rtxForge’s build, so NR tuning applies while you play.')
 
@@ -117,11 +119,18 @@ def feeder_plan(e, path, params, running):
     # foreign add-on is never adopted or replaced by the required refresh.
     available = feeder.panel(e)
     missing = []
+    # A RenoDX that is already one of rtxForge's own published builds (put in
+    # place by a repair or a manual test install) is adopted, not refused.
+    shipped = {sha for sha, _ in feeder.accepted(feeder.lock(), RENODX, True)}
+    adopted = False
     for name, expected in record['installed_hashes'].items():
         destination = t.safe(target / t.relative(name))
         if name in feeder.CONFIGS:
             continue
-        t.need(feeder.digest(destination, cached=False) == expected, 'Feeder files changed; repair this game first: ' + name)
+        actual = feeder.digest(destination, cached=False)
+        if actual != expected and (name == RENODX or name.endswith('/' + RENODX)) and actual in shipped:
+            owned[name] = expected = actual; adopted = True
+        t.need(actual == expected, 'Feeder files changed; repair this game first: ' + name)
         checks[str(destination)] = expected
     for name, item in available.items():
         if name not in owned:
@@ -154,7 +163,7 @@ def feeder_plan(e, path, params, running):
         note += '\n\n' + overlay_settings.describe(values)
     if missing:
         note += '\nUse Repair Features to add the overlay to this older installation.'
-    if not writes:
+    if not writes and not adopted:
         return None, {'title': name, 'detail': 'Overlay packages and menus are up to date.', 'details': note}
     share_inventory(target, 'feeder', owned, checks, writes)
     writes[str(path)] = bulk._json(baseline)

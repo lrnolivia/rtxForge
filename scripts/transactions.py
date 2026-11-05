@@ -1,6 +1,6 @@
 """Portable hash-guarded transactions used by the v1.6 live tool."""
 from __future__ import annotations
-import argparse, contextlib, configparser, datetime, hashlib, json, os, pathlib, re, shutil, stat, struct, sys, uuid
+import argparse, contextlib, configparser, datetime, hashlib, json, os, pathlib, re, shutil, stat, struct, sys, time, uuid
 P = pathlib.Path
 HERE = P(__file__).resolve().parent
 PROXIES = {'dxgi.dll', 'winmm.dll', 'version.dll', 'dbghelp.dll', 'd3d12.dll', 'wininet.dll', 'winhttp.dll', 'd3d9.dll', 'd3d10.dll', 'd3d11.dll', 'opengl32.dll', 'dinput8.dll', 'dsound.dll'}
@@ -146,7 +146,20 @@ def atomic_file(path, data, mode):
         tmp.unlink(missing_ok=True)
         raise
     os.chmod(tmp, mode)
-    os.replace(tmp, path)
+    # Antivirus scans and indexers hold freshly written DLLs open for a moment
+    # on Windows; a short retry rides that out instead of failing the change.
+    for attempt in range(8):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 7:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(.25 * (attempt + 1))
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
 
 def _apply_transaction(plan, state):
     """Internal transaction engine; caller enforces explicit user confirmation and storage/target policy."""

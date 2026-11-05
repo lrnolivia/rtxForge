@@ -80,10 +80,14 @@ def run(root,state,prepare,execute):
             return dict(previous, status='current')
         review=prepare()
         result=execute(review) if review.get('plans') else {}
-        blocked=review.get('blocked') or []
+        # Games left unchanged because a file was in use stay pending for retry.
+        failed=(result or {}).get('failed') or []
+        blocked=(review.get('blocked') or [])+failed
+        skip={item.get('target') for item in failed}
         updated_games = {game['target']: game for game in previous.get('updated_games', [])
                          if previous.get('bundle') == required['bundle']}
         for plan in review.get('plans') or []:
+            if plan.get('target') in skip: continue
             key = str(plan.get('target') or plan.get('game') or plan['name'])
             updated_games[key] = {'target': key, 'title': plan['name']}
         record={**required,'status':'pending' if blocked else 'complete',

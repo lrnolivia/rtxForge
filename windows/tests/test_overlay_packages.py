@@ -211,10 +211,13 @@ try:
     with patch.object(feeder,'panel',return_value=with_glass),patch.object(feeder,'owned_stack',return_value=None), \
          patch.object(feeder,'download_stack',side_effect=t.Refusal('offline')):
         offline=overlays.prepare(e,h.LOCAL/'state',params)
-        assert not offline['plans'] and any('keeps its current one' in item.get('details','') for item in offline['skipped']),offline
+        # A stale RenoDX that cannot be replaced is pending, never "up to date".
+        assert not offline['plans'] and any('keeps its current one' in item.get('detail','') for item in offline['blocked']),offline
+        assert not any('keeps its current one' in item.get('details','') for item in offline['skipped']),offline
     assert (game/'renodx-dlss5.addon64').read_bytes()==old_renodx
+    # The real stack record shape: files keyed by name under 'files'.
     with patch.object(feeder,'panel',return_value=with_glass), \
-         patch.object(feeder,'owned_stack',return_value={'renodx-dlss5.addon64':{'path':str(live_cache),'sha256':t.sha(live)}}):
+         patch.object(feeder,'owned_stack',return_value={'schema':1,'provider_id':'feeder','files':{'renodx-dlss5.addon64':{'path':str(live_cache),'sha256':t.sha(live)}}}):
         review=overlays.prepare(e,h.LOCAL/'state',params)
         assert len(review['plans'])==1 and 'NR tuning applies while you play' in review['plans'][0]['note'],review
         assert (game/'renodx-dlss5.addon64').read_bytes()==old_renodx,'review wrote RenoDX'
@@ -222,6 +225,15 @@ try:
     assert (game/'renodx-dlss5.addon64').read_bytes()==live
     assert feeder.state(e,game)['installed_hashes']['renodx-dlss5.addon64']==t.sha(live)
     assert (game/'nvngx_dlssnr.dll').read_bytes()==model
+    # A shipped RenoDX put in place outside this record (a repair or test
+    # install) is adopted into the record rather than blocking the refresh.
+    record_path=feeder.state_dir(e,game)/'baseline.json';stale=json.loads(record_path.read_text())
+    stale['installed_hashes']['renodx-dlss5.addon64']=t.sha(old_renodx);t.atomic_file(record_path,(json.dumps(stale)+'\n').encode(),0o600)
+    with patch.object(feeder,'panel',return_value=with_glass):
+        adopted=overlays.prepare(e,h.LOCAL/'state',params)
+        assert not adopted['blocked'] and len(adopted['plans'])==1,adopted
+        bulk.execute(adopted)
+    assert feeder.state(e,game)['installed_hashes']['renodx-dlss5.addon64']==t.sha(live)
     try:overlays.prepare(e,h.LOCAL/'state',params|{'target_games':[]});raise AssertionError('empty scope widened')
     except t.Refusal:pass
 finally:case.doCleanups()

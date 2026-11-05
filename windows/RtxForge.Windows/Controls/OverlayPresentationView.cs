@@ -17,7 +17,8 @@ sealed class OverlayPresentationView : Grid
     readonly Button accentColor;
     readonly OverlayPreviewView? preview;
 
-    public OverlayPresentationView(Action<Action> edit, EngineForgeService? engine, Game? game = null)
+    /// <param name="appliedGlobally">Shows Apply Globally under the preview; receives the settings after the style was applied to every game.</param>
+    public OverlayPresentationView(Action<Action> edit, EngineForgeService? engine, Game? game = null, Action<ForgeSettings>? appliedGlobally = null)
     {
         var path=game is null?null:GlassAppearance.GameFilePath(game,refresh:true);
         var glass = GlassAppearance.Load(path);
@@ -56,6 +57,29 @@ sealed class OverlayPresentationView : Grid
             var card = new Border { Child = preview, Padding = new Thickness(16), CornerRadius = new CornerRadius(12),
                 Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["ControlAltFillColorSecondaryBrush"] };
             Grid.SetRow(card, 1); previewSection.Children.Add(card); Grid.SetColumn(previewSection, 1); Children.Add(previewSection);
+            if (appliedGlobally is not null)
+            {
+                var apply = new Button { Content = "Apply Globally", HorizontalAlignment = HorizontalAlignment.Right };
+                ToolTipService.SetToolTip(apply, game is null ? "Use this style for every game." : "Make this game's style the default and use it for every game.");
+                apply.Click += async (_, _) =>
+                {
+                    var confirm = new ContentDialog
+                    {
+                        XamlRoot = XamlRoot, Title = "Apply this style to every game?",
+                        Content = (game is null ? "Every game's overlay takes this layout, theme and accent."
+                            : "This becomes your default style, and every game's overlay takes it.")
+                            + " Each game keeps its text size, menus and shortcuts.",
+                        PrimaryButtonText = "Apply Globally", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary,
+                    };
+                    if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+                    apply.IsEnabled = false;
+                    try { appliedGlobally(GlassAppearance.ApplyStyleToAllGames(path)); preview?.RefreshAppearance(); }
+                    catch (Exception error) { App.Main?.ShowToast(error.Message); }
+                    finally { apply.IsEnabled = true; }
+                };
+                previewSection.RowDefinitions.Add(new() { Height = GridLength.Auto });
+                Grid.SetRow(apply, 2); previewSection.Children.Add(apply);
+            }
         }
         SizeChanged += (_, e) =>
         {

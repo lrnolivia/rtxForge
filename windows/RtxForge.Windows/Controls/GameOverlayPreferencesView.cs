@@ -42,7 +42,11 @@ public sealed class GameOverlayPreferencesView : StackPanel
                 status.Text = "Appearance saved for this game.";
             }
             catch (Exception error) { status.Text = error.Message; }
-        }, shell.Service as EngineForgeService, game);
+        }, shell.Service as EngineForgeService, game, appliedGlobally: fresh =>
+        {
+            shell.Settings.CopyOverlayFrom(fresh);
+            status.Text = "This style is now your default, and every game's overlay uses it.";
+        });
         appearance.SetRendererEnabled(GlassAppearance.OverlayOptions(ForgeSettings.Load(),game)["overlay_renderer"]?.ToString() != "optiscaler");
         appearanceCard.Child=appearance;
     }

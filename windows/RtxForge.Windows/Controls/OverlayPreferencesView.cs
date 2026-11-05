@@ -27,7 +27,11 @@ public sealed class OverlayPreferencesView : StackPanel
         Heading("Layout and appearance", "Defaults for new and inheriting games. Changes made inside an overlay stay with that game.");
         var renderer = Choice("Overlay interface", ["rtxForge", "Native"], current.OverlayRenderer == "optiscaler" ? 1 : 0,
             "Use rtxForge or the native interfaces provided by the installed package.", glyph: "\uE7F4");
-        presentation = new OverlayPresentationView(EditGlass, engine);
+        presentation = new OverlayPresentationView(EditGlass, engine, appliedGlobally: fresh =>
+        {
+            OverlayHelper.ConfigureStartup(fresh); applied(fresh);
+            feedback.Text = "Every game's overlay now uses this style.";
+        });
         AddControl(new Border { Style = Prefs.GetStyle("ForgeSettingsCardStyle"), Child = presentation });
         Heading("Controls");
         var type = Choice("Text size", ["Aa  Smaller", "Aa  Default", "Aa  Larger"], glass.Number("TextSize", 22, 16, 26) < 22 ? 0 : glass.Number("TextSize", 22, 16, 26) > 22 ? 2 : 1, glyph: "\uE8D2");

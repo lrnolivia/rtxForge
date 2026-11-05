@@ -71,6 +71,24 @@ class OverlaySettingsTest(unittest.TestCase):
         self.assertEqual(settings['panel_hotkey'],'Delete')
         with self.assertRaises(t.Refusal):overlay.game_edit(settings,game,'overlay_helper',False)
 
+    def test_apply_globally_sets_one_style_and_keeps_each_games_controls(self):
+        one,two=str(Path('one').resolve()),str(Path('two').resolve())
+        settings={'overlay_appearance':{'Layout':'floating','TextSize':22},'overlay_theme':'clear','game_overlay_settings':{
+            one:{'overlay_appearance':{'Layout':'bar','Theme':2,'TextSize':26,'Motion':0},'overlay_theme':'dark','panel_hotkey':'F8'},
+            two:{'panel_hotkey':'F9'}}}
+        style=overlay.effective(settings,one)['overlay_appearance']
+        result=overlay.apply_style_globally(settings,style,'dark')
+        self.assertEqual((result['overlay_appearance']['Layout'],result['overlay_appearance']['Theme'],result['overlay_theme']),('bar',2,'dark'))
+        # Each game keeps its own text size, motion and shortcut; the look follows the applied style.
+        self.assertEqual(result['game_overlay_settings'][one]['overlay_appearance'],{'Layout':'bar','Theme':2,'TextSize':26,'Motion':0})
+        self.assertEqual(result['game_overlay_settings'][one]['panel_hotkey'],'F8')
+        self.assertEqual(result['game_overlay_settings'][two],{'panel_hotkey':'F9'})
+        self.assertEqual(overlay.effective(result,two)['overlay_appearance']['Layout'],'bar')
+        self.assertEqual(result['overlay_appearance']['TextSize'],22)
+        self.assertEqual(settings['overlay_appearance']['Layout'],'floating')
+        with self.assertRaises(t.Refusal):overlay.apply_style_globally(settings,{'Layout':'sideways'},'dark')
+        with self.assertRaises(t.Refusal):overlay.apply_style_globally(settings,style,'neon')
+
     def test_runtime_binding_stays_validated(self):
         self.assertEqual(overlay.shortcut_binding({'key':119,'modifiers':2}),('panel_hotkey','Ctrl+F8'))
         self.assertEqual(overlay.shortcut_binding({'key':0,'modifiers':0}),('panel_hotkey','Disabled'))

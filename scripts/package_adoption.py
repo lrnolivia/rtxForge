@@ -8,6 +8,7 @@ import copy
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import transactions as t
 import engine_bridge as bridge
 import skynizz_provider
@@ -40,7 +41,11 @@ def decorate(e, rows):
             if baseline and baseline.get('offline_route'):
                 # Do not hide the anti-cheat flag. A separate scoped policy
                 # admits management only while the reviewed route still matches.
-                game = bridge.game(e, row)
+                # The scan already walked this game for anti-cheat; a change to it
+                # re-checks the reviewed route, so this display flag reuses that walk.
+                exe = t.safe(Path(row['game']) / t.relative(row['exe']))
+                game = SimpleNamespace(root=t.safe(row['game']), exe=exe, target_dir=exe.parent,
+                                       appid=row.get('appid'), anti_cheat=row.get('anti_cheat'))
                 row['offline_only'] = bool(game.anti_cheat and offline_routes.allowed(e, game))
                 if row['offline_only'] and row.get('blocked') == 'Anti-cheat detected':
                     row['blocked'] = ''

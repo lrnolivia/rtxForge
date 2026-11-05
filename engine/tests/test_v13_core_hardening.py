@@ -1917,6 +1917,37 @@ class CoreHardeningTests(unittest.TestCase):
             self.m.install_target(self.game, self._sm86_payload(), archive_meta, "sm86")
         self.assertIn("Managed payload file changed externally", str(cm.exception))
 
+    def test_repair_keeps_externally_changed_files_then_restores_them(self):
+        self.game.dlss = True
+        self.game.dlssg = True
+        archive_meta = {"name": "fixture.7z", "sha256": "b" * 64, "tag": "fixture"}
+        self.m.install_target(self.game, self._sm86_payload(), archive_meta, "sm86")
+        nr = self.target / "nvngx_dlssnr.dll"
+        tree = self.target / "OptiScaler" / "core.dll"
+        owned = nr.read_bytes(), tree.read_bytes()
+        nr.write_bytes(b"MZ" + (b"E" * 128))
+        tree.write_bytes(b"external-change")
+        review = self.m.install_target(self.game, self._sm86_payload(), archive_meta, "sm86",
+                                       dry_run=True, repair_changed=True)
+        # The NR model is kept as found on every refresh, so Repair records it; the tree file goes back.
+        self.assertEqual(review["repair_changed"], ["OptiScaler/core.dll"])
+        self.assertEqual(review["repair_recorded"], ["nvngx_dlssnr.dll"])
+        kept_root = self.m.state_dir_for(self.target) / "repair-kept"
+        self.assertFalse(kept_root.exists(), "a review kept files")
+        self.assertEqual(tree.read_bytes(), b"external-change")
+        self.m.install_target(self.game, self._sm86_payload(), archive_meta, "sm86", repair_changed=True)
+        self.assertEqual((nr.read_bytes(), tree.read_bytes()), (b"MZ" + (b"E" * 128), owned[1]))
+        kept = {p.relative_to(next(kept_root.iterdir())).as_posix(): p.read_bytes() for p in kept_root.rglob("*") if p.is_file()}
+        self.assertEqual(kept, {"OptiScaler/core.dll": b"external-change"})
+        # Now recorded: a plain refresh accepts the model and the restored tree.
+        self.m.install_target(self.game, self._sm86_payload(), archive_meta, "sm86")
+        # An unknown file in the tree is still never deleted, even by repair.
+        unexpected = self.target / "OptiScaler" / "user-addon.dll"
+        unexpected.write_bytes(b"do-not-delete")
+        with self.assertRaises(self.m.Stop):
+            self.m.install_target(self.game, self._sm86_payload(), archive_meta, "sm86", repair_changed=True)
+        self.assertEqual(unexpected.read_bytes(), b"do-not-delete")
+
     def test_interrupted_refresh_accepts_root_payload_matching_pending_install_hash(self):
         self.game.dlss = True
         self.game.dlssg = True

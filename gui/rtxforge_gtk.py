@@ -1669,42 +1669,6 @@ class HeroPicture(Gtk.Picture):
         )
 
 
-class BlurredTexture(Gtk.Widget):
-    """Render a frozen Gdk.Texture through GTK/GSK blur."""
-    def __init__(self,texture=None,radius=22.0):
-        super().__init__(hexpand=True,vexpand=True)
-        self.texture=texture
-        self.radius=radius
-
-    def set_texture(self,texture):
-        self.texture=texture
-        self.queue_draw()
-
-    def do_snapshot(self,snapshot):
-        texture=self.texture
-        if texture is None:
-            return
-
-        width=max(1,self.get_width())
-        height=max(1,self.get_height())
-
-        tw=max(1,texture.get_width())
-        th=max(1,texture.get_height())
-
-        # Cover the available area while maintaining aspect ratio.
-        scale=max(width/tw,height/th)
-        draw_w=tw*scale
-        draw_h=th*scale
-        x=(width-draw_w)/2
-        y=(height-draw_h)/2
-
-        rect=Graphene.Rect()
-        rect.init(x,y,draw_w,draw_h)
-
-        snapshot.push_blur(self.radius)
-        snapshot.append_texture(texture,rect)
-        snapshot.pop()
-
 CSS=b'''
 @define-color accent_bg_color #76b900;
 @define-color accent_color #95cf38;
@@ -3395,25 +3359,6 @@ def icon_button(text,icon,fn,css=None):
     w=ActionButton(text,icon);w.connect('clicked',fn)
     if css:w.add_css_class(css)
     return w
-
-def action_tiles(actions):
-    tiles=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,homogeneous=True,
-        min_children_per_line=4,max_children_per_line=4,row_spacing=12,column_spacing=12)
-    for control in actions:
-        control.set_hexpand(True);control.set_size_request(180,96)
-        content=control.get_child();content.set_orientation(Gtk.Orientation.VERTICAL)
-        content.set_halign(Gtk.Align.FILL)
-        if hasattr(control,'text_label'):
-            control.text_label.set_wrap(True);control.text_label.set_xalign(.5)
-            control.text_label.set_justify(Gtk.Justification.CENTER)
-        tiles.insert(control,-1)
-    responsive=Adw.BreakpointBin(child=tiles,width_request=380,height_request=108)
-    breakpoint=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 790px'))
-    breakpoint.add_setter(tiles,'min-children-per-line',2)
-    breakpoint.add_setter(tiles,'max-children-per-line',2)
-    breakpoint.add_setter(responsive,'height-request',228)
-    responsive.add_breakpoint(breakpoint)
-    return responsive
 
 def margins(w,n=16):
     for edge in ('start','end','top','bottom'):getattr(w,'set_margin_'+edge)(n)
@@ -10525,10 +10470,32 @@ class Window(Adw.ApplicationWindow):
                 try:accent_row.set_active(False)
                 finally:refreshing[0]=False
         source_row.connect('notify::selected',tint_visibility);refreshers.append(tint_visibility);tint_visibility()
+        global_row=Adw.ActionRow(title='Apply Globally',
+            subtitle=("Make this game’s style the default and use it for every game." if game else 'Use this style for every game.'))
+        def apply_globally(*_):
+            dialog=Adw.AlertDialog(heading='Apply this style to every game?',
+                body=('This becomes your default style, and every game’s overlay takes it.' if game
+                      else 'Every game’s overlay takes this layout, theme and accent.')+' Each game keeps its text size, menus and shortcuts.')
+            dialog.add_response('cancel','Cancel');dialog.add_response('apply','Apply Globally')
+            dialog.set_response_appearance('apply',Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_default_response('apply');dialog.set_close_response('cancel')
+            def chosen(_dialog,response):
+                if response!='apply':return
+                import transactions as t
+                try:
+                    fresh=self.settings if self.options.demo else library_media.load_settings(self.service.config)
+                    self.settings.update(overlay_settings.apply_style_globally(fresh,glass.current(s),s.get('overlay_theme','clear')))
+                    if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+                    self.toast('Every game’s overlay now uses this style.')
+                except (t.Refusal,OSError,ValueError) as error:self.toast(error)
+            dialog.connect('response',chosen);dialog.present(self)
+        apply_all=button('Apply Globally',apply_globally);apply_all.set_valign(Gtk.Align.CENTER)
+        global_row.add_suffix(apply_all)
         material_choice('Original labels','OriginalLabels',[0,1],['Off','On'])
         material_choice('Text size','TextSize',[20,22,24],['Aa  Smaller','Aa  Default','Aa  Larger'])
         material_choice('Motion effects','Motion',[1,0],['On','Off'])
         material_choice('Hotkey notifications','ShowNotifications',[1,0],['On','Off'])
+        appearance.add(global_row)
         notifications=Adw.PreferencesGroup(title='Status and notifications')
         switch('Welcome message','Show the rtxForge message at startup.','overlay_welcome',notifications)
         choice('Welcome position',None,list(overlay_settings.POSITIONS),['Top center','Top left','Top right','Bottom left','Bottom right'],'overlay_welcome_position',notifications)

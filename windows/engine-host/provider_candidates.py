@@ -16,7 +16,13 @@ def assess(e, row):
     apis = feeder.graphics_apis(e, exe)
     machine = feeder_legacy.machine(exe)
     feeder_owned = row.get('runtime_provider') == 'feeder' and row.get('installed')
-    native = bool(machine == 0x8664 and not feeder_owned and row.get('native_dlss') and (not apis or 'd3d12' in apis))
+    # DLSS Frame Generation runs only on DirectX 12 or Vulkan, so a game that
+    # ships it renders with D3D12 even when its imports name only d3d11 and it
+    # loads d3d12 at runtime (PRAGMATA). Not where another package is installed:
+    # its own Streamline files can look like the game's (Vulkan route).
+    shipped_dlssg = row.get('native_dlssg') and not (row.get('installed') and row.get('runtime_provider') not in (None, 'skynizz'))
+    native = bool(machine == 0x8664 and not feeder_owned and row.get('native_dlss')
+                  and (not apis or 'd3d12' in apis or shipped_dlssg))
     baseline = e.load_baseline(exe.parent, readonly=True)
     native_owned = bool(baseline and baseline.get('status') == 'active')
     legacy = feeder_legacy.route(e, row)

@@ -115,9 +115,8 @@ internal sealed class GameModeAppearanceView : UserControl
         strength.Visibility=Text("accentMode")=="theme"?Visibility.Collapsed:Visibility.Visible;
         tint.ValueChanged += async (_, args) => { if(ready)await ChangeAsync("tintStrength",JsonValue.Create((int)args.NewValue)); };
         detailsOptions.Add(strength);
-        var detailsPreviewOptions = new PreferencesGroup(null);
-        Choice(detailsPreviewOptions,"Game Details navigation",null,"detailsNavigation",["Sidebar","Tabs"],["sidebar","tabs"]);
-        details.Add(PreviewPanel(detailsOptions.Root, detailsSample, "Game Details preview", detailsPreviewOptions.Root));
+        Choice(detailsOptions,"Game Details navigation",null,"detailsNavigation",["Sidebar","Tabs"],["sidebar","tabs"]);
+        details.Add(PreviewPanel(detailsOptions.Root, detailsSample, "Game Details preview", null));
         Groups.Add(details);
         var reading = new PreferencesGroup("Motion and reset");
         var (row,motion)=Prefs.SwitchRow("Motion","Follows your system's reduced-motion preference.",On("motion"),"\uE768");
@@ -129,7 +128,7 @@ internal sealed class GameModeAppearanceView : UserControl
         IsEnabled=engine is { IsPreview:false }; Paint();
     }
 
-    static Border PreviewPanel(FrameworkElement options, Canvas scene, string caption, FrameworkElement previewOptions)
+    static Border PreviewPanel(FrameworkElement options, Canvas scene, string caption, FrameworkElement? previewOptions)
     {
         var layout = new Grid { ColumnSpacing=20, RowSpacing=16 };
         layout.ColumnDefinitions.Add(new());
@@ -137,10 +136,11 @@ internal sealed class GameModeAppearanceView : UserControl
         layout.RowDefinitions.Add(new() { Height=GridLength.Auto });
         layout.RowDefinitions.Add(new() { Height=GridLength.Auto });
         layout.Children.Add(options);
-        var preview = new StackPanel { Spacing=10, MaxWidth=480, HorizontalAlignment=HorizontalAlignment.Stretch };
+        // Centred beside the options column when the two sit side by side.
+        var preview = new StackPanel { Spacing=10, MaxWidth=480, HorizontalAlignment=HorizontalAlignment.Stretch, VerticalAlignment=VerticalAlignment.Center };
         preview.Children.Add(Prefs.Label(caption, "ForgeCaptionDimTextStyle"));
         preview.Children.Add(new Viewbox { Child=scene, Stretch=Stretch.Uniform });
-        preview.Children.Add(previewOptions);
+        if(previewOptions is not null) preview.Children.Add(previewOptions);
         Grid.SetRow(preview,1);
         layout.Children.Add(preview);
         layout.SizeChanged += (_, args) =>
@@ -232,6 +232,15 @@ internal sealed class GameModeAppearanceView : UserControl
         PaintDetails();
     }
 
+    Models.Game? accentGame;
+    global::Windows.UI.Color? gameAccent;
+    async Task LoadGameAccentAsync(Models.Game game)
+    {
+        var palette = await ArtAccent.ForGameAsync(game);
+        if(!ReferenceEquals(accentGame, game) || palette is null) return;
+        gameAccent = palette.Color; PaintDetails();
+    }
+
     void PaintDetails()
     {
         detailsSample.Children.Clear();
@@ -239,6 +248,13 @@ internal sealed class GameModeAppearanceView : UserControl
         var light = theme == "light";
         var game = App.Main?.Games.FirstOrDefault(item => Artwork(item.HeroPath) is not null);
         var accent = ArtAccent.TryParse(Text("accent"), out var color) ? color : ArtAccent.NoArtwork;
+        // Adaptive and Game take the sample game's artwork colour, as Game Mode
+        // does; the Game Mode accent is only the fallback while it loads.
+        if(Text("accentMode") != "theme" && game is not null)
+        {
+            if(ReferenceEquals(accentGame, game)) { if(gameAccent is { } sampled) accent = sampled; }
+            else { accentGame = game; gameAccent = null; _ = LoadGameAccentAsync(game); }
+        }
         var ink = new SolidColorBrush(light ? global::Windows.UI.Color.FromArgb(255,30,30,29) : global::Windows.UI.Color.FromArgb(255,246,243,238));
         void Place(UIElement element, double x, double y)
         {

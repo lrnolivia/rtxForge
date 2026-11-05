@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "revision": 8,
+  "revision": 9,
   "required": true,
   "scope": "managed-overlay-packages",
   "preserve_tuning": true,

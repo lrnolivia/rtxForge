@@ -47,6 +47,15 @@ class RequiredRefreshTest(unittest.TestCase):
         self.assertEqual(ledger['updated'], 2)
         self.assertEqual({game['title'] for game in ledger['updated_games']}, {'Ready', 'Now closed'})
 
+    def test_game_with_file_in_use_stays_pending_while_others_update(self):
+        review={'plans':[{'name':'Ready','target':'A'},{'name':'Busy','target':'B'}],'blocked':[]}
+        busy={'failed':[{'title':'Busy','detail':'A file was in use. Close the game and try again.','target':'B'}]}
+        prepare=Mock(return_value=review);execute=Mock(return_value=busy)
+        result=refresh.run(self.root,self.state,prepare,execute)
+        self.assertEqual(result['status'],'pending')
+        self.assertEqual([game['title'] for game in result['updated_games']],['Ready'])
+        self.assertEqual([item['title'] for item in result['blocked']],['Busy'])
+
     def test_tampered_bundle_never_reaches_game_planner(self):
         (self.folder/'rtxforge-glass.dll').write_bytes(b'foreign')
         prepare=Mock();execute=Mock()

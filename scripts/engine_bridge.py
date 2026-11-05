@@ -613,7 +613,7 @@ def prepare(config,rows,mode,operation,settings):
 
                 check_switch(e,installed_package(baseline),mode)
                 with _without_baseline(e,g) if retired else contextlib.nullcontext():
-                    preview=e.install_target(g,target_data,target_meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,nr_on_launch=settings.get('nr_on_launch',False) if operation=='install' else None,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,feature_controls=controls,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True)
+                    preview=e.install_target(g,target_data,target_meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,nr_on_launch=settings.get('nr_on_launch',False) if operation=='install' else None,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,feature_controls=controls,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True,repair_changed=operation=='repair')
                 if selected=='skynizz':
                     model=preview.get('nr_runtime') or {}
                     route='Combined NR + MFG bridge · target runtime validation pending' if mode=='nr-mfg' else 'MFG Only · neural rendering disabled' if mode=='mfg-only' else 'NR Only · requires D3D12/DLSS'
@@ -639,6 +639,14 @@ def prepare(config,rows,mode,operation,settings):
                         preview['proton']={'checks':stack['checks'],'tool':stack['tool'],'components':stack['components'],'gpu':stack['gpu']}
                 if interrupted_install(baseline):
                     preview=dict(preview,launch_options='Finishes an install that was interrupted · '+preview['launch_options'])
+                if preview.get('repair_recorded'):
+                    # The game's NR model is kept as found; the repair records it.
+                    preview=dict(preview,launch_options='Keeps and records the current '+', '.join(preview['repair_recorded'])
+                                 +' · '+preview['launch_options'])
+                if preview.get('repair_changed'):
+                    # Named in the review: each changed file is kept as a backup before rtxForge's copy goes back.
+                    preview=dict(preview,launch_options="Keeps a backup of the changed files, then puts back rtxForge's copy: "
+                                 +', '.join(preview['repair_changed'])+' · '+preview['launch_options'])
             extras={}
             if stack:
                 # Fresh Linux Skynizz: the same CUDA, panel and identity writes as Set Up for Linux.
@@ -816,7 +824,7 @@ def execute(review):
                     reviewed_settings = item.get('settings') or {}
                     e.OVERLAY_UI = (overlay_settings.effective(reviewed_settings, str(g.root))
                                     if overlay_policy.explicit(reviewed_settings) else None)
-                    record=e.install_target(g,item.get('payload',review['payload']),item.get('meta',review['meta']),'ada',nr_runtime_payload=item.get('nr',review['nr']),nr_runtime_meta=item.get('nrmeta',review['nrmeta']),feature_mode=review['mode'],enable_effects=review['enable_effects'],nr_on_launch=review.get('nr_on_launch'),native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],feature_controls=review.get('feature_controls'),preserve_visual_settings=not review.get('apply_requested_presets',False))
+                    record=e.install_target(g,item.get('payload',review['payload']),item.get('meta',review['meta']),'ada',nr_runtime_payload=item.get('nr',review['nr']),nr_runtime_meta=item.get('nrmeta',review['nrmeta']),feature_mode=review['mode'],enable_effects=review['enable_effects'],nr_on_launch=review.get('nr_on_launch'),native_mfg_fallback=review.get('native_mfg_fallback',False),nr_strength=review['nr_strength'],mfg_multiplier=review['mfg_multiplier'],sharpening_strength=review['sharpening_strength'],feature_controls=review.get('feature_controls'),preserve_visual_settings=not review.get('apply_requested_presets',False),repair_changed=review['operation']=='repair')
                     import offline_routes
                     if route := offline_routes.reviewed_route(item['row']):
                         baseline=e.load_baseline(g.target_dir)

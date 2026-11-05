@@ -40,6 +40,9 @@ OPTIONAL_PANELS = ('rtxforge-glass.dll', 'rtxforge-effects.addon64')
 # Added by hand before rtxforge-quiet existed.
 RETIRED = {'quiet-startup.addon64': 'a33e97b437a6410d01d4dafc1ae770afa9c1e37a84bdbbe87926e24b5735f0a4'}
 OWNED = (*PANELS, *OPTIONAL_PANELS, *RETIRED)
+# The DLSS Super Resolution DLL earlier manual Feeder installs shipped, later
+# upgraded to the pinned production SR.
+MANUAL_SR = '378262f4ba429e6199ce25d6f9275734f354c3b017f3f096d8cea1af468312ff'
 # Verified Microsoft Windows Image Helper shipped with games. DbgHelp can
 # also be a proxy name, so only these exact stock bytes are exempted.
 STOCK_LIBRARIES = {'dbghelp.dll': {'abd6a38e9d73b0ed73372e80819eca9134534c17722ced453e5e1cbffef03ec2'}}
@@ -495,10 +498,6 @@ def mentioned_apis(exe, limit=2 * 1024**3):
         return set()
 
 
-def directx11(e, exe):
-    return 'd3d11' in graphics_apis(e, exe)
-
-
 def route_note(e, row):
     """The Feeder route a fresh game gets, including experimental legacy recipes."""
     try:
@@ -549,6 +548,30 @@ def delay_imported_dlls(exe):
         return set()
 
 
+def leftover_sr(e, directory):
+    """True when the folder's DLSS SR DLL is Feeder's, left after a restore.
+
+    Feeder ships its own SR. An adopted manual install brought one in, so the
+    restore puts that back, and the scan would then read it as the game's
+    DLSS (The Sims 4 has none). Only a restored record that adopted a Feeder
+    SR, with a Feeder SR still in place, qualifies: a game's own DLSS stays.
+    """
+    try:
+        record = state(e, directory)
+    except (t.Refusal, OSError, ValueError):
+        return False
+    if not record or record.get('legacy_recipe') or record.get('status') != 'restored' or not record.get('adopted'):
+        return False
+    spec = lock()
+    known = {MANUAL_SR} | {sha for sha, _ in accepted(spec, 'nvngx_dlss.dll', installed=True)}
+    before = record['originals'].get('nvngx_dlss.dll')
+    path = Path(directory) / 'nvngx_dlss.dll'
+    try:
+        return bool(before and before.get('sha256') in known and path.is_file() and digest(path, True) in known)
+    except (t.Refusal, OSError, ValueError):
+        return False
+
+
 def expand_rows(e, rows, selected=False):
     import skynizz_provider
     result = []
@@ -578,6 +601,8 @@ def expand_rows(e, rows, selected=False):
                 child.update(game=str(exe.parent), exe=exe.name, collection_game=str(root), name=name)
             else:
                 child['exe'] = exe.relative_to(root).as_posix()
+            if child.get('native_dlss') and leftover_sr(e, exe.parent):
+                child['native_dlss'] = False
             if any((exe.parent / name).is_file() for name in ('dlss5-feed.addon64', 'dlss5-feed.addon32', 'dlss5-feed-helper.addon64')):
                 try:
                     import cross_os
@@ -1091,7 +1116,7 @@ def _prepare(config, rows, mode, operation, settings, e):
                                 if name == 'nvngx_dlss.dll':
                                     # Earlier manual installs were subsequently
                                     # upgraded to the verified production SR.
-                                    expected.add('378262f4ba429e6199ce25d6f9275734f354c3b017f3f096d8cea1af468312ff')
+                                    expected.add(MANUAL_SR)
                                 t.need(installed in expected, 'The manual backup describes another Feeder recipe: ' + name)
                             elif name == MODEL:
                                 t.need(installed in spec['models'], 'The manual backup has an unrecognized NR model')

@@ -62,7 +62,9 @@ public sealed class Game
         set => installedOses = CrossOs.Normalize(value);
     }
     /// <summary>An owned Feeder file changed: still installed and usable, and Repair fixes it. Null when every file matches.</summary>
-    public string? RepairRecommended => Installed && !Blocked ? EngineRow?["feeder_drift"]?["summary"]?.ToString() : null;
+    // Feeder and OptiScaler both report a changed owned file as one Repair away.
+    public string? RepairRecommended => Installed && !Blocked
+        ? (EngineRow?["feeder_drift"] ?? EngineRow?["package_drift"])?["summary"]?.ToString() : null;
     /// <summary>A Feeder setup is installed but needs attention (BlockedReason says why); not an unsupported game.</summary>
     public bool FeederNeedsAttention => Blocked && EngineRow?["feeder_detected"] is JsonValue detected
         && detected.TryGetValue<bool>(out var found) && found;

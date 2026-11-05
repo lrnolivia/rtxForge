@@ -42,13 +42,20 @@ def relative(s):
 def safe(p):
     p = P(os.path.abspath(p))
     need(p == p.resolve(), 'Symlink/path alias refused: ' + str(p))
+    # One lstat per component (scans call this thousands of times); a missing
+    # component is skipped, as before.
+    final = None
     for part in [p, *p.parents]:
-        if part.exists():
-            st = part.lstat()
-            need(not stat.S_ISLNK(st.st_mode) and (not getattr(st, 'st_file_attributes', 0) & 1024), 'Link/reparse point refused')
-    if p.exists():
-        st = p.stat()
-        need(p.is_dir() or (stat.S_ISREG(st.st_mode) and st.st_nlink == 1), 'Special/shared file refused')
+        try:
+            st = os.lstat(part)
+        except (OSError, ValueError):
+            continue
+        need(not stat.S_ISLNK(st.st_mode) and (not getattr(st, 'st_file_attributes', 0) & 1024), 'Link/reparse point refused')
+        if part is p:
+            final = st
+    if final is not None:
+        # Not a link (checked above), so lstat is the file's own stat.
+        need(stat.S_ISDIR(final.st_mode) or (stat.S_ISREG(final.st_mode) and final.st_nlink == 1), 'Special/shared file refused')
     return p
 
 def files(root):

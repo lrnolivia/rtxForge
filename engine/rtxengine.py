@@ -2569,29 +2569,6 @@ def remove_ini_key(text: str, section: str, key: str) -> str:
     return text[:start] + block + text[end:]
 
 
-def detect_eos_overlay(root: Path, max_dirs: int = 12000) -> bool:
-    """Detect the Epic/EOS overlay without following directory symlinks.
-
-    OptiScaler documents EOS/EGS overlays as a startup-crash source when frame
-    generation is active.  We enable its built-in overlay blocker only when the
-    game actually carries an EOS overlay, avoiding a global Steam Input side
-    effect on unrelated titles.
-    """
-    wanted = {"eosovh-win64-shipping.dll", "eosovh-win32-shipping.dll"}
-    seen = 0
-    try:
-        for current, dirs, files in os.walk(root, followlinks=False):
-            seen += 1
-            if seen > max_dirs:
-                return False
-            base = Path(current)
-            dirs[:] = [d for d in dirs if not (base / d).is_symlink()]
-            if any(name.casefold() in wanted for name in files):
-                return True
-    except OSError:
-        return False
-    return False
-
 def patch_optiscaler_ini(raw: bytes, family: str, ada_mfg_mode: str = "integrated", *, disable_overlays: bool = False) -> bytes:
     """Apply the single y4my-v4 Proton policy used by Handoff 188 RC1.
 
@@ -4136,7 +4113,34 @@ def _refresh_expected_file_hashes(baseline: dict) -> dict[str, set[str]]:
                 out.setdefault(rel.casefold(), set()).add(digest)
     return out
 
-def _verify_optiscaler_tree_refresh_safe(target: Path, baseline: dict, digest=None) -> None:
+class _RepairKeeper:
+    """Repair puts back rtxForge's copy of an owned file another tool changed.
+
+    The changed bytes are copied into this game's state first (nothing is
+    lost), and the reviewed list names every file. Only an explicit Repair
+    does this; any other refresh still refuses a changed owned file.
+    """
+
+    def __init__(self, target: Path, dry_run: bool):
+        self.target, self.dry_run, self.files, self.recorded, self.root = target, dry_run, [], [], None
+
+    def record(self, rel: str) -> None:
+        """A changed file this refresh keeps as found (the game's NR model): recorded, not replaced."""
+        if rel not in self.recorded:
+            self.recorded.append(rel)
+
+    def __call__(self, rel: str, path: Path) -> None:
+        if rel not in self.files:
+            self.files.append(rel)
+        if self.dry_run:
+            return
+        if self.root is None:
+            self.root = state_dir_for(self.target) / "repair-kept" / f"{now_stamp()}-{time.time_ns()}"
+            _mkdir_durable(self.root, mode=0o700)
+        _capture_restore_drift_once(self.root, rel, path)
+
+
+def _verify_optiscaler_tree_refresh_safe(target: Path, baseline: dict, digest=None, keep=None) -> None:
     """Refuse refresh if the managed OptiScaler binary tree acquired drift.
 
     Refresh intentionally replaces this whole provider-owned subtree. Anything
@@ -4172,9 +4176,11 @@ def _verify_optiscaler_tree_refresh_safe(target: Path, baseline: dict, digest=No
         rel = path.relative_to(target).as_posix()
         allowed = expected.get(rel.casefold())
         require(allowed, f"Unexpected file inside managed OptiScaler tree; refusing refresh: {rel}")
-        require(digest(path) in allowed, f"Managed OptiScaler tree file changed externally; refusing refresh: {rel}")
+        if digest(path) not in allowed:
+            require(keep is not None, f"Managed OptiScaler tree file changed externally; refusing refresh: {rel}")
+            keep(rel, path)
 
-def _verify_root_payload_refresh_safe(target: Path, baseline: dict, payload: dict[str, bytes], ini_key: str, digest=None) -> None:
+def _verify_root_payload_refresh_safe(target: Path, baseline: dict, payload: dict[str, bytes], ini_key: str, digest=None, keep=None) -> None:
     """Refuse to overwrite externally changed files rtxEngine already owns.
 
     OptiScaler.ini is intentionally excluded because it is a user-editable
@@ -4202,10 +4208,14 @@ def _verify_root_payload_refresh_safe(target: Path, baseline: dict, payload: dic
                 import overlay_policy
                 updated = overlay_policy.reshade(live.decode('utf-8-sig'), _ENGINE_MODULE.OVERLAY_UI).encode('utf-8')
                 if updated == payload[rel]: continue
-        require(
-            digest(path) in allowed,
-            f"Managed payload file changed externally; refusing refresh: {rel}",
-        )
+        live = digest(path)
+        if live in allowed:
+            continue
+        require(keep is not None, f"Managed payload file changed externally; refusing refresh: {rel}")
+        if live == sha256_bytes(payload[rel]):
+            keep.record(rel)
+        else:
+            keep(rel, path)
 
 
 def _managed_file_hash(path: Path) -> str:
@@ -4612,6 +4622,7 @@ def install_target(
     clean_config: bool = False,
     nr_on_launch: Optional[bool] = False,
     dry_run: bool = False,
+    repair_changed: bool = False,
 ) -> dict:
     visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)  # Validate before any mutation.
     # A review reuses hashes of unchanged files; the real install hashes everything afresh.
@@ -4634,6 +4645,7 @@ def install_target(
 
     target = game.target_dir
     existing_baseline = load_baseline(target)
+    keep = _RepairKeeper(target, dry_run) if repair_changed and existing_baseline else None
     if existing_baseline:
         status = existing_baseline.get("status")
         require(
@@ -4647,7 +4659,7 @@ def install_target(
             "Retry restore/uninstall before installing again.",
         )
         verify_baseline_integrity(target, existing_baseline, adopt_legacy=not dry_run, digest=digest)
-        _verify_optiscaler_tree_refresh_safe(target, existing_baseline, digest)
+        _verify_optiscaler_tree_refresh_safe(target, existing_baseline, digest, keep)
     if existing_baseline and Y4MY_PROVIDER.get("family", Y4MY_PROVIDER.get("id")) == "dlss-unlocked":
         prior_mode = (existing_baseline.get("current") or {}).get("feature_mode")
         require(prior_mode in (None, feature_mode), "Uninstall before changing DLSS-Unlocked pipelines")
@@ -4677,6 +4689,7 @@ def install_target(
                 prior_path.is_file()
                 and digest(prior_path) != prior_hash
                 and not reshade.get("detected")
+                and keep is None
             ):
                 raise Stop(
                     f"Managed OptiScaler proxy changed externally: {prior_path}. "
@@ -4706,13 +4719,22 @@ def install_target(
         prior = existing_baseline.get("current") or {}
         prior_proxy = prior.get("proxy")
         prior_hash = (prior.get("installed_hashes") or {}).get(prior_proxy) if prior_proxy else None
-        if prior_proxy == chosen_proxy and prior_hash:
-            prior_path = target / prior_proxy
-            if prior_path.is_file() and digest(prior_path) != prior_hash:
+        prior_changed = bool(prior_proxy and prior_hash and (target / prior_proxy).is_file()
+                             and digest(target / prior_proxy) != prior_hash)
+        # Repair replaces a changed loader only when ownership stays on it; it
+        # never routes around it to a second loader.
+        if keep is not None and prior_changed and prior_proxy != chosen_proxy and not reshade.get("detected"):
+            raise Stop(
+                f"Managed OptiScaler proxy changed externally: {target / prior_proxy}. "
+                "rtxEngine refuses to route around it; uninstall/restore or resolve that proxy first."
+            )
+        if prior_proxy == chosen_proxy and prior_changed:
+            if keep is None:
                 raise Stop(
-                    f"Managed OptiScaler proxy changed externally: {prior_path}. "
+                    f"Managed OptiScaler proxy changed externally: {target / prior_proxy}. "
                     "rtxEngine refuses to overwrite it; uninstall/restore or resolve that proxy first."
                 )
+            keep(prior_proxy, target / prior_proxy)
 
     mfg_proxy: Optional[str] = None
     previous_mfg_proxy: Optional[str] = None
@@ -4920,13 +4942,15 @@ def install_target(
         payload[mfg_proxy] = rtxmfg_payload
 
     if existing_baseline:
-        _verify_root_payload_refresh_safe(target, existing_baseline, payload, ini_key, digest)
+        _verify_root_payload_refresh_safe(target, existing_baseline, payload, ini_key, digest, keep)
 
     if dry_run:
         stale = stale_owned_proxies(target, chosen_proxy, reshade)
         return {"proxy":chosen_proxy, "files":sorted(payload), "remove":stale,
                 "launch_options":build_launch_options(chosen_proxy,reshade),
                 "restored_support_tree":restored_support_tree,
+                "repair_changed":list(keep.files) if keep else [],
+                "repair_recorded":list(keep.recorded) if keep else [],
                 "feature_mode":feature_mode, "effects_enabled":enable_effects,
                 "provider":dict(Y4MY_PROVIDER), "nr_runtime":dict(selected_nr_meta or {})}
 

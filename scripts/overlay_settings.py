@@ -78,6 +78,35 @@ def game_edit(settings, game, key, value):
     return mapping
 
 
+# Per-game choices that are not the overlay's look; Apply Globally leaves them as each game has them
+# (matches GlassAppearance.ControlKeys on Windows).
+CONTROL_KEYS = ('TextSize', 'Scale', 'ScaleBaseline', 'OriginalLabels', 'Motion', 'ShowNotifications', 'ToastPill')
+
+
+def apply_style_globally(settings, appearance, theme):
+    """Settings with one overlay style everywhere: the defaults and every game's saved appearance.
+
+    appearance is the style being applied (the defaults, or one game's); theme is its overlay_theme.
+    Each game keeps its text size, motion, notifications, menus and shortcuts."""
+    import glass_preferences
+    style = {key: value for key, value in glass_preferences.validate(appearance).items() if key not in CONTROL_KEYS}
+    t.need(theme in ENUMS['overlay_theme'], 'Choose a supported overlay theme.')
+    result = dict(settings)
+    result['overlay_appearance'] = dict(settings.get('overlay_appearance') or {}) | style
+    result['overlay_theme'] = theme
+    games = {}
+    for path, values in (settings.get('game_overlay_settings') or {}).items():
+        values = dict(values)
+        if isinstance(values.get('overlay_appearance'), dict):
+            values['overlay_appearance'] = values['overlay_appearance'] | style
+        if 'overlay_theme' in values:
+            values['overlay_theme'] = theme
+        games[path] = values
+    result['game_overlay_settings'] = games
+    options(result)
+    return result
+
+
 def native_overlays(settings, game, global_default=False):
     """An explicit onboarding opt-out; other games keep their overrides."""
     t.need(type(global_default) is bool, 'Choose whether to change the default.')

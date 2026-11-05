@@ -131,7 +131,7 @@ public sealed partial class GamePage : Page
     {
         game = shell.Games.FirstOrDefault(item => item.Id == game.Id) ?? game;
         StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly && !game.Blocked ? game.Installed ? "Installed · Offline only" : "Offline only" : game.Blocked ? game.BlockedStatus
-            : game.RepairRecommended is not null ? "Feeder NR · Repair recommended"
+            : game.RepairRecommended is not null ? game.UsesFeeder ? "Feeder NR · Repair recommended" : "Installed · Repair recommended"
             : game.UsesFeeder ? game.Installed ? "Feeder NR" : "Available · Feeder NR"
             : game.InstalledOnLinux ? "Installed on Linux"
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
@@ -219,7 +219,8 @@ public sealed partial class GamePage : Page
                 else if (g.RepairRecommended is { } changed)
                 {
                     var repair = new Button { Content = "Repair", IsEnabled = !shell.Busy && !shell.Service.IsPreview };
-                    repair.Click += (_, _) => _ = shell.LaunchAction("repair", [g]);
+                    // OptiScaler repairs replay the game's own tuning, as Update Features does.
+                    repair.Click += (_, _) => _ = g.UsesFeeder ? shell.LaunchAction("repair", [g]) : shell.LaunchAction("repair", [g], shell.GameTuning(g));
                     PageHost.Children.Add(new InfoBar
                     {
                         IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Margin = new Thickness(0, 24, 0, 0),

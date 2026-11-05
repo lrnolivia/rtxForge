@@ -64,6 +64,8 @@ import engine_bridge  # noqa: E402
 import extra_tools  # noqa: E402
 import renodx_hdr  # noqa: E402
 import renodx_hdr_settings  # noqa: E402
+import nr_addons  # noqa: E402
+import nr_install  # noqa: E402
 import game_notes  # noqa: E402
 import library_media  # noqa: E402
 import package_catalog  # noqa: E402
@@ -879,6 +881,102 @@ def _run_hdr(plan):
     return renodx_hdr.apply(_config(), plan)
 
 
+# ---------- DLSS5 NR add-ons: Environment and Character slots ----------
+
+
+def _nr_combo_file():
+    import storage as state_storage
+    return t.safe(state_storage.storage(_config()) / 'nr-combos.json')
+
+
+def _nr_saved():
+    path = _nr_combo_file()
+    if not path.is_file():
+        return {}
+    t.need(path.stat().st_size < 1024**2, 'Saved NR combos are too large.')
+    data = t.read_json(path)
+    return {k: v for k, v in (data.get('combos') or {}).items() if isinstance(v, dict)} if data.get('schema') == 1 else {}
+
+
+def _nr_combos():
+    return {**{k: dict(v, builtin=True) for k, v in nr_addons.builtin_combos().items()},
+            **{k: dict(v, builtin=False) for k, v in _nr_saved().items()}}
+
+
+def _nr_store(combos):
+    t.atomic_file(_nr_combo_file(), json.dumps({'schema': 1, 'combos': combos}, indent=2).encode(), 0o600)
+
+
+def nr_catalog(params):
+    cat = nr_addons.catalog()
+    return {'addons': [{'id': key, 'name': a['name'], 'needs_native_dlss': a.get('needs_native_dlss', False),
+                        'exclusive': a.get('exclusive', False),
+                        'builds': [{'id': b, 'label': v['label'], 'default': bool(v.get('default'))} for b, v in a['builds'].items()]}
+                       for key, a in cat['addons'].items()],
+            'models': [{'id': key, 'label': m['label']} for key, m in cat['models'].items()],
+            'combos': _nr_combos()}
+
+
+def nr_check(params):
+    """Whether this setup works in this game, without changing anything."""
+    try:
+        plan = nr_addons.plan(params['row'], params['setup'])
+        return {'ok': True, 'verified': plan['verified'], 'feeder': plan['feeder'], 'skipped': plan['skipped'],
+                'install': plan['install'], 'model': plan['model']}
+    except t.Refusal as error:
+        return {'ok': False, 'reason': str(error)}
+
+
+def nr_status(params):
+    return nr_install.status(params['row'])
+
+
+def nr_review(params):
+    remove = params.get('remove', False)
+    t.need(type(remove) is bool, 'Choose an NR add-on action.')
+    if remove:
+        plan = nr_install.prepare_remove(_config(), params['row'])
+    else:
+        import hardware
+        plan = nr_install.prepare(_config(), params['row'], params['setup'], hardware.detect().get('family') or 'ada')
+    changes = '\n'.join(('Remove ' if c['after'] is None else 'Update ' if c['before'] else 'Add ') + c['path']
+                        + ('\nSHA-256: ' + c['after'] if c['after'] else '') for c in plan['changes'])
+    slots = ' · '.join(f'{slot.capitalize()}: {spec["addon"]}' for slot, spec in (params.get('setup') or {}).items() if spec)
+    return _review('nr-addons', 'Remove NR add-ons' if remove else 'Install NR add-ons',
+                   [_item(plan['name'], 'Remove the NR add-ons; keep everything else.' if remove else slots,
+                          'Remove' if remove else 'Install', plan['game'], changes)],
+                   action='Remove' if remove else 'Install', payload=plan,
+                   summary='Existing game files and your ReShade settings are kept; only recorded keys are restored.',
+                   note=' '.join(plan.get('notes', [])))
+
+
+def _run_nr(plan):
+    return nr_install.apply(_config(), plan)
+
+
+def nr_combo_save(params):
+    name = str(params.get('name') or '').strip()
+    t.need(0 < len(name) <= 60, 'Name the combo (up to 60 characters).')
+    combo = {slot: params['combo'][slot] for slot in nr_addons.SLOTS if params['combo'].get(slot)}
+    t.need(combo.get('environment'), 'A combo needs an Environment add-on.')
+    # Validate the add-ons, builds, models and values without a particular game.
+    nr_addons.plan({'native_dlss': True, 'arch': 'x64'}, combo)
+    key = 'user-' + t.sha(name.casefold().encode())[:12]
+    combos = _nr_saved()
+    t.need(key in combos or len(combos) < 100, 'Up to 100 saved combos.')
+    combos[key] = dict(combo, name=name)
+    _nr_store(combos)
+    return {'id': key, 'combos': _nr_combos()}
+
+
+def nr_combo_delete(params):
+    combos = _nr_saved()
+    t.need(params.get('id') in combos, 'Built-in combos cannot be deleted.')
+    combos.pop(params['id'])
+    _nr_store(combos)
+    return {'combos': _nr_combos()}
+
+
 def overview_inspect(params):
     import overview_summary
     import engine_bridge
@@ -1068,7 +1166,7 @@ def update_apply(params):
 
 
 RUNNERS = {"art-sync": _run_art_sync, "dlss-restore": _run_dlss_restore, "report": _run_report, "service": _run_service,
-           'renodx-hdr': _run_hdr,
+           'renodx-hdr': _run_hdr, 'nr-addons': _run_nr,
            "extra": _run_extra, "extra-restore": _run_extra_restore, "update": _run_update, 'global-controls': _run_global_controls, 'overlay-ui': _run_global_controls, 'overlay-packages': _run_global_controls,
            'storage-cleanup': _run_storage}
 
@@ -1087,6 +1185,8 @@ METHODS = {
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "overview_inspect": overview_inspect, "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
     'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush,
+    'nr_catalog': nr_catalog, 'nr_check': nr_check, 'nr_status': nr_status, 'nr_review': nr_review,
+    'nr_combo_save': nr_combo_save, 'nr_combo_delete': nr_combo_delete,
     "packages": packages, "package_inspect": package_inspect, "package_use": package_use,
     "update_check": update_check, "update_stage": update_stage, "update_apply": update_apply,
     "storage_inventory": storage_inventory, "storage_review": storage_review,

@@ -692,7 +692,8 @@ win_features.live_status = METHODS['companion_status']
 
 
 _download_gate = threading.RLock()
-_DOWNLOAD_METHODS = {'prefetch_install', 'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'update_stage', 'update_apply', 'storage_review', 'feeder_storage'}
+_DOWNLOAD_METHODS = {'prefetch_install', 'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'update_stage', 'update_apply', 'storage_review', 'feeder_storage',
+                     'nr_review'}
 # Reviews and writes take turns (writer_gate) instead of racing the background
 # overlay update or each other. Reads, scans and live in-game tuning stay free;
 # overlay_refresh_retry holds the gate itself.

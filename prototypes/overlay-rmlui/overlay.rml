@@ -322,6 +322,7 @@
           <div class="segments pass-tabs">
             <button id="pass-2" class="selected"><span class="button-label">Pass 2</span></button>
             <button id="pass-3"><span class="button-label">Pass 3</span></button>
+            <button id="pass-4"><span class="button-label">Pass 4</span></button>
           </div>
           <div class="inherit-row">
             <label>Use main settings</label>

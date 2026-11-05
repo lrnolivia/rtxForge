@@ -29,6 +29,14 @@ public sealed partial class MainWindow
 
     void ShowOverlayRefresh(System.Text.Json.Nodes.JsonObject result)
     {
+        // The background update is visible while it runs; changes started now wait for it.
+        if (result["status"]?.ToString() == "running")
+        {
+            overlayRefreshNotice = null;
+            const string running = "Updating game overlays in the background. Changes you start now will wait for it to finish.";
+            AddLog(running); ShowToast(running);
+            return;
+        }
         var updated = result["updated"]?.GetValue<int>() ?? 0;
         var blocked = (result["blocked"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;
         var current = (result["skipped"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;
@@ -68,7 +76,14 @@ public sealed partial class MainWindow
             foreach (var game in blocked) text += "\n\nNeeds repair · " + game?["title"] + "\n" + game?["detail"];
         var dialog = NewDialog(); dialog.Title = "Overlay update"; dialog.CloseButtonText = "Done";
         dialog.Content = new ScrollViewer { MaxHeight = 480, Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, MaxWidth = 640 } };
-        await dialog.ShowAsync();
+        // Pending games are retried only when asked, after closing the game.
+        if (result?["status"]?.ToString() == "pending" && Service is EngineForgeService) dialog.PrimaryButtonText = "Try again";
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary && Service is EngineForgeService retry)
+        {
+            ShowToast("Updating overlays…");
+            try { await retry.RetryOverlayRefreshAsync(); }
+            catch (Exception failure) { ShowToast("Overlay update needs attention: " + failure.Message); }
+        }
     }
     int mediaGeneration;
 

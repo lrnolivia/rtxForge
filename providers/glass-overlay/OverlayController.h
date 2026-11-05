@@ -59,7 +59,8 @@ struct Controller : Rml::EventListener
     std::function<void()> closePreview;
     ForgeWorkbench::Values values{{"intensity",1},{"style",1},{"multiplier",-1},{"dynamic_mfg",0},{"passes",3},{"preset",0},
         {"detail",1},{"colour",1},{"tone",1},{"pass2_strength",.65f},{"pass2_tone",.8f},{"pass2_structure",1},{"pass2_skin",.5f},{"pass2_inherit",0},{"pass2_style",0},
-        {"pass3_strength",1},{"pass3_tone",1},{"pass3_structure",1},{"pass3_skin",-1},{"pass3_inherit",1},{"pass3_style",0},{"enabled",1},{"mfg_enabled",1}};
+        {"pass3_strength",1},{"pass3_tone",1},{"pass3_structure",1},{"pass3_skin",-1},{"pass3_inherit",1},{"pass3_style",0},
+        {"pass4_strength",1},{"pass4_tone",1},{"pass4_structure",1},{"pass4_skin",-1},{"pass4_inherit",1},{"pass4_style",0},{"enabled",1},{"mfg_enabled",1}};
     ForgeWorkbench::Values defaults=values;
     ForgeWorkbench::Edits edits;
     std::map<std::string,ForgeWorkbench::Values> presets;
@@ -661,15 +662,15 @@ struct Controller : Rml::EventListener
         RenderResolutionLabel();
         const int passCount=int(values.at("passes"));
         Element("pass-count")->SetInnerRML(std::to_string(passCount)+(passCount==1?" pass":" passes"));
-        Disabled("pass-minus",passCount<=1);Disabled("pass-plus",passCount>=passesMax);if(passCount<3&&pass==3)pass=2;
+        Disabled("pass-minus",passCount<=1);Disabled("pass-plus",passCount>=passesMax);if(pass>passCount)pass=2;
         const auto prefix="pass"+std::to_string(pass)+"_";
         for(const auto* key : {"strength","tone","structure","skin"})range((std::string("pass-")+key).c_str(),prefix+key);
         Element("inherit")->SetClass("on",values[prefix+"inherit"]!=0);Element("pass-fields")->SetProperty("opacity",values[prefix+"inherit"] ? ".35":"1");
         for(const auto* key : {"strength","tone","structure","skin"})dynamic_cast<Rml::ElementFormControl*>(Element((std::string("pass-")+key).c_str()))->SetDisabled(values[prefix+"inherit"]!=0);
         for(const auto* id : {"pass-style-default","pass-style-natural","pass-style-cinematic"})Disabled(id,values[prefix+"inherit"]!=0);
         Select("pass-style",values[prefix+"style"]==0 ? "pass-style-default":values[prefix+"style"]==1 ? "pass-style-natural":"pass-style-cinematic");
-        Element("pass-2")->SetClass("selected",pass==2);Element("pass-3")->SetClass("selected",pass==3);
-        Disabled("pass-3",values["passes"]<3);Disabled("open-passes",values["passes"]<2);
+        Element("pass-2")->SetClass("selected",pass==2);Element("pass-3")->SetClass("selected",pass==3);Element("pass-4")->SetClass("selected",pass==4);
+        Disabled("pass-3",values["passes"]<3);Disabled("pass-4",values["passes"]<4);Disabled("open-passes",values["passes"]<2);
         Element("nr-toggle")->SetClass("on",values["enabled"]!=0||nrPreviewActive);Visible("nr-body",values["enabled"]!=0||nrPreviewActive);
         Element("mfg-toggle")->SetClass("on",values["mfg_enabled"]!=0);Visible("mfg-body",values["mfg_enabled"]!=0);
         for(const auto& [id,on]:std::map<std::string,bool>{{"extra-neural",values["enabled"]!=0},{"extra-frame",values["mfg_enabled"]!=0}}){if(on)Element(id.c_str())->RemoveProperty("display");else Element(id.c_str())->SetProperty("display","none");}
@@ -896,7 +897,7 @@ struct Controller : Rml::EventListener
             else if(id=="open-session")Open("overview");
             else if(id=="open-processing")Open("processing");else if(id=="open-frame-options")Open("frame");
             else if(id=="inspector-close") {Visible("inspector",false);Visible("overview",true);if(layout=="centered")Page(inspectorPanel=="look"||inspectorPanel=="passes"?"nav-neural":"nav-overview");Element("inspector")->SetClass("opening",false);}
-            else if(id=="pass-2" || id=="pass-3")pass=id=="pass-2" ? 2:3;
+            else if(id=="pass-2" || id=="pass-3" || id=="pass-4")pass=id.back()-'0';
             else if(id=="inherit")Put("pass"+std::to_string(pass)+"_inherit",values["pass"+std::to_string(pass)+"_inherit"] ? 0.f:1.f);
             else if(id=="nr-toggle") {Put("enabled",values["enabled"] ? 0.f:1.f);Notify(values["enabled"]?(preview?"Neural rendering on · Preview":"Neural rendering on"):(preview?"Neural rendering off · Preview":"Neural rendering off"),"cpu");}
             else if(id=="mfg-toggle")Put("mfg_enabled",values["mfg_enabled"] ? 0.f:1.f);

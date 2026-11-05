@@ -16,7 +16,8 @@ _workers_lock=threading.Lock()
 
 
 def start(root,state,prepare,execute,stop=None,report=None):
-    """One retry worker per installed bundle/state, independent of panel preferences."""
+    """One attempt per installed bundle/state at app start, independent of panel
+    preferences. Pending games wait for the person to retry them."""
     key=(str(Path(root).resolve()),str(Path(state).resolve()))
     # Source checkouts and development bundles never mutate games at startup.
     if not (Path(root)/'providers/glass-overlay/rollout.json').is_file():return None
@@ -25,14 +26,12 @@ def start(root,state,prepare,execute,stop=None,report=None):
         if existing and existing.is_alive():return existing
         stop=stop or threading.Event()
         def work():
-            while not stop.is_set():
-                try:
-                    result=run(root,state,prepare,execute)
-                    if report:report(result)
-                    if result.get('status') in ('not-required','current','complete','newer-revision-kept'):return
-                except Exception as error:
-                    if report:report({'status':'pending','error':str(error)})
-                stop.wait(30)
+            if stop.is_set():return
+            try:
+                result=run(root,state,prepare,execute)
+                if report:report(result)
+            except Exception as error:
+                if report:report({'status':'pending','error':str(error)})
         worker=threading.Thread(target=work,name='overlay-refresh',daemon=True)
         _workers[key]=worker
         worker.start()
@@ -78,8 +77,11 @@ def run(root,state,prepare,execute):
             return {'status':'newer-revision-kept'}
         if previous.get('bundle')==required['bundle'] and previous.get('status')=='complete':
             return dict(previous, status='current')
-        review=prepare()
-        result=execute(review) if review.get('plans') else {}
+        import writer_gate
+        # Reviews and writes by hand wait for this instead of racing it.
+        with writer_gate.hold('the overlay update'):
+            review=prepare()
+            result=execute(review) if review.get('plans') else {}
         # Games left unchanged because a file was in use stay pending for retry.
         failed=(result or {}).get('failed') or []
         blocked=(review.get('blocked') or [])+failed

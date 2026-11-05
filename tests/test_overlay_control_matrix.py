@@ -22,11 +22,26 @@ def source(path):
 class FeederPassCeiling(unittest.TestCase):
     def test_bindings_match_the_helper_range(self):
         build = source('windows/build/Build-FeederPanel.ps1')
-        found = re.search(r"passes = @\{ ini = 'NRPasses'; max = (\d+); values = @\(([\d, ]+)\)", build)
+        found = re.search(r"passes = @\{ ini = 'NRPasses'; max = (\d+) \}", build)
         self.assertIsNotNone(found)
-        low, high = feeder_provider.TUNING['passes'][1:]
-        self.assertEqual(int(found.group(1)), high)
-        self.assertEqual([int(v) for v in found.group(2).split(',')], list(range(low, high + 1)))
+        self.assertEqual(int(found.group(1)), feeder_provider.TUNING['passes'][2])
+
+    def test_passes_is_one_stepper_everywhere(self):
+        import json
+        controls = json.loads(source('providers/skynizz-bridge/controls.json'))['controls']
+        passes = next(c for c in controls if c['key'] == 'passes')
+        # A − count + stepper, not a fixed list of choices.
+        self.assertEqual(passes['kind'], 'stepper')
+        self.assertNotIn('values', passes)
+        self.assertIn('Kind::stepper', source('providers/skynizz-bridge/ForgePanel.h'))
+        self.assertIn('field.Kind == "stepper"', source('windows/RtxForge.Windows/Controls/PresetControlsView.cs'))
+
+    def test_feeder_tunes_passes_two_to_four(self):
+        build = source('windows/build/Build-FeederPanel.ps1')
+        self.assertIn('foreach ($pass in 2..4)', build)
+        self.assertIn("-replace '^pass3_', 'pass4_'", build)
+        self.assertIn('id="pass-4"', source('prototypes/overlay-rmlui/overlay.rml'))
+        self.assertIn('pass4_strength', source('windows/overlay-rmlui/GlassRuntime.cpp'))
 
     def test_glass_takes_its_ceiling_from_the_runtime(self):
         controller = source('providers/glass-overlay/OverlayController.h')
@@ -40,12 +55,15 @@ class FeederPassCeiling(unittest.TestCase):
         self.assertIn('__passes_max', panel)
         self.assertIn('__passes_max', runtime)
 
-    def test_optiscaler_keeps_three_passes(self):
+    def test_optiscaler_reaches_eight_passes(self):
         import json
         controls = json.loads(source('providers/skynizz-bridge/controls.json'))['controls']
         passes = next(c for c in controls if c['key'] == 'passes')
-        self.assertEqual(passes['max'], 3)
-        self.assertIn('int pass=2,passesMax=3;', source('providers/glass-overlay/OverlayController.h'))
+        self.assertEqual(passes['max'], 8)
+        for patch in ('ada-mfg.patch', 'panel-candidate.patch'):
+            self.assertIn('request.passes <= 8', source('providers/skynizz-bridge/' + patch))
+            self.assertNotIn('request.passes <= 3', source('providers/skynizz-bridge/' + patch))
+        self.assertIn('1 <= value <= 8 if key == \'passes\'', source('windows/engine-host/companion_controls.py'))
 
 
 class FeederLiveToggle(unittest.TestCase):
@@ -105,7 +123,11 @@ class RenoDXLiveInterface(unittest.TestCase):
     def test_export_bounds_match_the_helper(self):
         live = source('providers/renodx-dlss5/rtxforge_live.hpp')
         bounds = {key: (float(lo), hi) for key, lo, hi in
-                  re.findall(r'\{"(NR\w+)", ([\d.]+)f, ([^,]+), (?:true|false)\}', live)}
+                  re.findall(r'\{"(NR\w+)", (-?[\d.]+)f, ([^,]+), (?:true|false)\}', live)}
+        # Passes 2-4 come from one macro row per key.
+        for name, lo, hi in re.findall(r'\{"NRPass" #n "(\w+)", (-?[\d.]+)f, ([^,]+), (?:true|false)\}', live):
+            for n in (2, 3, 4):
+                bounds[f'NRPass{n}{name}'] = (float(lo), hi)
         for key, (ini, low, high) in feeder_provider.TUNING.items():
             self.assertIn(ini, bounds, key)
             self.assertEqual(bounds[ini][0], float(low), key)
@@ -134,11 +156,13 @@ class RenoDXLiveInterface(unittest.TestCase):
         renodx = next(s for s in runtime['sources'] if 'renodx-dlss5.addon64' in s['members'].values())
         self.assertIn('/releases/download/' + spec['release_tag'] + '/', renodx['url'])
         self.assertEqual(lock['version'], runtime['recipe'])
+        # rtxforge-2: per-pass tuning for passes 2-4 through the live interface.
         self.assertEqual(lock['assets']['renodx-dlss5.addon64']['sha256'],
-                         '1e4823637965d3e01ff4840a222a5853fec191b2fa0c9001e2076b5bcf25fdd5')
-        # Games installed with stock rc10 keep passing checks until repaired.
+                         '7fdc1872b5a8553a746b08538fd74990b374a7bcdd5c2c342786a093de6cba74')
+        # Games installed with stock rc10 or rtxforge-1 keep passing checks until updated.
         previous = {item['sha256'] for item in lock['previous_assets']['renodx-dlss5.addon64']}
         self.assertIn('dcd93881e976ad033d83c2bb01f4bc3e4ddc59c15fe0dd4ca165bc5fc7d1ac68', previous)
+        self.assertIn('1e4823637965d3e01ff4840a222a5853fec191b2fa0c9001e2076b5bcf25fdd5', previous)
 
 
 class WelcomeToast(unittest.TestCase):

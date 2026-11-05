@@ -413,6 +413,12 @@ class DesktopService:
                 'rows':[{'name':Path(r['path']).name,'detail':r['path']} for r in items]}
 
     def execute(self,review):
+        # Waits for the background overlay update (or another change) rather than racing it.
+        import writer_gate
+        with writer_gate.hold('your change'):
+            return self._execute(review)
+
+    def _execute(self,review):
         # The desktop must pass the exact in-memory review shown to the user.
         kind=review['kind']
         if kind=='vulkan-native':

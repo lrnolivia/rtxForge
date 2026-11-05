@@ -48,6 +48,14 @@ TUNING = {'intensity': ('NRIntensity', 0.0, 2.0), 'passes': ('NRPasses', 1, 4),
           # RenoDX clamps NRResolutionScale to 0.33-1.0 when it loads.
           'work_scale': ('NRResolutionScale', 0.33, 1.0), 'preset': ('NRPreset', 0, 3),
           'style': ('NRStyle', 0, 2), 'structure': ('NRLocalStructure', 0.0, 2.0)}
+# Per-pass tuning that presets carry (passes 2-3; pass 4 is set in game).
+for _pass in (2, 3):
+    TUNING |= {f'pass{_pass}_inherit': (f'NRPass{_pass}FollowPass1', 0, 1),
+               f'pass{_pass}_style': (f'NRPass{_pass}Style', 0, 2),
+               f'pass{_pass}_strength': (f'NRPass{_pass}Intensity', 0.0, 2.0),
+               f'pass{_pass}_structure': (f'NRPass{_pass}Structure', 0.0, 2.0),
+               f'pass{_pass}_tone': (f'NRPass{_pass}LocalTone', 0.0, 2.0),
+               f'pass{_pass}_skin': (f'NRPass{_pass}Skin', -1.0, 1.0)}
 _hashes = {}
 # Reviews share work, on the reviewing thread only: each file stamp (size, mtime, ctime) is hashed
 # once across reviews, so games checked one at a time cost no more than one batch, and one process

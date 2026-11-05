@@ -35,7 +35,22 @@ inline constexpr Bound kBounds[] = {
     {"NRPasses", 1.f, static_cast<float>(kMaxNrPasses), true},
     {"NRResolutionScale", 0.33f, 1.f, false},
     {"NRLocalStructure", 0.f, 2.f, false},
+// Passes 2-4: the per-pass keys and ranges LoadConfiguration enforces.
+#define RTXFORGE_LIVE_PASS(n)                     \
+    {"NRPass" #n "FollowPass1", 0.f, 1.f, true},  \
+    {"NRPass" #n "Intensity", 0.f, 2.f, false},   \
+    {"NRPass" #n "Transfer", 0.f, 1.f, false},    \
+    {"NRPass" #n "Color", 0.f, 1.f, false},       \
+    {"NRPass" #n "Style", 0.f, 2.f, true},        \
+    {"NRPass" #n "LocalTone", 0.f, 2.f, false},   \
+    {"NRPass" #n "Structure", 0.f, 2.f, false},   \
+    {"NRPass" #n "Skin", -1.f, 1.f, false},
+    RTXFORGE_LIVE_PASS(2)
+    RTXFORGE_LIVE_PASS(3)
+    RTXFORGE_LIVE_PASS(4)
+#undef RTXFORGE_LIVE_PASS
 };
+static_assert(kMaxNrPasses == 4, "rtxForge's per-pass bounds cover passes 2-4");
 
 inline const Bound* FindBound(const char* key) {
   for (const Bound& bound : kBounds) {

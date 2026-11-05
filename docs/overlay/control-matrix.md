@@ -98,7 +98,7 @@ re-verified control by control. Treat them as S-only.
 
 ## Feeder live tuning
 
-Feeder installs now use RenoDX DLSS5 8.5.0-rc10 built by rtxForge with a live settings interface (`providers/renodx-dlss5`, release `renodx-dlss5-8.5.0-rc10-rtxforge-1`). See `feeder-live-tuning.md`. Games still on stock rc10 keep the saved-until-restart behaviour until repaired.
+Feeder installs now use RenoDX DLSS5 8.5.0-rc10 built by rtxForge with a live settings interface (`providers/renodx-dlss5`, release `renodx-dlss5-8.5.0-rc10-rtxforge-2`, which adds per-pass tuning for passes 2-4). See `feeder-live-tuning.md`. Games still on stock rc10 keep the saved-until-restart behaviour until repaired.
 
 ## Earlier blocker (resolved by the rtxForge build)
 

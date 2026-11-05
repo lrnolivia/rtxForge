@@ -655,6 +655,28 @@ def overlay_status(_params):
 
 METHODS['overlay_status'] = overlay_status
 
+
+def refresh_overlays(_params=None):
+    """The required overlay update: once at app start, and again when the
+    person retries games it left pending (running, files in use)."""
+    import overlay_refresh
+    import overlay_packages
+    import global_controls
+    try:
+        result = overlay_refresh.run(ROOT, STATE,
+            lambda: overlay_packages.prepare(engine_bridge.module(service.config), STATE),
+            global_controls.execute)
+    except Exception as error:
+        # Existing game files are kept on validation failures; the next attempt
+        # replans from fresh ownership and process checks.
+        result = {'status': 'pending', 'error': str(error)}
+    if result.get('status') in ('complete', 'pending', 'current'):
+        send({'event': 'overlay-refresh', 'result': result})
+    return result
+
+
+METHODS['overlay_refresh_retry'] = refresh_overlays
+
 import companion_controls  # noqa: E402
 METHODS.update(companion_controls.methods(STATE))
 # A functional test samples the same live snapshot the in-game panel shows.
@@ -663,6 +685,22 @@ win_features.live_status = METHODS['companion_status']
 
 _download_gate = threading.RLock()
 _DOWNLOAD_METHODS = {'prefetch_install', 'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'update_stage', 'update_apply', 'storage_review', 'feeder_storage'}
+# Reviews and writes take turns (writer_gate) instead of racing the background
+# overlay update or each other. Reads, scans and live in-game tuning stay free;
+# overlay_refresh_retry holds the gate itself.
+_WRITER_METHODS = {'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'update_stage', 'update_apply',
+                   'feeder_storage', 'save_defaults', 'package_use', 'hdr_settings', 'hdr_settings_flush',
+                   'companion_reset', 'companion_forget', 'test_start', 'launch_offline'}
+
+
+def _writer(method):
+    return method in _WRITER_METHODS or method.endswith('_review')
+
+
+import writer_gate  # noqa: E402
+# The app shows the background overlay update while it runs; its result follows.
+writer_gate.on_change(lambda label: label == 'the overlay update'
+                      and send({'event': 'overlay-refresh', 'result': {'status': 'running'}}))
 
 
 def handle(request: dict) -> None:
@@ -684,7 +722,9 @@ def handle(request: dict) -> None:
         # A cleanup cannot race a payload preparation in this host. Scans,
         # hardware checks, live controls and cancellation remain independent.
         gate = _download_gate if request['method'] in _DOWNLOAD_METHODS else contextlib.nullcontext()
-        with gate, ui.report_to(report):
+        writing = (writer_gate.hold('your change', lambda text: report({'kind': 'progress', 'label': text}))
+                   if _writer(request['method']) else contextlib.nullcontext())
+        with writing, gate, ui.report_to(report):
             result = method(request.get("params") or {})
         send({"id": rid, "result": result})
     except BaseException as exc:  # every failure is reported, never left hanging
@@ -699,24 +739,7 @@ def handle(request: dict) -> None:
 def main() -> int:
     send({"event": "ready", **hello({})})
     refresh_stop=threading.Event()
-    def refresh_overlays():
-        import overlay_refresh
-        import overlay_packages
-        import global_controls
-        while not refresh_stop.is_set():
-            try:
-                result=overlay_refresh.run(ROOT,STATE,
-                    lambda:overlay_packages.prepare(engine_bridge.module(service.config),STATE),
-                    global_controls.execute)
-                if result.get('status') in ('complete','pending','current'):
-                    send({'event':'overlay-refresh','result':result})
-                if result.get('status') in ('not-required','current','complete','newer-revision-kept'):
-                    return
-            except Exception as error:
-                # Retain existing game files on validation failures. A later
-                # attempt replans from fresh ownership and process checks.
-                send({'event':'overlay-refresh','error':str(error)})
-            refresh_stop.wait(30)
+    # One attempt per app start; pending games wait for a manual retry.
     refresh_worker=threading.Thread(target=refresh_overlays,name='overlay-refresh')
     if os.environ.get('RTXFORGE_READ_ONLY') != '1':
         refresh_worker.start()

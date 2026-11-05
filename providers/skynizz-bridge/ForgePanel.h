@@ -22,7 +22,7 @@
 // screen copy, blur pass, process polling, network or per-frame disk access.
 namespace ForgePanel
 {
-enum class Kind { toggle, choice, slider, number };
+enum class Kind { toggle, choice, slider, number, stepper };
 struct Choice { float value; const char* label; };
 struct Control
 {
@@ -439,6 +439,40 @@ inline void SliderEnd(float fraction, float scale)
     draw->AddRectFilled(ImVec2(min.x,y-line), ImVec2(at,y+line), Colour(control), line);
     draw->AddRectFilled(ImVec2(at-thumb,y-half), ImVec2(at+thumb,y+half), Colour(hot ? Mix(control, ImVec4(1,1,1,1), .7f) : control), thumb);
 }
+// − count + in one rounded well, matching the Glass pass stepper.
+inline bool Stepper(float& value, float low, float high, const char* unit)
+{
+    const float scale = ImGui::GetFontSize()/14.f;
+    const auto position = ImGui::GetCursorScreenPos();
+    const float width = ImGui::GetContentRegionAvail().x, height = ImGui::GetFrameHeight(), side = height*1.3f;
+    auto* draw = ImGui::GetWindowDrawList();
+    draw->AddRectFilled(position, ImVec2(position.x+width,position.y+height), Colour(Tone(.20f,.88f)), 8.f*scale);
+    draw->AddRect(position, ImVec2(position.x+width,position.y+height), Colour(Tone(1,0,.16f)), 8.f*scale, 0, 1.f*scale);
+    bool changed = false;
+    const auto button = [&](const char* id, float delta) {
+        const bool blocked = delta < 0 ? value <= low : value >= high;
+        const auto at = ImGui::GetCursorScreenPos();
+        ImGui::BeginDisabled(blocked);
+        if(ImGui::InvisibleButton(id, ImVec2(side,height), ImGuiButtonFlags_EnableNav)) { value = std::clamp(value+delta, low, high); changed = true; }
+        if(ImGui::IsItemHovered()) draw->AddRectFilled(at, ImVec2(at.x+side,at.y+height), Colour(Tone(1,0,.09f)), 8.f*scale);
+        if(ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort|ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip(delta < 0 ? "Fewer %s" : "More %s", unit);
+        ImGui::EndDisabled();
+        const auto ink = Colour(Tone(.77f,.26f,blocked ? .35f : 1.f));
+        const float x = at.x+side*.5f, y = at.y+height*.5f, arm = 4.5f*scale;
+        draw->AddLine(ImVec2(x-arm,y), ImVec2(x+arm,y), ink, 1.5f*scale);
+        if(delta > 0) draw->AddLine(ImVec2(x,y-arm), ImVec2(x,y+arm), ink, 1.5f*scale);
+    };
+    button("##fewer", -1.f);
+    ImGui::SameLine(0,0);
+    char text[32]; std::snprintf(text, sizeof(text), "%d", int(value));
+    const auto middle = ImGui::GetCursorScreenPos(); const float span = std::max(width-side*2, 1.f);
+    ImGui::Dummy(ImVec2(span,height));
+    const auto size = ImGui::CalcTextSize(text);
+    draw->AddText(ImVec2(middle.x+(span-size.x)*.5f, middle.y+(height-size.y)*.5f), Colour(Tone(.90f,lightInk)), text);
+    ImGui::SameLine(0,0);
+    button("##more", 1.f);
+    return changed;
+}
 // The rtxForge mark, generated from gui/icons/rtxforge-mark.svg.
 inline void Brand(float scale)
 {
@@ -685,7 +719,9 @@ inline bool ChoiceList(const char* label, int* current, const char* const items[
         // Labels sit close to their control, as in the rtxForge sidebar.
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(ImGui::GetStyle().ItemSpacing.x,3.f*ImGui::GetFontSize()/14.f));
         labelRow(); ImGui::PopStyleVar(); ImGui::SetNextItemWidth(-1);
-        if(field.kind == Kind::choice)
+        if(field.kind == Kind::stepper)
+            changed = Stepper(value, field.low, field.high, std::strcmp(field.key,"passes") == 0 ? "passes" : "steps");
+        else if(field.kind == Kind::choice)
         {
             const char* preview = "Automatic";
             for(size_t i=0; i<field.count; ++i) if(field.choices[i].value == value) preview = field.choices[i].label;
@@ -1173,16 +1209,28 @@ inline void RuntimeHistory(float scale)
     graph("Displayed FPS",[](const ForgeWorkbench::Sample& sample){ return sample.displayed; });
     ImGui::TextWrapped("Measured while the panel is open. Gaps mean no measurement was available.");
 }
+// The highest pass with its own pass<n>_ controls; later passes use shared tuning.
+inline int TunedPasses()
+{
+    int last=1;
+    for(const auto& field : controls) { int pass=0; if(std::sscanf(field.key,"pass%d_",&pass)==1) last=std::max(last,pass); }
+    return last;
+}
 inline void PassControls(Config& cfg)
 {
     const auto values=Values(cfg);
-    if(!values.contains("pass2_inherit") || !values.contains("passes") || values.at("passes") < 2) return;
+    const int tuned=TunedPasses();
+    if(tuned < 2 || !values.contains("passes") || values.at("passes") < 2) return;
     if(!ImGui::CollapsingHeader("Pass tuning")) return;
     static int pass=2;
-    const int count=int(values.at("passes")); pass=std::min(pass,count);
-    const auto gap=ImGui::GetStyle().ItemSpacing.x, width=(ImGui::GetContentRegionAvail().x-gap)/2;
-    if(Segment("Pass 2",pass==2,width)) pass=2;
-    ImGui::SameLine(); if(Segment("Pass 3",pass==3,width,count>=3)) pass=3;
+    const int count=int(values.at("passes")); pass=std::clamp(pass,2,std::min(count,tuned));
+    const auto gap=ImGui::GetStyle().ItemSpacing.x, width=(ImGui::GetContentRegionAvail().x-gap*(tuned-2))/(tuned-1);
+    for(int n=2; n<=tuned; ++n) {
+        if(n > 2) ImGui::SameLine();
+        const auto label="Pass "+std::to_string(n);
+        if(Segment(label.c_str(),pass==n,width,count>=n)) pass=n;
+    }
+    if(count > tuned) ImGui::TextWrapped("Passes after pass %d use shared tuning.", tuned);
     const auto prefix="pass"+std::to_string(pass)+"_";
     if(ImGui::SmallButton("Reset this pass")) {
         ForgeWorkbench::Values defaults;
@@ -1293,7 +1341,7 @@ inline bool Draw(bool& visible, float scale)
         bool open = true;
         for(const auto& field : controls)
         {
-            if(std::strncmp(field.key,"pass2_",6)==0 || std::strncmp(field.key,"pass3_",6)==0) continue;
+            if(int pass=0; std::sscanf(field.key,"pass%d_",&pass)==1) continue;
             if(std::strcmp(group,field.group) != 0)
             {
                 group = field.group; ImGui::Spacing();

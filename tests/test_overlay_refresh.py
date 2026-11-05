@@ -99,16 +99,18 @@ class RequiredRefreshTest(unittest.TestCase):
         self.assertEqual(refresh.run(self.root,self.state,prepare,execute)['status'],'not-required')
         prepare.assert_not_called();execute.assert_not_called()
 
-    def test_start_shares_one_worker_and_stops_pending_retry(self):
-        entered=threading.Event();release=threading.Event();stop=threading.Event()
+    def test_start_shares_one_worker_and_leaves_pending_for_manual_retry(self):
+        entered=threading.Event();release=threading.Event();stop=threading.Event();reports=[]
         def pending(*args):
             entered.set();release.wait(2);return {'status':'pending'}
         with patch.object(refresh,'run',side_effect=pending) as run:
-            worker=refresh.start(self.root,self.state,Mock(),Mock(),stop)
+            worker=refresh.start(self.root,self.state,Mock(),Mock(),stop,reports.append)
             self.assertTrue(entered.wait(2))
             self.assertIs(refresh.start(self.root,self.state,Mock(),Mock(),stop),worker)
-            stop.set();release.set();worker.join(2)
+            release.set();worker.join(2)
+            # One attempt per app start: a pending game is never retried on a timer.
             self.assertFalse(worker.is_alive());run.assert_called_once()
+            self.assertEqual(reports,[{'status':'pending'}])
 
     def test_start_in_source_checkout_never_calls_planner(self):
         (self.folder/'rollout.json').unlink();prepare=Mock()

@@ -135,7 +135,7 @@ index 7ea1c4b3..7b4495cf 100644
 +            const bool valid = passValid && boolean(request.sharpen) && boolean(request.sharpOverride) && boolean(request.motionSharpen) &&
                  request.sharpenShader >= 0 && request.sharpenShader <= 2 &&
                  bounded(request.sharpness, 0.f, 1.f) && bounded(request.motionSharpness, 0.f, 1.f) &&
-                 bounded(request.workScale, .25f, 2.f) && request.passes >= 1 && request.passes <= 3 &&
+                 bounded(request.workScale, .25f, 2.f) && request.passes >= 1 && request.passes <= 8 &&
 @@ -189,13 +221,33 @@ inline void Tick()
                  bounded(request.intensity, 0.f, 2.f) && bounded(request.structure, 0.f, 2.f) &&
                  bounded(request.tone, 0.f, 2.f) && request.interval >= 1 && request.interval <= 16 &&

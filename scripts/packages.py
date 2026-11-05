@@ -1,5 +1,6 @@
 """Pinned v3 runtime sourcing. Archives are never executed and payloads remain on Games."""
 import pathlib,json,hashlib,urllib.request,urllib.parse,subprocess,shutil,zipfile,os,tempfile
+import file_stamps
 import transactions as t
 import ui
 import pipeline
@@ -8,8 +9,10 @@ P=pathlib.Path
 def download(url,path,expected=None,blob=None,size=None):
     path=P(path)
     t.safe(path)
-    def validate(candidate):
-        if expected:t.need(t.digest(candidate)==expected,'Downloaded SHA256 mismatch: '+str(candidate))
+    def validate(candidate,cached=False):
+        # A cached archive was hashed when it was downloaded (the link below keeps that
+        # file's stamp); later uses read it again only if it changed since.
+        if expected:t.need((file_stamps.digest(candidate) if cached else t.digest(candidate))==expected,'Downloaded SHA256 mismatch: '+str(candidate))
         if size is not None:t.need(candidate.stat().st_size==size,'Downloaded size mismatch')
         if blob:
             h=hashlib.sha1(b'blob '+str(candidate.stat().st_size).encode()+b'\0')
@@ -17,7 +20,7 @@ def download(url,path,expected=None,blob=None,size=None):
                 for chunk in iter(lambda:f.read(1024*1024),b''):h.update(chunk)
             t.need(h.hexdigest()==blob,'Downloaded Git blob mismatch')
     if path.exists():
-        validate(path)
+        validate(path,cached=True)
         return path
     path.parent.mkdir(parents=True,exist_ok=True)
     # Each attempt owns its temporary file. Failed/old .part files cannot block

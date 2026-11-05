@@ -23,7 +23,8 @@ Schema 2 (shared with windows/engine-host):
 Schema 1 records (no shared state) are still recognised.
 """
 from pathlib import Path, PurePosixPath
-import datetime, hashlib, json, os, shutil, tempfile, uuid
+import datetime, json, os, shutil, tempfile, uuid
+import file_stamps
 
 MARKER = '.rtxforge-install.json'
 SHARED = '.rtxforge'
@@ -39,11 +40,8 @@ TARGET_TOKEN = '{rtxforge-target}'
 
 
 def _sha256(path):
-    digest = hashlib.sha256()
-    with open(path, 'rb') as handle:
-        for block in iter(lambda: handle.read(1 << 20), b''):
-            digest.update(block)
-    return digest.hexdigest()
+    # Every library scan checks the other OS's files; read them again only when they change.
+    return file_stamps.digest(path)
 
 
 def managed_files(target, names):

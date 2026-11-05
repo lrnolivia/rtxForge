@@ -17,6 +17,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import feeder_provider as feeder
+import file_stamps
 import transactions as t
 
 
@@ -634,7 +635,7 @@ class ReviewSessionTest(unittest.TestCase):
                 return []
             running.snapshot = lambda: inventories.append(1) or (lambda root: [])
             e = SimpleNamespace(_running_processes_under_root=running)
-            with patch.object(t, 'digest', wraps=t.digest) as hashed, patch.object(feeder, '_review_inventory', [0.0, None]):
+            with patch.object(file_stamps, '_hash', wraps=file_stamps._hash) as hashed, patch.object(feeder, '_review_inventory', [0.0, None]):
                 with feeder.review_session(e):
                     for _ in range(3):
                         feeder.digest(path)

@@ -253,7 +253,7 @@ def inspect(e, row, record, cached=True):
     for name, expected in record['installed_hashes'].items():
         if name not in config_names(recipe):
             t.need(f.digest(directory / name, cached) == expected, 'An installed Feeder file changed: ' + name)
-    nr = f.model(directory / model_name(recipe))
+    nr = f.model(directory / model_name(recipe), cached)
     return {'managed': True, 'nr_runtime': nr, **f.configured(runtime(directory, recipe), directory)}
 
 

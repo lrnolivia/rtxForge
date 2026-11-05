@@ -63,4 +63,7 @@ def scan(service, game_folders=(), library_folders=()):
             # installation identity continue to use the pinned copy's path.
             row['metadata_appid'] = data['appid']
             row['name'] = f"{data['name']} (Build {match[2]})"
+    # The next launch's first scan reuses the digests this one computed.
+    import file_stamps
+    file_stamps.save()
     return sorted(result, key=lambda row: (row['name'].casefold(), key(row['game'])))

@@ -73,6 +73,7 @@ NON_STEAM_RELATIVES = [Path('Non-Steam Games'), Path('Non Steam Games'), Path('N
 MOUNT_FALLBACKS = [Path('/run/media'), Path('/mnt'), Path('/var/mnt'), Path('/media')]
 ANTI_CHEAT_PATTERNS = ['easyanticheat*.exe', 'eanticheat*.exe', 'beservice*.exe', 'bedaisy*.sys', 'start_protected_game.exe', 'ace-*.exe']
 _ANTI_CHEAT_FILE_RE = re.compile('|'.join(fnmatch.translate(pattern) for pattern in ANTI_CHEAT_PATTERNS))
+_PREREQUISITE_RE = re.compile(r'(?i)(?:microsoftnetframework(?:[ ._-].*)?|vcredist|directx|_commonredist|redistributables?)')
 ANTI_CHEAT_DIR_NAMES = {'easyanticheat', 'battleye', 'eaanticheat', 'anticheatexpert'}
 UPSCALE_NAMES = {'nvngx_dlss.dll', 'nvngx_dlssg.dll', 'nvngx_dlssd.dll', 'libxess.dll', 'libxess_fg.dll', 'amd_fidelityfx_dx12.dll', 'ffx_fsr2_api_dx12_x64.dll', 'ffx_fsr3upscaler_x64.dll'}
 IGNORE_DIR_NAMES = {'.git', '.svn', '__pycache__', 'redist', 'redistributables', '_commonredist', 'crashpad', 'crashreportclient', 'digitalextras'}
@@ -349,22 +350,21 @@ def scan_files(root: Path) -> tuple[list[Path], list[Path], Optional[Path]]:
     exes: list[Path] = []
     anti: Optional[Path] = None
     prior_parent = None
-    directory_anti = False
+    directory_anti = prerequisite = False
     for parent, filename in _walk_entries(root):
         name = filename.lower()
+        if parent is not prior_parent:
+            # Folder facts are the same for every file in it: work them out once per folder.
+            prior_parent = parent
+            directory_anti = any(part.lower() in ANTI_CHEAT_DIR_NAMES for part in parent.parts)
+            # A prerequisite can outweigh a tiny game launcher (Far Cry 5's .NET
+            # installer is 67 MB; its actual EXE forwards into FC_m64.dll).
+            prerequisite = any(_PREREQUISITE_RE.fullmatch(part) for part in parent.relative_to(root).parts)
         if name in UPSCALE_NAMES or name.startswith('sl.dlss_g'):
             upscalers.append(parent / filename)
-        # A prerequisite can outweigh a tiny game launcher (Far Cry 5's .NET
-        # installer is 67 MB; its actual EXE forwards into FC_m64.dll).
-        relative_dirs = parent.relative_to(root).parts
-        prerequisite = any(re.fullmatch(r'(?i)(?:microsoftnetframework(?:[ ._-].*)?|vcredist|directx|_commonredist|redistributables?)', part)
-                           for part in relative_dirs)
         if len(name) > 4 and name.endswith('.exe') and not EXE_BAD_RE.search(name) and not prerequisite:
             exes.append(parent / filename)
         if anti is None:
-            if parent is not prior_parent:
-                prior_parent = parent
-                directory_anti = any(part.lower() in ANTI_CHEAT_DIR_NAMES for part in parent.parts)
             if _ANTI_CHEAT_FILE_RE.match(name) or directory_anti or name in ANTI_CHEAT_DIR_NAMES:
                 anti = parent / filename
     return (upscalers, exes, anti)
@@ -469,8 +469,11 @@ def discover_games(library: Path, nonsteam_roots: list[Path], include_unavailabl
         except (OSError, PermissionError):
             pass
     inspected: list[Game] = []
-    for g in games:
-        g = inspect_game(g)
+    # Each game's folder walk is independent and mostly waits on the disk.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(4, len(games) or 1), thread_name_prefix='inspect') as pool:
+        found = list(pool.map(inspect_game, games))
+    for g in found:
         # A Non-Steam folder with no game executable is a leftover, not a game; listing it
         # would only shadow the real install (a Steam game without one still shows as broken).
         if g.type == 'Non-Steam' and not g.exe:

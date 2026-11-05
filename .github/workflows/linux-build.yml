@@ -159,6 +159,7 @@ jobs:
           /usr/bin/python3 -m unittest discover -s tests -p test_release_backup.py
           /usr/bin/python3 -m unittest discover -s tests -p test_beta_release_workflows.py
           /usr/bin/python3 -m unittest discover -s tests -p test_cross_os_adapt.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_file_stamps.py
           /usr/bin/python3 -m unittest discover -s tests -p test_linux_skynizz_adoption.py
           /usr/bin/python3 -m unittest discover -s tests -p test_cross_distro.py
           /usr/bin/python3 -m unittest discover -s tests -p test_gpu_families.py

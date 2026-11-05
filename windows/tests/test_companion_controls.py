@@ -90,7 +90,7 @@ class ControlsTest(unittest.TestCase):
     def test_invalid_requests_and_nonfinite_snapshots_refuse(self):
         for values in [{'intensity': float('nan')}, {'tone': float('inf')}, {'multiplier': 1},
                        {'enabled': True}, {'preset': 4}, {'interval': 0}, {'unknown': 1},
-                       {'skin': -1.01}, {'work_scale': .24}, {'passes': 4}, {'auto_mask': 2}]:
+                       {'skin': -1.01}, {'work_scale': .24}, {'passes': 9}, {'auto_mask': 2}]:
             with self.subTest(values=values), self.assertRaises(t.Refusal): control.validate_changes(values)
         raw = snapshot()
         struct.pack_into('<f', raw, 68, float('nan'))

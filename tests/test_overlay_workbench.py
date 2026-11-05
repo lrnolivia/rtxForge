@@ -50,7 +50,7 @@ class NamedPresetTest(ControlsTest):
         self.save_named('Natural')
         for name in ('', ' padded ', 'line\nbreak', 'x' * 61):
             with self.subTest(name=name), self.assertRaises(t.Refusal): self.save_named(name)
-        for values in ({'unknown': 1}, {'intensity': float('nan')}, {'passes': 4}):
+        for values in ({'unknown': 1}, {'intensity': float('nan')}, {'passes': 9}):
             with self.subTest(values=values), self.assertRaises(t.Refusal): self.save_named('Invalid', values)
         self.save_named('NATURAL', {'intensity': .7})
         self.assertEqual(len(self.controls.preset_list({'row': self.row})['named_presets']), 1)

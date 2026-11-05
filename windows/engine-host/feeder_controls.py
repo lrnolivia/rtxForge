@@ -18,6 +18,10 @@ SECTION = 'RenoDX.DLSS5'
 # Panel defaults; resolution follows the Feeder install default.
 DEFAULTS = {'intensity': 1.0, 'passes': 1, 'work_scale': float(feeder.INSTALL_DEFAULTS['NRResolutionScale']),
             'preset': 0, 'style': 0, 'structure': 1.0}
+# Passes 2-3 follow pass 1 until tuned; RenoDX's own defaults.
+for _pass in (2, 3):
+    DEFAULTS |= {f'pass{_pass}_inherit': 1, f'pass{_pass}_style': 0, f'pass{_pass}_strength': 1.0,
+                 f'pass{_pass}_structure': 1.0, f'pass{_pass}_tone': 1.0, f'pass{_pass}_skin': -1.0}
 
 
 def record(installations, directory):

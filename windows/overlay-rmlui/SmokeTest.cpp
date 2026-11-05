@@ -42,6 +42,33 @@ static void TestAppearance(ForgeGlass::Draw draw,ForgeGlass::Release release,con
     GetPrivateProfileStringW(L"Appearance",L"TextFont",L"",value,64,ini.c_str());Need(std::wstring(value)==L"inter","Font update was lost");
     std::cout<<"helper_appearance_checks=passed unchanged_preset_revision=passed isolated_profile=passed\n";
 }
+static void TestAdvancedSession(ForgeGlass::Draw draw,ForgeGlass::Release release){
+    ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;
+    Need(SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,D3D11_CREATE_DEVICE_SINGLETHREADED,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context)),"Advanced fixture device failed");
+    D3D11_TEXTURE2D_DESC desc{};desc.Width=3840;desc.Height=2160;desc.MipLevels=desc.ArraySize=1;desc.Format=DXGI_FORMAT_R16G16B16A16_FLOAT;desc.SampleDesc.Count=1;desc.BindFlags=D3D11_BIND_RENDER_TARGET;
+    ComPtr<ID3D11Texture2D> target;ComPtr<ID3D11RenderTargetView> view;
+    Need(SUCCEEDED(device->CreateTexture2D(&desc,nullptr,&target))&&SUCCEEDED(device->CreateRenderTargetView(target.Get(),nullptr,&view)),"Advanced fixture target failed");
+    std::string settings;
+    ForgeGlass::Host host{sizeof(host),ForgeGlass::Abi};host.user=&settings;
+    host.read=[](void* state,ForgeGlass::Snapshot* snapshot){
+        static const ForgeGlass::Value values[]={{"enabled",1},{"intensity",1},{"style",1},{"passes",3},{"preset",0},{"__runtime_kind",2}};
+        *snapshot={"Mass Effect 1","#ff985c",values,uint32_t(std::size(values)),true,true,false,false,false,false,3.2,60,-1,-1,true,false,false};
+        snapshot->helperJson=static_cast<std::string*>(state)->c_str();return true;
+    };
+    ForgeGlass::Frame frame{};frame.size=sizeof(frame);frame.abi=ForgeGlass::Abi;frame.device=device.Get();frame.target=view.Get();frame.colorSpace=1;
+    // Layout changes occur after the live session update. A single draw only
+    // tests the old hierarchy; subsequent frames must update the moved row.
+    for(const char* layout:{"floating","centered","bar","centered"}){
+        settings=std::string(R"({"revision":1,"ready":true,"settings":{"overlay_appearance":{"Layout":")")+layout+R"(","Theme":4,"AccentMode":"adaptive","ShowNotifications":0}}})";
+        for(int i=0;i<3;++i){frame.visible=true;Need(draw(&host,&frame),"Advanced live-session frame failed");}
+    }
+    release();
+    // The final layout is persisted by the renderer. Exercise the first live
+    // update after restarting with Advanced already loaded, including hidden UI.
+    for(int i=0;i<3;++i){frame.visible=i!=0;Need(draw(&host,&frame),"Saved Advanced startup failed");}
+    release();
+    std::cout<<"advanced_live_session_checks=passed transitions=4 follow_up_frames=passed saved_startup=passed transfer=scRGB resolution=3840x2160\n";
+}
 static void TestIdle(ForgeGlass::Draw draw,ForgeGlass::Release release){
     ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;Need(SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,0,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context)),"Idle device failed");
     D3D11_TEXTURE2D_DESC desc{};desc.Width=1280;desc.Height=720;desc.MipLevels=desc.ArraySize=1;desc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;desc.SampleDesc.Count=1;desc.BindFlags=D3D11_BIND_RENDER_TARGET;
@@ -128,5 +155,5 @@ int wmain(int argc,wchar_t** argv){try{
     const auto setup=profile.path/L"rtxForge"/L"overlay-setup.ini";std::filesystem::create_directories(setup.parent_path());Need(WritePrivateProfileStringW(L"Setup",L"Version",L"1",setup.c_str()),"Setup fixture state failed");
     TestHdr11(draw,release,device.Get(),context.Get());if(flags)TestHdr11(draw,release,device.Get(),context.Get(),3840,2160);
     }
-    Test12(dll,release);Test12(dll,release,true);TestAppearance(draw,release,profile.path);TestIdle(draw,release);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
+    Test12(dll,release);Test12(dll,release,true);TestAppearance(draw,release,profile.path);TestAdvancedSession(draw,release);TestIdle(draw,release);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

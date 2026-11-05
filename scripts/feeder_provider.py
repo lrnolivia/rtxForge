@@ -179,13 +179,18 @@ def accepted(spec, name, installed):
     return pairs
 
 
-def stack(directory, cached=False, installed=False):
+def stack(directory, cached=False, installed=False, drift=None):
+    """The recipe when every asset is a published build. With a drift list, an
+    owned install's changed assets are listed there for Repair instead of refused."""
     directory = t.safe(directory)
     spec = lock()
     for name in spec['assets']:
         path = t.safe(directory / t.relative(name))
-        t.need(path.is_file() and (digest(path, cached), path.stat().st_size) in accepted(spec, name, installed),
-               'Feeder files are missing or changed: ' + name)
+        ok = path.is_file() and (digest(path, cached), path.stat().st_size) in accepted(spec, name, installed)
+        if not ok and drift is not None:
+            drift.append({'name': name, 'fix': 'restore'})
+            continue
+        t.need(ok, 'Feeder files are missing or changed: ' + name)
     for name in CONFIGS:
         path = t.safe(directory / name)
         t.need(path.is_file() and path.stat().st_size <= 256 * 1024, 'Feeder settings are missing: ' + name)
@@ -272,12 +277,45 @@ def _read_ini(path):
     return t.ini(text if text.lstrip().startswith('[') else '[DEFAULT]\n' + text)
 
 
-def inspect(e, row, cached=True):
+class Drift(t.Refusal):
+    """Files of an owned Feeder install differ from its record; Repair fixes each one.
+
+    files: [{'name', 'fix'}], fix 'record' when the file on disk is a published
+    rtxForge build the record has not caught up with, 'restore' otherwise."""
+
+    def __init__(self, files):
+        self.files = files
+        super().__init__('An installed Feeder file changed: ' + ', '.join(item['name'] for item in files))
+
+
+def drift_summary(files):
+    """A calm one-line status for changed files, naming what Repair will do."""
+    names = ', '.join(item['name'] for item in files)
+    if all(item['fix'] == 'record' for item in files):
+        return f'{names} {"is" if len(files) == 1 else "are"} a newer rtxForge build than this install records. Repair records it; nothing is replaced.'
+    count = f'{len(files)} Feeder files' if len(files) > 1 else 'A Feeder file'
+    return f'{count} changed ({names}). Repair puts back rtxForge\'s copy; your tuning is kept.'
+
+
+def _published(e, spec, name, path, actual):
+    """True when the bytes at path are one of rtxForge's own published builds of name."""
+    if actual is None:
+        return False
+    if name in spec['assets']:
+        return (actual, path.stat().st_size) in accepted(spec, name, True)
+    item = panel(e).get(name)
+    return bool(item) and item['sha256'] == actual
+
+
+def inspect(e, row, cached=True, tolerate=False):
+    """The installed Feeder setup. A changed owned file raises Drift, or with
+    tolerate is reported in 'drift' so the library stays calm and Repair can fix it."""
     _, _, directory = target(row)
     record = state(e, directory)
     if record and record.get('legacy_recipe'):
         import feeder_legacy
         return feeder_legacy.inspect(e, row, record, cached)
+    drift = []
     if record and record.get('adopted') and record.get('installed_hashes'):
         # An adopted setup may be any Feeder version: its record, checked below,
         # is the recipe. Installing over it replaces it with the pinned stack.
@@ -289,14 +327,23 @@ def inspect(e, row, cached=True):
             nr = record.get('nr_runtime') or {}
             t.need(nr.get('sha256') and digest(directory / MODEL, cached) == nr['sha256'], 'The adopted NR model changed')
     else:
-        stack(directory, cached, installed=True)
+        # Only an install rtxForge owns can be repaired file by file; an
+        # unrecognized setup must still match a published recipe exactly.
+        stack(directory, cached, installed=True, drift=drift if record else None)
         nr = model(directory / MODEL, cached)
     if record:
         t.need(record.get('status') == 'active', 'The Feeder installation needs recovery')
+        spec, listed = lock(), {item['name'] for item in drift}
         for name, expected in record['installed_hashes'].items():
-            if name not in CONFIGS:
-                t.need(digest(directory / name, cached) == expected, 'An installed Feeder file changed: ' + name)
-    return {'managed': record is not None, 'nr_runtime': nr, **configured(directory)}
+            if name in CONFIGS or name in listed:
+                continue
+            path = t.safe(directory / t.relative(name))
+            actual = digest(path, cached)
+            if actual != expected:
+                drift.append({'name': name, 'fix': 'record' if _published(e, spec, name, path, actual) else 'restore'})
+    if drift and not tolerate:
+        raise Drift(drift)
+    return {'managed': record is not None, 'nr_runtime': nr, 'drift': drift, **configured(directory)}
 
 
 def _windows(e):
@@ -541,7 +588,11 @@ def expand_rows(e, rows, selected=False):
                                      feeder_available=False, mfg_enabled=False, mfg_multiplier=0,
                                      blocked='This experimental Feeder route is available on Windows. Its shared installation is preserved.')
                         result.append(child);continue
-                    found = inspect(e, child)
+                    found = inspect(e, child, tolerate=True)
+                    if found.get('drift'):  # legacy recipes report no drift
+                        # One changed file is a repair, not a broken game: it stays
+                        # installed and usable, with Repair named as the fix.
+                        child['feeder_drift'] = {'files': found['drift'], 'summary': drift_summary(found['drift'])}
                     child.update(installed=True, runtime_provider='feeder', feature_mode='nr-only', profile='NR Only',
                                  feeder_managed=found['managed'], nr_enabled=found['nr_enabled'], nr_runtime=found['nr_runtime'],
                                  # Feeder installs only on Windows, so on Linux a verified stack is a dual-boot install.
@@ -988,14 +1039,17 @@ def _prepare(config, rows, mode, operation, settings, e):
                 ready.append(entry)
                 continue
             eligible(e, row, existing)
-            spec = stack(directory, installed=True) if existing else lock()
+            # Repair and Restore are how a changed owned file gets fixed, so they
+            # never refuse because of it (the session still backs up what is there).
+            mend = operation in ('repair', 'uninstall') and current is not None
+            spec = stack(directory, installed=True, drift=[] if mend else None) if existing else lock()
             names = list(spec['assets']) + [*CONFIGS, MODEL]
             inputs, writes = {}, {}
             baseline = copy.deepcopy(current)
             if operation in ('uninstall', 'reset', 'repair', 'apply'):
                 t.need(current is not None, 'Recognize this Feeder installation with its original backups first')
             if current or existing:
-                found = inspect(e, row, cached=False)
+                found = inspect(e, row, cached=False, tolerate=mend)
             if operation == 'uninstall':
                 for name, original in current['originals'].items():
                     if original is not None:
@@ -1080,6 +1134,19 @@ def _prepare(config, rows, mode, operation, settings, e):
                 if old_version != selected['version']:
                     summary += f" NR runtime: {old_version or 'not installed'} → {selected['version']}."
                 summary += ' Keep your saved tuning. Frame generation is unavailable.' if existing else ' Frame generation is unavailable.'
+                drifted = found.get('drift') if operation == 'repair' and (current or existing) else None
+                if drifted:
+                    # Changed recipe files come back from the verified stack; panel files
+                    # come back with the bundled panel below; published builds are recorded as they are.
+                    restore = [item['name'] for item in drifted if item['fix'] == 'restore' and item['name'] in spec['assets']]
+                    if restore:
+                        files = stack_files(e, settings)
+                        for name in restore:
+                            inputs[name] = writes[name] = files[name]
+                        summary += ' Put back: ' + ', '.join(restore) + '.'
+                    kept = [item['name'] for item in drifted if item['fix'] == 'record']
+                    if kept:
+                        summary += ' Record the current rtxForge build of: ' + ', '.join(kept) + '.'
             if operation == 'install':
                 # NR startup is an explicit install choice, independent of MFG.
                 source_ini = (Path(writes['ReShade.ini']['path']).read_bytes().decode('utf-8-sig')
@@ -1126,7 +1193,13 @@ def _prepare(config, rows, mode, operation, settings, e):
                         baseline['originals'][name] = original
                         if original:
                             inputs['original:' + name] = original
-            checks = _checks(directory, [*names, *(name for name in writes if name not in names)])
+            if operation == 'repair':
+                unfixed = [item['name'] for item in found.get('drift') or [] if item['fix'] == 'restore' and item['name'] not in writes]
+                t.need(not unfixed, 'Repair has no verified copy of ' + ', '.join(unfixed) + '. Reinstall Feeder NR to replace it.')
+            # Files the record already owns stay owned after a repair (the in-game panel included).
+            owned = [name for name in (current or {}).get('installed_hashes', {})
+                     if name not in names and name not in writes and operation != 'uninstall']
+            checks = _checks(directory, [*names, *(name for name in writes if name not in names), *owned])
             plan = dict(row=dict(row), target=str(directory), existing=existing, checks=checks,
                         baseline_before=digest(state_dir(e, directory) / 'baseline.json'), baseline=baseline,
                         inputs=inputs, writes=writes, operation=operation)

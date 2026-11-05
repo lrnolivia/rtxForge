@@ -50,6 +50,10 @@ def cards(row):
             setting = 'Setting not recorded'
         out.append(('Multi-Frame Generation', [route if route and route != 'Not installed' else package,
             f'Package {version}' if version and (not route or version not in route) else None, setting]))
+    drift = row.get('feeder_drift') if installed else None
+    if isinstance(drift, dict) and drift.get('summary'):
+        # A changed managed file: still installed, one Repair away from matching its record.
+        out.append(('Files', ['Repair recommended', drift['summary']]))
     return [dict(title=title, values=[str(value) for value in values if value]) for title, values in out]
 
 

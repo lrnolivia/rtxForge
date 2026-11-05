@@ -74,7 +74,9 @@ def extract(archive,member,path):
 
 def verify(folder,record):
     t.need(set(t.files(folder))=={n.casefold() for n in record['files']},'Payload listing drift')
-    for n,h in record['files'].items():t.need(t.digest(folder/n)==h,'Payload hash drift: '+n)
+    # The prepared payload is app-owned and checked through its stamps; the bytes
+    # written into a game are verified again by the transaction that writes them.
+    for n,h in record['files'].items():t.need(file_stamps.digest(folder/n)==h,'Payload hash drift: '+n)
 
 def _discard_prepared_payload(pkg,record):
     """Remove only reconstructible extraction state; never touch the verified source archive."""

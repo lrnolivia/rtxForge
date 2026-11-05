@@ -86,6 +86,33 @@ class NrAddonTests(unittest.TestCase):
         for key in plan['ini']['renodx-dlss']:
             self.assertTrue(re.fullmatch(r'DirectNeuralRendering[A-Za-z]+', key), key)
 
+    def test_saved_combos_are_shared_validated_and_deletable(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.object(nr, '_combo_file', lambda _config: Path(folder).resolve() / 'nr-combos.json'):
+            combo = {'environment': {'addon': 'lecram', 'build': '10.8', 'model': 'new'},
+                     'character': {'addon': 'shortfuse', 'model': 'new'}}
+            key = nr.save_combo({}, ' My mix ', combo)
+            saved = nr.combos({})
+            self.assertEqual(saved[key]['name'], 'My mix')
+            self.assertFalse(saved[key]['builtin'])
+            self.assertTrue(saved['characters-and-world']['builtin'])
+            self.assertTrue(nr.apply_combo(DLSS_GAME, saved[key])['ok'])
+            self.assertFalse(nr.apply_combo(PLAIN_GAME, saved[key])['ok'])
+            self.assertEqual([a['id'] for a in nr.catalog_view({})['addons']], ['lecram', 'shortfuse', 'gitc'])
+            for bad in ({'character': {'addon': 'lecram'}}, {'environment': {'addon': 'gitc'}, 'character': {'addon': 'lecram'}}):
+                with self.subTest(bad=bad), self.assertRaises(t.Refusal):
+                    nr.save_combo({}, 'Bad', bad)
+            with self.assertRaises(t.Refusal):
+                nr.delete_combo({}, 'characters-and-world')
+            nr.delete_combo({}, key)
+            self.assertNotIn(key, nr.combos({}))
+
+    def test_check_reports_reason_instead_of_raising(self):
+        self.assertFalse(nr.check(PLAIN_GAME, {'environment': {'addon': 'shortfuse'}})['ok'])
+        self.assertTrue(nr.check(DLSS_GAME, {'environment': {'addon': 'gitc'}})['ok'])
+
 
 if __name__ == '__main__':
     unittest.main()

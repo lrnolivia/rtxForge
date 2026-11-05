@@ -884,47 +884,13 @@ def _run_hdr(plan):
 # ---------- DLSS5 NR add-ons: Environment and Character slots ----------
 
 
-def _nr_combo_file():
-    import storage as state_storage
-    return t.safe(state_storage.storage(_config()) / 'nr-combos.json')
-
-
-def _nr_saved():
-    path = _nr_combo_file()
-    if not path.is_file():
-        return {}
-    t.need(path.stat().st_size < 1024**2, 'Saved NR combos are too large.')
-    data = t.read_json(path)
-    return {k: v for k, v in (data.get('combos') or {}).items() if isinstance(v, dict)} if data.get('schema') == 1 else {}
-
-
-def _nr_combos():
-    return {**{k: dict(v, builtin=True) for k, v in nr_addons.builtin_combos().items()},
-            **{k: dict(v, builtin=False) for k, v in _nr_saved().items()}}
-
-
-def _nr_store(combos):
-    t.atomic_file(_nr_combo_file(), json.dumps({'schema': 1, 'combos': combos}, indent=2).encode(), 0o600)
-
-
 def nr_catalog(params):
-    cat = nr_addons.catalog()
-    return {'addons': [{'id': key, 'name': a['name'], 'needs_native_dlss': a.get('needs_native_dlss', False),
-                        'exclusive': a.get('exclusive', False),
-                        'builds': [{'id': b, 'label': v['label'], 'default': bool(v.get('default'))} for b, v in a['builds'].items()]}
-                       for key, a in cat['addons'].items()],
-            'models': [{'id': key, 'label': m['label']} for key, m in cat['models'].items()],
-            'combos': _nr_combos()}
+    return nr_addons.catalog_view(_config())
 
 
 def nr_check(params):
     """Whether this setup works in this game, without changing anything."""
-    try:
-        plan = nr_addons.plan(params['row'], params['setup'])
-        return {'ok': True, 'verified': plan['verified'], 'feeder': plan['feeder'], 'skipped': plan['skipped'],
-                'install': plan['install'], 'model': plan['model']}
-    except t.Refusal as error:
-        return {'ok': False, 'reason': str(error)}
+    return nr_addons.check(params['row'], params['setup'])
 
 
 def nr_status(params):
@@ -955,26 +921,13 @@ def _run_nr(plan):
 
 
 def nr_combo_save(params):
-    name = str(params.get('name') or '').strip()
-    t.need(0 < len(name) <= 60, 'Name the combo (up to 60 characters).')
-    combo = {slot: params['combo'][slot] for slot in nr_addons.SLOTS if params['combo'].get(slot)}
-    t.need(combo.get('environment'), 'A combo needs an Environment add-on.')
-    # Validate the add-ons, builds, models and values without a particular game.
-    nr_addons.plan({'native_dlss': True, 'arch': 'x64'}, combo)
-    key = 'user-' + t.sha(name.casefold().encode())[:12]
-    combos = _nr_saved()
-    t.need(key in combos or len(combos) < 100, 'Up to 100 saved combos.')
-    combos[key] = dict(combo, name=name)
-    _nr_store(combos)
-    return {'id': key, 'combos': _nr_combos()}
+    key = nr_addons.save_combo(_config(), params.get('name'), params.get('combo'))
+    return {'id': key, 'combos': nr_addons.combos(_config())}
 
 
 def nr_combo_delete(params):
-    combos = _nr_saved()
-    t.need(params.get('id') in combos, 'Built-in combos cannot be deleted.')
-    combos.pop(params['id'])
-    _nr_store(combos)
-    return {'combos': _nr_combos()}
+    nr_addons.delete_combo(_config(), params.get('id'))
+    return {'combos': nr_addons.combos(_config())}
 
 
 def overview_inspect(params):

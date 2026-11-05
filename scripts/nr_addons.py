@@ -150,6 +150,77 @@ def plan(game, setup):
             'unconfirmed_sections': sorted(addons[a]['section_candidate'] for a in ids if not addons[a]['section'])}
 
 
+MAX_SAVED = 100
+
+
+def _combo_file(config):
+    import storage
+    return t.safe(storage.storage(config) / 'nr-combos.json')
+
+
+def saved_combos(config):
+    path = _combo_file(config)
+    if not path.is_file():
+        return {}
+    t.need(path.stat().st_size < 1024**2, 'Saved NR combos are too large.')
+    data = t.read_json(path)
+    return {k: v for k, v in (data.get('combos') or {}).items() if isinstance(v, dict)} if data.get('schema') == 1 else {}
+
+
+def combos(config):
+    """Built-in and saved combos; every combo is available for every game."""
+    return {**{k: dict(v, builtin=True) for k, v in builtin_combos().items()},
+            **{k: dict(v, builtin=False) for k, v in saved_combos(config).items()}}
+
+
+def _store(config, saved):
+    t.atomic_file(_combo_file(config), json.dumps({'schema': 1, 'combos': saved}, indent=2).encode(), 0o600)
+
+
+def save_combo(config, name, combo):
+    name = str(name or '').strip()
+    t.need(0 < len(name) <= 60, 'Name the combo (up to 60 characters).')
+    t.need(isinstance(combo, dict), 'Choose the add-ons for the combo.')
+    combo = {slot: combo[slot] for slot in SLOTS if combo.get(slot)}
+    t.need(combo.get('environment'), 'A combo needs an Environment add-on.')
+    # Validate the add-ons, builds, models and values without a particular game.
+    plan({'native_dlss': True, 'arch': 'x64'}, combo)
+    key = 'user-' + t.sha(name.casefold().encode())[:12]
+    saved = saved_combos(config)
+    t.need(key in saved or len(saved) < MAX_SAVED, f'Up to {MAX_SAVED} saved combos.')
+    saved[key] = dict(combo, name=name)
+    _store(config, saved)
+    return key
+
+
+def delete_combo(config, key):
+    saved = saved_combos(config)
+    t.need(key in saved, 'Built-in combos cannot be deleted.')
+    saved.pop(key)
+    _store(config, saved)
+
+
+def catalog_view(config):
+    """The catalog as the apps show it: add-ons with their builds, models and combos."""
+    cat = catalog()
+    return {'addons': [{'id': key, 'name': a['name'], 'needs_native_dlss': a.get('needs_native_dlss', False),
+                        'exclusive': a.get('exclusive', False),
+                        'builds': [{'id': b, 'label': v['label'], 'default': bool(v.get('default'))} for b, v in a['builds'].items()]}
+                       for key, a in cat['addons'].items()],
+            'models': [{'id': key, 'label': m['label']} for key, m in cat['models'].items()],
+            'combos': combos(config)}
+
+
+def check(game, setup):
+    """Whether this setup works in this game, without changing anything."""
+    try:
+        p = plan(game, setup)
+        return {'ok': True, 'verified': p['verified'], 'feeder': p['feeder'], 'skipped': p['skipped'],
+                'install': p['install'], 'model': p['model']}
+    except t.Refusal as error:
+        return {'ok': False, 'reason': str(error)}
+
+
 def apply_combo(game, combo):
     """A saved combo applied to one game: its plan, or the reason this game can't use it."""
     setup = {slot: combo[slot] for slot in SLOTS if combo.get(slot)}

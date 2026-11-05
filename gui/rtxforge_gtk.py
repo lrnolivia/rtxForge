@@ -6096,6 +6096,7 @@ class Window(Adw.ApplicationWindow):
         addon=button('Choose add-on…',lambda *_:self.choose_extra(game,'addon'));addon.set_sensitive(not self.options.demo);addon.set_valign(Gtk.Align.CENTER);other.add_suffix(addon);hdr.add(other)
         downloads=row('ReShade downloads','Open the official ReShade website.')
         open_downloads=button('Open website',lambda *_:Gio.AppInfo.launch_default_for_uri('https://reshade.me/',None));open_downloads.set_valign(Gtk.Align.CENTER);downloads.add_suffix(open_downloads);hdr.add(downloads)
+        self.populate_nr_addons(body,game)
         if not self.options.demo:
             import extra_tools
             recovery=Adw.PreferencesGroup(title='Previous changes')
@@ -6745,6 +6746,128 @@ class Window(Adw.ApplicationWindow):
                 trust='I trust the source of this exact file' if plan.get('custom') else None,
                 done=lambda result:result['message'])
         self.start('Preparing RenoDX HDR',lambda:renodx_hdr.prepare_remove(self.service.config,game) if remove else renodx_hdr.prepare(self.service.config,game,custom_path),ready)
+
+    def populate_nr_addons(self,body,game):
+        """DLSS5 NR add-ons: Environment and Character each take the add-on, pinned build and
+        Old/New model the user picks; combos fill both slots and every change is checked first."""
+        import nr_addons,nr_install
+        group=Adw.PreferencesGroup(title='DLSS5 NR add-ons',description='Choose an add-on for the environment and one for characters, each with the Old or New DLSS5 model. rtxForge downloads the pinned files and checks this game before anything is installed.')
+        body.append(group)
+        status=row('NR add-ons','Checking…');group.add(status)
+        if self.options.demo:status.set_subtitle('NR add-ons are checked in the installed app.');return
+        def load():
+            try:result=(nr_addons.catalog_view(self.service.config),nr_install.status(game))
+            except Exception as error:result=error
+            GLib.idle_add(show,result)
+        def show(result):
+            if isinstance(result,Exception):status.set_subtitle(str(result));return
+            catalog,current=result
+            addons=catalog['addons'];models=catalog['models']
+            name=lambda key:next((a['name'] for a in addons if a['id']==key),key or '')
+            if current.get('installed'):
+                setup=current.get('setup') or {}
+                text=' · '.join(f"{slot.capitalize()}: {name(setup[slot]['addon'])} ({setup[slot].get('model','new')})" for slot in nr_addons.SLOTS if setup.get(slot))
+                changed=len(current.get('changed') or [])
+                status.set_subtitle('Installed · '+text+(f' · {changed} file(s) changed since install' if changed else ''))
+                remove=row('Remove NR add-ons',"Puts back the game's files and the ReShade settings rtxForge changed. Your own edits are kept.")
+                action=button('Remove',lambda *_:self.review_nr(game,None,remove=True));action.set_valign(Gtk.Align.CENTER);remove.add_suffix(action);group.add(remove)
+                return
+            status.set_subtitle('Not installed in this game.')
+            combos=[(key,value) for key,value in catalog['combos'].items()]
+            combo_row=safe_combo_row(title='Combo',subtitle='Fill both slots from a saved or built-in combo.',model=Gtk.StringList.new(['Custom']+[value.get('name',key) for key,value in combos]),selected=0)
+            group.add(combo_row)
+            slots={}
+            for slot,optional in (('environment',False),('character',True)):
+                names=(['None'] if optional else [])+[a['name'] for a in addons]
+                addon=safe_combo_row(title=slot.capitalize(),model=Gtk.StringList.new(names),selected=0)
+                build=safe_combo_row(title=slot.capitalize()+' build',model=Gtk.StringList.new([]),selected=0)
+                model=safe_combo_row(title=slot.capitalize()+' model',model=Gtk.StringList.new([m['label'] for m in models]),selected=max(0,next((i for i,m in enumerate(models) if m['id']=='new'),0)))
+                for widget in (addon,build,model):group.add(widget)
+                slots[slot]={'optional':optional,'addon':addon,'build':build,'model':model,'builds':[],'values':None,'values_for':None}
+            def chosen(slot):
+                s=slots[slot];index=s['addon'].get_selected()-(1 if s['optional'] else 0)
+                return addons[index] if 0<=index<len(addons) else None
+            def fill_builds(slot,select=None):
+                s=slots[slot];builds=(chosen(slot) or {}).get('builds',[])
+                s['builds']=builds;s['build'].set_model(Gtk.StringList.new([b['label'] for b in builds]))
+                pick=next((i for i,b in enumerate(builds) if (b['id']==select if select else b['default'])),0)
+                if builds:s['build'].set_selected(pick)
+                s['build'].set_sensitive(bool(builds));s['model'].set_sensitive(bool(builds))
+            def setup():
+                result={}
+                for slot,s in slots.items():
+                    addon=chosen(slot)
+                    if not addon:continue
+                    index=s['build'].get_selected()
+                    spec={'addon':addon['id'],'build':s['builds'][index]['id'] if index<len(s['builds']) else None,'model':models[s['model'].get_selected()]['id']}
+                    if s['values'] is not None and s['values_for']==addon['id']:spec['values']=dict(s['values'])
+                    result[slot]=spec
+                return result
+            verdict=row('Check','Choose the add-ons for this game.');group.add(verdict)
+            apply_row=row('Apply to this game','Review the exact files before anything changes.')
+            actions=Gtk.Box(spacing=8,valign=Gtk.Align.CENTER)
+            save=button('Save combo…',lambda *_:self.save_nr_combo(game,setup()))
+            install=button('Install',lambda *_:self.review_nr(game,setup()),'suggested-action');install.set_sensitive(False)
+            actions.append(save);actions.append(install);apply_row.add_suffix(actions);group.add(apply_row)
+            state={'filling':False}
+            def check():
+                result=nr_addons.check(game,setup())
+                if result['ok']:
+                    text='Works in this game.' if result['verified'] else 'Works in this game · this pairing is not verified on a test copy yet.'
+                    if result['skipped']:text+=" Some settings aren't verified for this add-on and are left out."
+                else:text=result['reason']
+                verdict.set_subtitle(text);install.set_sensitive(result['ok'] and not self.busy)
+            def changed(*_):
+                if state['filling']:return
+                combo_row.set_selected(0);check()
+            for slot,s in slots.items():
+                s['addon'].connect('notify::selected',lambda *_,slot=slot:(fill_builds(slot),changed()))
+                s['build'].connect('notify::selected',changed);s['model'].connect('notify::selected',changed)
+            def combo_chosen(*_):
+                index=combo_row.get_selected()
+                if index<=0:return
+                combo=combos[index-1][1];state['filling']=True
+                for slot,s in slots.items():
+                    spec=combo.get(slot) or {}
+                    position=next((i for i,a in enumerate(addons) if a['id']==spec.get('addon')),None)
+                    s['addon'].set_selected(0 if position is None else position+(1 if s['optional'] else 0))
+                    fill_builds(slot,spec.get('build'))
+                    s['model'].set_selected(next((i for i,m in enumerate(models) if m['id']==spec.get('model','new')),0))
+                    s['values']=spec.get('values');s['values_for']=spec.get('addon')
+                state['filling']=False;check()
+            combo_row.connect('notify::selected',combo_chosen)
+            state['filling']=True
+            slots['environment']['addon'].set_selected(max(0,next((i for i,a in enumerate(addons) if a['id']=='lecram'),0)))
+            fill_builds('environment');fill_builds('character')
+            state['filling']=False;check()
+        threading.Thread(target=load,daemon=True).start()
+
+    def save_nr_combo(self,game,setup):
+        import nr_addons
+        dialog=Adw.AlertDialog(heading='Save combo',body='The combo is available for every game.')
+        entry=Gtk.Entry(placeholder_text='Combo name',max_length=60,activates_default=True);dialog.set_extra_child(entry)
+        dialog.add_response('cancel','Cancel');dialog.add_response('save','Save')
+        dialog.set_response_appearance('save',Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response('save');dialog.set_close_response('cancel')
+        def chosen(_dialog,response):
+            if response!='save' or not entry.get_text().strip():return
+            try:nr_addons.save_combo(self.service.config,entry.get_text(),setup)
+            except Exception as error:self.toast(str(error));return
+            self.toast("Combo saved. It's available for every game. Reopen Tools to pick it.")
+        dialog.connect('response',chosen);dialog.present(self)
+
+    def review_nr(self,game,setup,remove=False):
+        import nr_install
+        family=(self.hardware_info or {}).get('family') or 'ada'
+        def ready(plan):
+            changes='\n'.join(('Remove ' if c['after'] is None else 'Update ' if c['before'] else 'Add ')+c['path']+('\nSHA-256: '+c['after'] if c['after'] else '') for c in plan['changes'])
+            review={'operation':'tool-restore' if remove else 'tool','rows':[{'name':game['name'],'game':game['game'],'detail':changes}],'blocked':[]}
+            self.review_write(review['operation'],review,
+                run=lambda _:nr_install.apply(self.service.config,plan),
+                details=['Remove NR add-ons' if remove else 'Install NR add-ons','Existing game files and your ReShade settings are kept; only recorded keys are restored.'],
+                note=' '.join(plan.get('notes',[])) or None,
+                done=lambda result:result['message'])
+        self.start('Preparing NR add-ons',lambda:nr_install.prepare_remove(self.service.config,game) if remove else nr_install.prepare(self.service.config,game,setup,family),ready)
 
     def review_extra_restore(self,record):
         import extra_tools

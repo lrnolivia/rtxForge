@@ -14,7 +14,15 @@
           "label": "8.5.0-rc10 · rtxForge build (live settings)",
           "default": true,
           "live_settings": true,
-          "pinned_in": "providers/feeder.json"
+          "pinned_in": "providers/feeder.json",
+          "archive": {
+            "url": "https://github.com/lrnolivia/rtxForge/releases/download/renodx-dlss5-8.5.0-rc10-rtxforge-2/renodx-dlss5-8.5.0-rc10-rtxforge-2.zip",
+            "size": 1166932,
+            "sha256": "b916ce63a699cba8c10d3f41347e3de231969dc430147d9468f2f4d8a2e5af60"
+          },
+          "members": {
+            "renodx-dlss5.addon64": {"size": 3092480, "sha256": "7fdc1872b5a8553a746b08538fd74990b374a7bcdd5c2c342786a093de6cba74"}
+          }
         },
         "10.8": {
           "label": "10.8.0 · latest free build",
@@ -122,8 +130,16 @@
     "old": {
       "label": "Old DLSS5 (310.8)",
       "builds": {
+        "310.8.SF-v2": {
+          "for": ["turing", "ampere"],
+          "archive": {
+            "url": "https://github.com/RankFTW/rhi-repo/releases/download/dlssnr-310.8.SF-v2/nvngx_dlssnr_310.8.SF-v2.zip",
+            "size": 116693212,
+            "sha256": "1da35941894994eb087e017577829e492454e9bae3a6a9397027069ceb74955c"
+          }
+        },
         "310.8.0-RTX40": {
-          "for": "rtx40",
+          "for": ["ada"],
           "archive": {
             "url": "https://github.com/RankFTW/rhi-repo/releases/download/dlssnr-310.8.0-RTX40/nvngx_dlssnr_310.8.0-RTX40.zip",
             "size": 110604522,
@@ -131,7 +147,7 @@
           }
         },
         "310.8.0": {
-          "for": "rtx50",
+          "for": ["blackwell"],
           "archive": {
             "url": "https://github.com/RankFTW/rhi-repo/releases/download/dlssnr-310.8.0/nvngx_dlssnr_310.8.0.zip",
             "size": 109425288,
@@ -144,7 +160,8 @@
       "label": "New DLSS5 (310.9.16)",
       "builds": {
         "310.9.16": {
-          "for": "any",
+          "for": ["ada", "blackwell"],
+          "note": "Not yet verified on RTX 20/30 cards.",
           "archive": {
             "url": "https://github.com/RankFTW/rhi-repo/releases/download/dlssnr-310.9.16/nvngx_dlssnr_310.9.16.zip",
             "size": 192378839,

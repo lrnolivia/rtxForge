@@ -33,6 +33,37 @@ public sealed class GlassAppearance
         var directory=Path.Combine(Path.GetDirectoryName(FilePath)!,"overlay-games");
         if(Directory.Exists(directory))foreach(var file in Directory.EnumerateFiles(directory,"*.ini",SearchOption.TopDirectoryOnly))File.Delete(file);
     }
+    /// <summary>Per-game choices that are not the look of the overlay; Apply Globally leaves them as each game has them.</summary>
+    static readonly string[] ControlKeys = ["TextSize", "Scale", "ScaleBaseline", "OriginalLabels", "Motion", "ShowNotifications", "ToastPill"];
+    /// <summary>The overlay's look in a profile: layout, positions, theme, tint, accent and font.</summary>
+    public static JsonObject Style(string? path = null)
+    {
+        var values = Load(path).ToJson();
+        foreach (var key in ControlKeys) values.Remove(key);
+        return values;
+    }
+    /// <summary>Use one style everywhere: the defaults and every game's saved overlay. With a game's profile as
+    /// the source, that style becomes the default first. Per-game text size, motion, menus and shortcuts stay.</summary>
+    public static ForgeSettings ApplyStyleToAllGames(string? sourcePath = null)
+    {
+        var style = Style(sourcePath);
+        foreach (var (key, value) in style) Set(key, value!.ToString(), path: FilePath);
+        var directory = Path.Combine(Path.GetDirectoryName(FilePath)!, "overlay-games");
+        if (Directory.Exists(directory))
+            foreach (var file in Directory.EnumerateFiles(directory, "*.ini", SearchOption.TopDirectoryOnly))
+                foreach (var (key, value) in style) Set(key, value!.ToString(), path: file);
+        var defaults = Load();
+        return ForgeSettings.EditOverlay(settings =>
+        {
+            settings.OverlayAppearance = defaults.ToJson(); settings.OverlayTheme = defaults.Theme;
+            foreach (var values in settings.GameOverlaySettings.Values)
+            {
+                if (values["overlay_appearance"] is JsonObject appearance)
+                    foreach (var (key, value) in style) appearance[key] = value?.DeepClone();
+                if (values.ContainsKey("overlay_theme")) values["overlay_theme"] = defaults.Theme;
+            }
+        });
+    }
     public static readonly string[] Layouts = ["floating", "centered", "bar"];
     public static JsonObject OverlayOptions(ForgeSettings settings,Game? game=null)
     {

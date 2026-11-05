@@ -10470,10 +10470,32 @@ class Window(Adw.ApplicationWindow):
                 try:accent_row.set_active(False)
                 finally:refreshing[0]=False
         source_row.connect('notify::selected',tint_visibility);refreshers.append(tint_visibility);tint_visibility()
+        global_row=Adw.ActionRow(title='Apply Globally',
+            subtitle=("Make this game’s style the default and use it for every game." if game else 'Use this style for every game.'))
+        def apply_globally(*_):
+            dialog=Adw.AlertDialog(heading='Apply this style to every game?',
+                body=('This becomes your default style, and every game’s overlay takes it.' if game
+                      else 'Every game’s overlay takes this layout, theme and accent.')+' Each game keeps its text size, menus and shortcuts.')
+            dialog.add_response('cancel','Cancel');dialog.add_response('apply','Apply Globally')
+            dialog.set_response_appearance('apply',Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_default_response('apply');dialog.set_close_response('cancel')
+            def chosen(_dialog,response):
+                if response!='apply':return
+                import transactions as t
+                try:
+                    fresh=self.settings if self.options.demo else library_media.load_settings(self.service.config)
+                    self.settings.update(overlay_settings.apply_style_globally(fresh,glass.current(s),s.get('overlay_theme','clear')))
+                    if not self.options.demo:library_media.save_settings(self.service.config,self.settings)
+                    self.toast('Every game’s overlay now uses this style.')
+                except (t.Refusal,OSError,ValueError) as error:self.toast(error)
+            dialog.connect('response',chosen);dialog.present(self)
+        apply_all=button('Apply Globally',apply_globally);apply_all.set_valign(Gtk.Align.CENTER)
+        global_row.add_suffix(apply_all)
         material_choice('Original labels','OriginalLabels',[0,1],['Off','On'])
         material_choice('Text size','TextSize',[20,22,24],['Aa  Smaller','Aa  Default','Aa  Larger'])
         material_choice('Motion effects','Motion',[1,0],['On','Off'])
         material_choice('Hotkey notifications','ShowNotifications',[1,0],['On','Off'])
+        appearance.add(global_row)
         notifications=Adw.PreferencesGroup(title='Status and notifications')
         switch('Welcome message','Show the rtxForge message at startup.','overlay_welcome',notifications)
         choice('Welcome position',None,list(overlay_settings.POSITIONS),['Top center','Top left','Top right','Bottom left','Bottom right'],'overlay_welcome_position',notifications)

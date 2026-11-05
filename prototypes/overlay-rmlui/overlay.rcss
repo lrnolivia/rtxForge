@@ -447,6 +447,8 @@ button:active { transform: scale(.98); }
 .layout-bar .metadata-compact .metadata-line { font-size: 12dp; gap: 12dp; }
 .layout-bar .metadata-compact .feature-status { display: none; }
 .layout-bar .tuning-sections { margin-top: 24dp; }
+/* The live overlay shows the preset row in Bar when a game lacks NR or FG; keep the Bar's row gap above it. */
+.layout-bar .overview .preset-row { margin-top: 24dp; }
 @media (max-width: 1400dp) {
  .main-panel { width: 580dp; }
  .inspector { width: 470dp; left: 50vw; }

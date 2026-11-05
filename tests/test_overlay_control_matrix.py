@@ -177,6 +177,18 @@ class WelcomeToast(unittest.TestCase):
         self.assertIn('Element("welcome")->SetClass("with-icon",true);', controller)
 
 
+class BarPresetRow(unittest.TestCase):
+    def test_bar_keeps_its_row_gap_when_a_game_shows_presets(self):
+        # The stylesheet hides presets in Bar, but the live controller shows the
+        # row inline once a game lacks NR or FG (Mass Effect has no FG). It then
+        # needs the same gap as the sections below it, not to touch the header.
+        rcss = source('prototypes/overlay-rmlui/overlay.rcss')
+        self.assertIn('.layout-bar .overview .preset-row { margin-top: 24dp; }', rcss)
+        self.assertIn('.layout-bar .tuning-sections { margin-top: 24dp; }', rcss)
+        controller = source('providers/glass-overlay/OverlayController.h')
+        self.assertIn('Element("presets")->GetParentNode()->SetProperty("display",nr||fg?"flex":"none");', controller)
+
+
 class FeederPointer(unittest.TestCase):
     def test_glass_route_still_draws_the_software_cursor(self):
         # Glass draws no pointer; games that hide the system cursor rely on

@@ -112,7 +112,8 @@ class FileStampsTests(unittest.TestCase):
     def test_package_drift_reports_known_changes_and_warms_the_rest(self):
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
         import package_drift
-        target = self.root / 'game'; target.mkdir()
+        # Resolved: CI temp paths use 8.3 short names, which transactions.safe refuses as aliases.
+        target = self.root.resolve() / 'game'; target.mkdir()
         large = target / 'nvngx_dlssnr.dll'; large.write_bytes(self.data)
         loader = target / 'dxgi.dll'; loader.write_bytes(b'MZ loader')
         (target / 'OptiScaler.ini').write_text('[DLSS]\n')

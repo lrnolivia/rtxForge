@@ -12,6 +12,29 @@ import overlay_settings
 import transactions as t
 
 
+RENODX = 'renodx-dlss5.addon64'
+
+
+def renodx_update(e, owned):
+    """Every RenoDX file rtxForge installed moves to the pinned build, which
+    applies NR tuning live. Callers have already verified each owned file.
+    Returns the new bytes by owned name, and a note for the review."""
+    pinned = feeder.lock()['assets'][RENODX]['sha256']
+    stale = [name for name, value in owned.items()
+             if (name == RENODX or name.endswith('/' + RENODX)) and value != pinned]
+    if not stale:
+        return {}, ''
+    try:
+        item = (feeder.owned_stack(e) or feeder.download_stack(e))[RENODX]
+        data = t.safe(Path(item['path'])).read_bytes()
+        t.need(t.sha(data) == pinned, 'The downloaded RenoDX failed verification.')
+    except (t.Refusal, OSError, KeyError, TypeError) as error:
+        return {}, ('RenoDX could not be updated, so this game keeps its current one and NR tuning '
+                    'still applies after a restart. ' + str(error))
+    return ({name: data for name in stale},
+            'RenoDX is updated to rtxForge’s build, so NR tuning applies while you play.')
+
+
 def share_inventory(target, provider, owned, checks, writes, legacy_recipe=None):
     """Publish the same ownership inventory for the next OS in a shared library."""
     path = t.safe(target / cross_os.MARKER)
@@ -116,9 +139,17 @@ def feeder_plan(e, path, params, running):
         if t.sha(data) != owned.get(name):
             writes[str(target / name)] = data
             owned[name] = t.sha(data)
+    renodx, renodx_note = renodx_update(e, owned)
+    for owned_name, data in renodx.items():
+        writes[str(t.safe(target / t.relative(owned_name)))] = data
+        owned[owned_name] = t.sha(data)
+    if renodx and 'recipe' in baseline:
+        baseline['recipe'] = feeder.lock()['version']
     menus(e, target, values, owned, checks, writes)
     name = record.get('name') or root.name
     note = 'Feeder NR · DirectX 11/12. Model, tuning and original restore backups are preserved.'
+    if renodx_note:
+        note += '\n' + renodx_note
     if values is not None:
         note += '\n\n' + overlay_settings.describe(values)
     if missing:
@@ -157,6 +188,10 @@ def legacy_feeder_plan(e, path, raw, record, params, running):
         checks[str(destination)] = actual; checks[item['path']] = item['sha256']
         if actual != item['sha256']: writes[str(destination)] = data
         owned[name] = item['sha256']
+    renodx, renodx_note = renodx_update(e, owned)
+    for owned_name, data in renodx.items():
+        writes[str(t.safe(target / t.relative(owned_name)))] = data
+        owned[owned_name] = t.sha(data)
     values = preferences(params, record, root)
     if values is not None:
         for name in legacy.config_names(record['legacy_recipe']):
@@ -169,6 +204,7 @@ def legacy_feeder_plan(e, path, raw, record, params, running):
     name = record.get('name') or root.name
     note = ('Feeder NR · ' + record['legacy_recipe'] + ' · experimental. '
             'Translation layer, helper, NR model, tuning and original restore backups are preserved.')
+    if renodx_note: note += '\n' + renodx_note
     if values is not None: note += '\n\n' + overlay_settings.describe(values)
     if not writes: return None, {'title': name, 'detail': 'Overlay packages and menus are up to date.', 'details': note}
     share_inventory(target, 'feeder', owned, checks, writes, record['legacy_recipe'])

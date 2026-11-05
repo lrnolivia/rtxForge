@@ -203,6 +203,25 @@ try:
     assert {k:v for k,v in migrated['originals'].items() if k!='rtxforge-glass.dll'}==original
     assert foreign.read_bytes()==glass and (game/'nvngx_dlssnr.dll').read_bytes()==model
     assert t.ini((game/'ReShade.ini').read_text())['RenoDX.DLSS5']['NRResolutionScale']==tuning
+    # Every recorded RenoDX moves to the pinned live-settings build; a failed
+    # download leaves the game unchanged and says so.
+    live=ff.pe(b'renodx live');live_cache=e.STATE_ROOT/'feeder-cache'/t.sha(live);t.atomic_file(live_cache,live,0o600)
+    old_renodx=(game/'renodx-dlss5.addon64').read_bytes()
+    case.spec['assets']['renodx-dlss5.addon64']={'sha256':t.sha(live),'size':len(live)}
+    with patch.object(feeder,'panel',return_value=with_glass),patch.object(feeder,'owned_stack',return_value=None), \
+         patch.object(feeder,'download_stack',side_effect=t.Refusal('offline')):
+        offline=overlays.prepare(e,h.LOCAL/'state',params)
+        assert not offline['plans'] and any('keeps its current one' in item.get('details','') for item in offline['skipped']),offline
+    assert (game/'renodx-dlss5.addon64').read_bytes()==old_renodx
+    with patch.object(feeder,'panel',return_value=with_glass), \
+         patch.object(feeder,'owned_stack',return_value={'renodx-dlss5.addon64':{'path':str(live_cache),'sha256':t.sha(live)}}):
+        review=overlays.prepare(e,h.LOCAL/'state',params)
+        assert len(review['plans'])==1 and 'NR tuning applies while you play' in review['plans'][0]['note'],review
+        assert (game/'renodx-dlss5.addon64').read_bytes()==old_renodx,'review wrote RenoDX'
+        bulk.execute(review)
+    assert (game/'renodx-dlss5.addon64').read_bytes()==live
+    assert feeder.state(e,game)['installed_hashes']['renodx-dlss5.addon64']==t.sha(live)
+    assert (game/'nvngx_dlssnr.dll').read_bytes()==model
     try:overlays.prepare(e,h.LOCAL/'state',params|{'target_games':[]});raise AssertionError('empty scope widened')
     except t.Refusal:pass
 finally:case.doCleanups()

@@ -1669,42 +1669,6 @@ class HeroPicture(Gtk.Picture):
         )
 
 
-class BlurredTexture(Gtk.Widget):
-    """Render a frozen Gdk.Texture through GTK/GSK blur."""
-    def __init__(self,texture=None,radius=22.0):
-        super().__init__(hexpand=True,vexpand=True)
-        self.texture=texture
-        self.radius=radius
-
-    def set_texture(self,texture):
-        self.texture=texture
-        self.queue_draw()
-
-    def do_snapshot(self,snapshot):
-        texture=self.texture
-        if texture is None:
-            return
-
-        width=max(1,self.get_width())
-        height=max(1,self.get_height())
-
-        tw=max(1,texture.get_width())
-        th=max(1,texture.get_height())
-
-        # Cover the available area while maintaining aspect ratio.
-        scale=max(width/tw,height/th)
-        draw_w=tw*scale
-        draw_h=th*scale
-        x=(width-draw_w)/2
-        y=(height-draw_h)/2
-
-        rect=Graphene.Rect()
-        rect.init(x,y,draw_w,draw_h)
-
-        snapshot.push_blur(self.radius)
-        snapshot.append_texture(texture,rect)
-        snapshot.pop()
-
 CSS=b'''
 @define-color accent_bg_color #76b900;
 @define-color accent_color #95cf38;
@@ -3395,25 +3359,6 @@ def icon_button(text,icon,fn,css=None):
     w=ActionButton(text,icon);w.connect('clicked',fn)
     if css:w.add_css_class(css)
     return w
-
-def action_tiles(actions):
-    tiles=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,homogeneous=True,
-        min_children_per_line=4,max_children_per_line=4,row_spacing=12,column_spacing=12)
-    for control in actions:
-        control.set_hexpand(True);control.set_size_request(180,96)
-        content=control.get_child();content.set_orientation(Gtk.Orientation.VERTICAL)
-        content.set_halign(Gtk.Align.FILL)
-        if hasattr(control,'text_label'):
-            control.text_label.set_wrap(True);control.text_label.set_xalign(.5)
-            control.text_label.set_justify(Gtk.Justification.CENTER)
-        tiles.insert(control,-1)
-    responsive=Adw.BreakpointBin(child=tiles,width_request=380,height_request=108)
-    breakpoint=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 790px'))
-    breakpoint.add_setter(tiles,'min-children-per-line',2)
-    breakpoint.add_setter(tiles,'max-children-per-line',2)
-    breakpoint.add_setter(responsive,'height-request',228)
-    responsive.add_breakpoint(breakpoint)
-    return responsive
 
 def margins(w,n=16):
     for edge in ('start','end','top','bottom'):getattr(w,'set_margin_'+edge)(n)

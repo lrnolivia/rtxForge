@@ -28,10 +28,6 @@ def side_margin(width):
     return round(max(min(max(width * 0.03, 16), 56), (width - MAX_COLUMN) / 2))
 
 
-def is_phone(width):
-    return 0 < width < PHONE
-
-
 def library_layout(width):
     """0 = one toolbar row, 1 = two rows, 2 = phone."""
     return 2 if width < PHONE else 1 if width < LIBRARY_ONE_ROW else 0

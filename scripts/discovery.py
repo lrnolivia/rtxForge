@@ -112,31 +112,6 @@ def sha256(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
-def _containment_view(path: Path, root: Path) -> tuple[Path, Path]:
-    """Return a containment-safe view without dereferencing the final entry.
-
-    The parent directory is resolved so a symlinked directory cannot escape the
-    game root, but the final filename itself is kept lexical.  This matters for
-    proxy DLLs that are symlinks: backing up the link is safe even when its
-    target lives elsewhere.
-    """
-    root_real = root.resolve(strict=False)
-    parent_real = path.parent.resolve(strict=False)
-    candidate = parent_real / path.name
-    return (candidate, root_real)
-
-def is_inside(path: Path, root: Path) -> bool:
-    try:
-        candidate, root_real = _containment_view(path, root)
-        candidate.relative_to(root_real)
-        return True
-    except ValueError:
-        return False
-
-def rel_safe(path: Path, root: Path) -> Path:
-    candidate, root_real = _containment_view(path, root)
-    return candidate.relative_to(root_real)
-
 def human_size(n: int) -> str:
     for unit in ['B', 'KiB', 'MiB', 'GiB']:
         if n < 1024 or unit == 'GiB':
@@ -495,24 +470,6 @@ def print_games(games: list[Game]) -> None:
         print(color(f'       EXE: {g.exe}', 'dim'))
         if g.anti_cheat:
             print(color(f'       Anti-cheat evidence: {g.anti_cheat}', 'dim'))
-
-def get_ini_section(path: Path, section: str) -> dict[str, str]:
-    try:
-        lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
-    except OSError:
-        return {}
-    current = None
-    out: dict[str, str] = {}
-    for line in lines:
-        s = line.strip()
-        m = re.match('^\\[([^\\]]+)\\]$', s)
-        if m:
-            current = m.group(1)
-            continue
-        if current and current.lower() == section.lower() and ('=' in s) and (not s.startswith((';', '#'))):
-            k, v = s.split('=', 1)
-            out[k.strip()] = v.strip()
-    return out
 
 def get_ini_values_all(path: Path) -> dict[str, dict[str, str]]:
     """Return every ordinary key/value in an INI, grouped by section.

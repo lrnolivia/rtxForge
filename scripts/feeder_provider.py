@@ -495,10 +495,6 @@ def mentioned_apis(exe, limit=2 * 1024**3):
         return set()
 
 
-def directx11(e, exe):
-    return 'd3d11' in graphics_apis(e, exe)
-
-
 def route_note(e, row):
     """The Feeder route a fresh game gets, including experimental legacy recipes."""
     try:

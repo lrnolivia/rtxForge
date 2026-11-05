@@ -2569,29 +2569,6 @@ def remove_ini_key(text: str, section: str, key: str) -> str:
     return text[:start] + block + text[end:]
 
 
-def detect_eos_overlay(root: Path, max_dirs: int = 12000) -> bool:
-    """Detect the Epic/EOS overlay without following directory symlinks.
-
-    OptiScaler documents EOS/EGS overlays as a startup-crash source when frame
-    generation is active.  We enable its built-in overlay blocker only when the
-    game actually carries an EOS overlay, avoiding a global Steam Input side
-    effect on unrelated titles.
-    """
-    wanted = {"eosovh-win64-shipping.dll", "eosovh-win32-shipping.dll"}
-    seen = 0
-    try:
-        for current, dirs, files in os.walk(root, followlinks=False):
-            seen += 1
-            if seen > max_dirs:
-                return False
-            base = Path(current)
-            dirs[:] = [d for d in dirs if not (base / d).is_symlink()]
-            if any(name.casefold() in wanted for name in files):
-                return True
-    except OSError:
-        return False
-    return False
-
 def patch_optiscaler_ini(raw: bytes, family: str, ada_mfg_mode: str = "integrated", *, disable_overlays: bool = False) -> bytes:
     """Apply the single y4my-v4 Proton policy used by Handoff 188 RC1.
 

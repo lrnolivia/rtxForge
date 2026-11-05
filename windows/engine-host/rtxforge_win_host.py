@@ -389,6 +389,9 @@ def _scan(params):
     compat_list.apply(win_features._config(), rows, engine_bridge.module(service.config))
     import provider_candidates
     provider_candidates.decorate(engine_bridge.module(service.config), rows)
+    # A changed OptiScaler file is a Repair, not a broken game.
+    import package_drift
+    package_drift.decorate(engine_bridge.module(service.config), rows)
     import skynizz_provider
     import transactions
     for row in rows:

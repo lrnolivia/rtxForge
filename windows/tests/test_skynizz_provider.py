@@ -149,6 +149,27 @@ assert 'WorkingScale=0.5' in menu_off and 'CacheInterval=8' in menu_off and 'Ove
 run(prepare(fresh,'repair',{'optiscaler_ui':True,'optiscaler_intro':False}))
 assert (fresh/'OptiScaler.ini').read_text()==ini,'menu options failed to restore original settings independently'
 assert baseline(fresh)['archive']['release']['tag']=='v1.3.0'
+# One changed package file: still installed, Repair recommended, one repair puts it back.
+helper=fresh/'nvngx.dll_dlssnr.dll';owned_helper=helper.read_bytes();settings_before=(fresh/'OptiScaler.ini').read_text()
+assert 'package_drift' not in scan(fresh)
+helper.write_bytes(fixtures.pe()+b'replaced by another tool')
+changed=scan(fresh)
+assert changed['installed'] and not changed['blocked'] and changed['runtime_provider']=='skynizz',changed
+assert changed['package_drift']['files']==[{'name':'nvngx.dll_dlssnr.dll','fix':'restore'}],changed.get('package_drift')
+assert 'Repair puts back' in changed['package_drift']['summary']
+assert any(card['title']=='Files' and card['values'][0]=='Repair recommended' for card in changed['overview_cards'])
+try:service.prepare([scan(fresh)],'nr-only','install',visual_settings=settings)
+except Exception:pass
+assert helper.read_bytes()==fixtures.pe()+b'replaced by another tool','a non-repair refresh overwrote the changed file'
+repair=prepare(fresh,'repair')
+assert 'nvngx.dll_dlssnr.dll' in repair['rows'][0]['detail'] and 'backup' in repair['rows'][0]['detail'],repair['rows'][0]['detail']
+assert helper.read_bytes()==fixtures.pe()+b'replaced by another tool','review changed the file'
+run(repair)
+assert helper.read_bytes()==owned_helper and 'package_drift' not in scan(fresh)
+kept=list((module(service.config).state_dir_for(fresh)/'repair-kept').glob('*/nvngx.dll_dlssnr.dll'))
+assert len(kept)==1 and kept[0].read_bytes()==fixtures.pe()+b'replaced by another tool','repair lost the changed bytes'
+assert (fresh/'OptiScaler.ini').read_text()==settings_before,'repair changed the game settings'
+checks.append('a changed OptiScaler file is a calm Repair recommended; one repair restores it and keeps settings')
 reset=prepare(fresh,'reset');run(reset)
 reset_ini=(fresh/'OptiScaler.ini').read_text()
 assert 'CacheInterval=1' in reset_ini and 'WorkingScale=0.65' in reset_ini and 'LocalStructure=1.0' in reset_ini and 'SkinStructure=1.0' in reset_ini and 'DisableSplash=true' in reset_ini and 'DualFeature=' not in reset_ini
@@ -617,7 +638,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 32)
+            self.assertEqual(receipt['count'], 33)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

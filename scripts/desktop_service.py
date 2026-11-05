@@ -104,6 +104,12 @@ class DesktopService:
                         row['feature_mode']=current['feature_mode']
                         row['profile']={'nr-mfg':'NR + MFG','nr-only':'NR Only','mfg-only':'MFG Only'}.get(current['feature_mode'],'Unknown')
                         row['runtime_provider']=current.get('provider_id','y4my')
+                        # An NR-only install is judged in the mode it runs: it needs
+                        # native DLSS, not native frame generation. (Windows judges
+                        # installed rows in their own mode in rtxforge_win_host._scan.)
+                        if (cross_os.THIS_OS=='linux' and current['feature_mode']=='nr-only' and row['native_dlss']
+                                and row['blocked']=='No native DLSS-G detected'):
+                            row['blocked']=''
                         if row['runtime_provider']=='skynizz':
                             import skynizz_provider
                             row['feature_controls']=skynizz_provider.read_controls(config)
@@ -176,6 +182,8 @@ class DesktopService:
         package_adoption.decorate(engine,rows)
         import vulkan_app
         vulkan_app.decorate(rows,self.config,selected=settings.get('runtime_provider')=='vulkan-native')
+        import package_drift
+        package_drift.decorate(engine,rows)
         for row in rows:
             if row.get('vulkan_windows') and 'linux_ready' not in row:
                 # A Windows Vulkan install from before it wrote its record: ready once adapted here.

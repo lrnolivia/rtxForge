@@ -128,6 +128,48 @@ def digest(path):
     return _measure(path, key)[0]
 
 
+def known(path):
+    """The digest when this version of the file was hashed before, else None.
+
+    Never reads a large file: a status check can ask without paying for the
+    first read, and warm() fills the answer in for the next check. Small
+    files are hashed now (cheaper than the lookup)."""
+    version = stamp(path)
+    if version is None:
+        return None
+    if version[0] < MIN_SIZE:
+        return _hash(path)
+    return _recall(_key(path), version)
+
+
+_warming: set[str] = set()
+
+
+def warm(paths):
+    """Hash files on a background thread, so a later known() has the answer."""
+    with _lock:
+        pending = [str(path) for path in paths if _key(path) not in _warming]
+        _warming.update(_key(path) for path in pending)
+    if not pending:
+        return None
+
+    def run():
+        try:
+            for path in pending:
+                try:
+                    digest(path)
+                except OSError:
+                    pass
+            save()
+        finally:
+            with _lock:
+                _warming.difference_update(_key(path) for path in pending)
+
+    thread = threading.Thread(target=run, name='file-stamps-warm', daemon=True)
+    thread.start()
+    return thread
+
+
 def save():
     """Write new digests to the cache file. A failure only costs a re-hash next run."""
     global _dirty

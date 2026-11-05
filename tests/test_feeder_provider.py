@@ -133,6 +133,27 @@ class FeederTest(unittest.TestCase):
         self.assertFalse(found['feeder_managed'])
         self.assertEqual(found['runtime_provider'], 'feeder')
 
+    def test_feeder_sr_left_after_restore_is_not_the_games_dlss(self):
+        # The Sims 4: an adopted manual install brought Feeder's SR, and the restore put it back.
+        row = self.game('Sims') | {'native_dlss': True}
+        dll = Path(row['game']) / 'nvngx_dlss.dll'
+        feeder_sr = self.assets['nvngx_dlss.dll']
+        dll.write_bytes(feeder_sr)
+        record = {'status': 'restored', 'adopted': True, 'originals': {'nvngx_dlss.dll': {'sha256': t.sha(feeder_sr)}}}
+        def native(record, data=feeder_sr):
+            dll.write_bytes(data)
+            with patch.object(feeder, 'state', lambda e, directory: record):
+                return feeder.expand_rows(self.e, [copy.deepcopy(row)])[0]['native_dlss']
+        self.assertFalse(native(record))
+        manual = record | {'originals': {'nvngx_dlss.dll': {'sha256': feeder.MANUAL_SR}}}
+        self.assertFalse(native(manual))
+        # A game's own DLSS, a fresh (not adopted) record, a live install or no record leaves it alone.
+        self.assertTrue(native(record, pe(b'game shipped DLSS')))
+        self.assertTrue(native(record | {'originals': {'nvngx_dlss.dll': {'sha256': t.sha(pe(b'game shipped DLSS'))}}}))
+        self.assertTrue(native(record | {'adopted': False}))
+        self.assertTrue(native(record | {'status': 'active'}))
+        self.assertTrue(native(None))
+
     def installed_fresh(self, name='drift-game'):
         row = self.game(name)
         self.apply(self.prepare(row))

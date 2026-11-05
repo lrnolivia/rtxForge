@@ -58,7 +58,7 @@ class NrAddonTests(unittest.TestCase):
     def test_lecram_in_both_slots_is_one_add_on_with_two_passes(self):
         plan = nr.plan(PLAIN_GAME, {'environment': {'addon': 'lecram', 'values': {'structure': 0.4, 'character': 0.1}},
                                     'character': {'addon': 'lecram', 'values': {'character': 0.7, 'character_mask': 1}}})
-        self.assertEqual(plan['install'], [{'addon': 'lecram', 'build': '8.5'}])
+        self.assertEqual(plan['install'], [{'addon': 'lecram', 'build': '10.8'}])
         ini = plan['ini']['RenoDX.DLSS5']
         self.assertEqual((ini['NRPasses'], ini['NRLocalStructure'], ini['NRSkinStructure']), (2, 0.4, 0.1))
         self.assertEqual((ini['NRPass2FollowPass1'], ini['NRPass2Skin'], ini['NRPass2AutoMask']), (0, 0.7, 1))

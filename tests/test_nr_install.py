@@ -14,7 +14,7 @@ import nr_install
 import renodx_hdr as hdr
 import transactions as t
 
-COMBO = {'environment': {'addon': 'lecram', 'build': '8.5', 'model': 'new', 'values': {'structure': 0.4, 'character': 0.1}},
+COMBO = {'environment': {'addon': 'lecram', 'build': '10.8', 'model': 'new', 'values': {'structure': 0.4, 'character': 0.1}},
          'character': {'addon': 'shortfuse', 'model': 'new', 'values': {'character': 0.68}}}
 
 

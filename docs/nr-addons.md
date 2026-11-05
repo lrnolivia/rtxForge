@@ -14,7 +14,7 @@ usual review, which lists every file and its SHA-256 before anything changes.
 
 | Add-on | Builds | How it runs |
 | --- | --- | --- |
-| Lecram (`renodx-dlss5.addon64`) | 8.5 (default), 10.8 | ReShade add-on. In a game without DLSS it runs through Feeder NR. |
+| Lecram (`renodx-dlss5.addon64`) | 10.8 | ReShade add-on. In a game without DLSS it runs through Feeder NR, which uses rtxForge's own 8.5 build. |
 | ShortFuse (`renodx-dlss.addon64`) | 26.1025.0009 | Hooks the game's own DLSS calls, so it needs a 64-bit game with DLSS. |
 | GITC Uplift | 1.8.0 | ReShade add-on with its helper and shaders. It runs alone. |
 

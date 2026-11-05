@@ -13419,6 +13419,44 @@ class Window(Adw.ApplicationWindow):
         item=row('Test running' if active else 'Test session',
                  'Play, then finish the test here to capture its logs.' if active else 'Start a test, play the game, then finish it to capture logs for a bug report.')
         item.add_suffix(test);item.add_suffix(report);testing.add(item)
+        # Validate reads this game's logs for proof NR or MFG ran; with proof it becomes Confirm.
+        validation=(game.get('test_record') or record).get('validation') or {}
+        found=validation.get('found') or []
+        if found and (game.get('test_record') or record).get('status')!='Working':
+            def confirm(*_):
+                save_record('Marked as working',status='Working')
+                if self.options.demo:return
+                try:
+                    import compat_list
+                    shared=compat_list.share(game,game['test_record'],compat_list.package_label(validation.get('route') or ''),self.service.hardware(),compat_list.version())
+                    Gio.AppInfo.launch_default_for_uri(shared['url'],None)
+                except (OSError,ValueError,KeyError,GLib.Error) as error:self.toast('Sharing could not open: '+str(error))
+                if self.detail_game==game['game'] and self.dialog is self.detail_dialog:self.details(game)
+            item=row('Detected in this game\'s logs',f"We detected {' and '.join(found)} running in this game's logs. If that's right and it ran well, press Confirm to share your compatibility.")
+            action=button('Confirm',confirm);action.set_valign(Gtk.Align.CENTER);action.set_sensitive(not self.options.demo)
+        else:
+            def validate(*_):
+                def work():
+                    import log_validation
+                    try:updated=log_validation.validate(self.service.config,game);error=None
+                    except (OSError,ValueError,KeyError) as exc:updated,error=None,str(exc)
+                    def done():
+                        if error:self.toast('Validate: '+error);return False
+                        game['test_record']=updated;found=(updated.get('validation') or {}).get('found') or []
+                        self.toast(f"Found {' and '.join(found)} running in the logs." if found else 'No proof of NR or MFG in the logs yet.')
+                        if self.detail_game==game['game'] and self.dialog is self.detail_dialog:self.details(game)
+                        return False
+                    GLib.idle_add(done)
+                threading.Thread(target=work,daemon=True,name='validate-logs').start()
+            when=validation.get('checked')
+            detail=('Install features first, then play with them on.' if not game.get('installed')
+                    else f"Confirmed. The logs show {' and '.join(found)} running." if found
+                    else datetime.datetime.fromtimestamp(when).strftime('Checked %x %H:%M: no proof of NR or MFG in the logs yet. Play with them on, then validate again.') if when
+                    else 'Check this game\'s logs for proof that NR or MFG ran.')
+            item=row('Validate from logs',detail)
+            action=button('Validate',validate);action.set_valign(Gtk.Align.CENTER)
+            action.set_sensitive(not self.options.demo and bool(game.get('installed')))
+        item.add_suffix(action);testing.add(item)
         latest=game_notes.latest_test(record)
         if latest:
             item=row('Latest functional test','Suggested: '+latest['suggestion']+'. You choose the result.' if latest.get('suggestion') else 'Some checks need more evidence. Review the suggested fixes.')

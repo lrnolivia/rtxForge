@@ -20,6 +20,7 @@ public sealed partial class MainWindow
     string? overlayRefreshNotice;
     void InitializeOverlayRefresh()
     {
+        InitializeBackgroundValidation();
         if (Service is not EngineForgeService engine) return;
         void Changed(System.Text.Json.Nodes.JsonObject result) => DispatcherQueue.TryEnqueue(() => ShowOverlayRefresh(result));
         engine.OverlayRefreshChanged += Changed;
@@ -807,6 +808,33 @@ public sealed partial class MainWindow
             ShowToast(saved);
         }
         catch (InvalidOperationException error) { await Message("Save notes", error.Message); }
+    }
+
+    public async Task ValidateAsync(Game game)
+    {
+        try { await Service.ValidateAsync(game); }
+        catch (InvalidOperationException error) { await Message("Validate", error.Message); return; }
+        ShowToast(game.ValidatedFeatures is { Length: > 0 } found
+            ? $"Found {string.Join(" and ", found)} running in {game.Name}'s logs."
+            : $"No proof of NR or MFG in {game.Name}'s logs yet.");
+        NotifyGamesChanged();
+    }
+
+    bool backgroundValidated;
+    /// <summary>Once per app start, after the library loads: the same log check as Validate, quietly.
+    /// It reads logs only and takes no writer turn, so nothing you start waits for it.</summary>
+    void InitializeBackgroundValidation()
+    {
+        async void Run()
+        {
+            if (backgroundValidated || Service.IsPreview || !Games.Any(game => game.Installed)) return;
+            backgroundValidated = true;
+            try { await Service.ValidateAllAsync(Games); }
+            catch (InvalidOperationException) { return; }
+            DispatcherQueue.TryEnqueue(NotifyGamesChanged);
+        }
+        GamesChanged += Run;
+        Run();
     }
 
     public async Task RecordTestAsync(Game game)

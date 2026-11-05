@@ -649,6 +649,20 @@ def test_finish(params):
     return game_notes.finish(_config(), params["row"], helper=params.get("helper"))
 
 
+def test_validate(params):
+    """Validate: look in this game's logs for proof that NR or MFG ran. Reads logs only."""
+    import log_validation
+    return log_validation.validate(_config(), params["row"])
+
+
+def test_validate_all(params):
+    """The quiet check at app start, for every installed game. Reads logs only."""
+    import log_validation
+    rows = params.get("rows") or []
+    t.need(isinstance(rows, list) and len(rows) <= 1000, "Too many games to validate.")
+    return {"records": log_validation.validate_all(_config(), rows)}
+
+
 def try_anyway(params):
     """Skip (or stop skipping) a game's capability check; installs still go through review."""
     return compat_list.set_try_anyway(_config(), params["game"], bool(params.get("on")), params.get("reason") or "")
@@ -1069,6 +1083,7 @@ METHODS = {
     "report_draft": report_draft, "report_preview": report_preview, "report_links": report_links,
     "report_outline": report_outline, "report_send": report_send,
     "try_anyway": try_anyway, "compat_share": compat_share,
+    "test_validate": test_validate, "test_validate_all": test_validate_all,
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "overview_inspect": overview_inspect, "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
     'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush,

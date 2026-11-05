@@ -247,6 +247,20 @@ public sealed partial class EngineForgeService
         return new CompatShare(S(r, "title") ?? "", S(r, "body") ?? "", S(r, "url") ?? "");
     }
 
+    public async Task ValidateAsync(Game game) =>
+        Apply(game, await CallAsync("test_validate", new JsonObject { ["row"] = Row(game) }));
+
+    /// <summary>The quiet check at app start: installed games only, logs only, results kept per game.</summary>
+    public async Task ValidateAllAsync(IReadOnlyList<Game> games)
+    {
+        var installed = games.Where(game => game.Installed).ToList();
+        if (installed.Count == 0) return;
+        var r = await CallAsync("test_validate_all", new JsonObject { ["rows"] = Rows(installed) });
+        if (r?["records"] is not JsonObject records) return;
+        foreach (var game in installed)
+            if (records[game.Id] is JsonObject record) Apply(game, record);
+    }
+
     // ---------- tools ----------
 
     public async Task<HdrStatus> HdrStatusAsync(Game game)

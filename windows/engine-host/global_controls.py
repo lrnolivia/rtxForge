@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import stat
 
+import file_stamps
 import transactions as t
 from operation_session import Session
 import feeder_provider as feeder
@@ -205,29 +206,43 @@ def prepare(e, state, params):
     return {'engine': e, 'plans': plans, 'blocked': blocked, 'skipped': skipped}
 
 
-def _check(e, plan):
-    t.need(not e._running_processes_under_root(Path(plan['root'])), 'A reviewed game started. Close it and review again.')
-    import offline_routes
-    t.need(anti_cheat(e, Path(plan['root'])) is None or (plan.get('target') and offline_routes.allowed_target(e, Path(plan['target']), Path(plan['root']))), 'Anti-cheat appeared after review; nothing further was changed.')
+def _check(e, plan, digests=None, running=None, anti_cheat_walk=True):
+    """The reviewed game is closed and its files are what the review saw.
+
+    digests is the operation's file_stamps.Operation: a file is read once per
+    review or execution, and read again only if it changed since. Without one,
+    every file is read now."""
+    digests = digests or file_stamps.Operation()
+    running = running or e._running_processes_under_root
+    t.need(not running(Path(plan['root'])), 'A reviewed game started. Close it and review again.')
+    if anti_cheat_walk:
+        import offline_routes
+        t.need(anti_cheat(e, Path(plan['root'])) is None or (plan.get('target') and offline_routes.allowed_target(e, Path(plan['target']), Path(plan['root']))), 'Anti-cheat appeared after review; nothing further was changed.')
     for filename, digest in plan['checks'].items():
         path = t.safe(filename)
-        actual = t.digest(path) if path.exists() else None
+        actual = digests.digest(path) if path.exists() else None
         t.need(actual == digest, 'Files changed since review. Review the bulk change again.')
 
 
 def execute(review):
     e, plans = review['engine'], review['plans']
     t.need(plans, 'No bulk changes were reviewed.')
-    with e.mutation_lock():
+    digests = file_stamps.Operation()
+    with e.mutation_lock(), digests:
+        # Every game is verified against its review before the first write:
+        # bytes read fresh, anti-cheat and running games checked.
+        running = _process_check(e)
         for index, plan in enumerate(plans, 1):
             ui.progress('Verifying reviewed games', game=plan['name'], current=index, total=len(plans))
-            _check(e, plan)
+            _check(e, plan, digests, running)
         session = Session(e.STATE_ROOT / 'desktop-operations')
         completed, failed = [], []
         try:
             for plan in plans:
                 ui.progress('Applying settings', game=plan['name'], current=len(completed) + len(failed) + 1, total=len(plans))
-                _check(e, plan)
+                # Just before this game's writes: a fresh process check, and any
+                # file whose stamp moved since the verification above is read again.
+                _check(e, plan, digests, anti_cheat_walk=False)
                 checkpoint = session.capture([Path(p) for p in plan['writes']], label=plan['name'])
                 try:
                     for filename, data in plan['writes'].items():

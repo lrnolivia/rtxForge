@@ -17,6 +17,7 @@ import re
 import threading
 import time
 
+import file_stamps
 import transactions as t
 import ui
 import operation_session
@@ -56,7 +57,6 @@ for _pass in (2, 3):
                f'pass{_pass}_structure': (f'NRPass{_pass}Structure', 0.0, 2.0),
                f'pass{_pass}_tone': (f'NRPass{_pass}LocalTone', 0.0, 2.0),
                f'pass{_pass}_skin': (f'NRPass{_pass}Skin', -1.0, 1.0)}
-_hashes = {}
 # Reviews share work, on the reviewing thread only: each file stamp (size, mtime, ctime) is hashed
 # once across reviews, so games checked one at a time cost no more than one batch, and one process
 # inventory serves every game in a review. Execution never runs inside a review, so it always checks afresh.
@@ -107,11 +107,12 @@ def digest(path, cached=False):
     session = getattr(_review, 'hashes', None)
     if session is not None and key in session:
         return session[key]
-    if not cached or key not in _hashes:
-        _hashes[key] = t.digest(path)
+    # cached: status and inspection trust an unchanged stamp, even from an earlier run.
+    # Otherwise the bytes are read now (and the result serves later cached reads).
+    value = file_stamps.digest(path) if cached else file_stamps.Operation().digest(path)
     if session is not None:
-        session[key] = _hashes[key]
-    return _hashes[key]
+        session[key] = value
+    return value
 
 
 def state_dir(e, target):
@@ -159,9 +160,9 @@ def target(row):
     return root, exe, exe.parent
 
 
-def model(path):
+def model(path, cached=False):
     path = t.safe(path)
-    value = digest(path)
+    value = digest(path, cached)
     spec = lock()['models'].get(value)
     t.need(spec is not None and path.stat().st_size == spec['size'],
            'Choose a verified NR model for your GPU in Settings')
@@ -283,13 +284,13 @@ def inspect(e, row, cached=True):
         for name in CONFIGS:
             _read_ini(t.safe(directory / name))
         try:
-            nr = model(directory / MODEL)
+            nr = model(directory / MODEL, cached)
         except t.Refusal:
             nr = record.get('nr_runtime') or {}
             t.need(nr.get('sha256') and digest(directory / MODEL, cached) == nr['sha256'], 'The adopted NR model changed')
     else:
         stack(directory, cached, installed=True)
-        nr = model(directory / MODEL)
+        nr = model(directory / MODEL, cached)
     if record:
         t.need(record.get('status') == 'active', 'The Feeder installation needs recovery')
         for name, expected in record['installed_hashes'].items():

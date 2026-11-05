@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import cross_os
+import file_stamps
 import global_controls as bulk
 import packages
 import skynizz_provider as provider
@@ -96,6 +97,7 @@ def prepare(e, state, params=None):
     candidates += sorted((e.STATE_ROOT / 'feeder-targets').glob('*/baseline.json'))
     t.need(len(candidates) <= 1000, 'Too many installation records. Refresh your library.')
     running = bulk._process_check(e)
+    digests = file_stamps.Operation()
     for index, path in enumerate(candidates, 1):
         name = path.parent.name
         try:
@@ -103,7 +105,7 @@ def prepare(e, state, params=None):
             if record.get('status') != 'active': continue
             name = record.get('name') or name
             if record.get('provider_id') == 'feeder':
-                plan, unchanged = routes.feeder_plan(e, path, params, running)
+                plan, unchanged = routes.feeder_plan(e, path, params, running, digests)
                 if plan: plans.append(plan)
                 if unchanged: skipped.append(unchanged)
                 continue
@@ -147,7 +149,7 @@ def prepare(e, state, params=None):
             for filename, data in ((proxy, payload['dxgi.dll']), ('nvngx.dll_dlssnr.dll', payload['nvngx.dll_dlssnr.dll'])):
                 destination = t.safe(target / filename)
                 expected = owned.get(filename)
-                actual = t.digest(destination) if destination.is_file() else None
+                actual = digests.digest(destination) if destination.is_file() else None
                 t.need(expected and actual in (None, expected),
                        'The installed bridge is missing or changed. Use Repair Features: ' + filename)
                 checks[str(destination)] = actual
@@ -155,7 +157,7 @@ def prepare(e, state, params=None):
                 baseline['current']['installed_hashes'][filename] = marker['files'][filename] = t.sha(data)
             if 'rtxforge-glass.dll' in payload:
                 filename='rtxforge-glass.dll'; destination=t.safe(target / filename)
-                actual=t.digest(destination) if destination.exists() else None
+                actual=digests.digest(destination) if destination.exists() else None
                 expected=owned.get(filename)
                 t.need(actual == expected, 'An unowned or changed glass renderer is present. Repair this game first.')
                 checks[str(destination)]=actual
@@ -175,13 +177,13 @@ def prepare(e, state, params=None):
                     continue  # Already bound to its observed bytes (or absence) above.
                 if not destination.exists():
                     source = t.safe(e.STATE_ROOT / 'feeder-cache' / expected)
-                    t.need(source.is_file() and source.stat().st_size <= 512 * 1024**2 and t.digest(source) == expected,
+                    t.need(source.is_file() and source.stat().st_size <= 512 * 1024**2 and digests.digest(source) == expected,
                            'The missing managed file needs a verified recovery download: ' + filename)
                     if expected not in recovered: recovered[expected] = source.read_bytes()
                     checks[str(destination)] = None; checks[str(source)] = expected
                     writes[str(destination)] = recovered[expected]
                     continue
-                t.need(destination.is_file() and t.digest(destination) == expected, 'Package files changed; repair this game first: ' + filename)
+                t.need(destination.is_file() and digests.digest(destination) == expected, 'Package files changed; repair this game first: ' + filename)
                 checks[str(destination)] = expected
             updated_release = dict(release)
             for key in ('mfg_component', 'nr_preset', *provider.PRODUCTION_RUNTIMES):
@@ -216,10 +218,11 @@ def prepare(e, state, params=None):
                     'summary': 'Update overlay packages and menu settings',
                     'note': 'OptiScaler · DirectX 12. NR, MFG, tuning and original restore backups are preserved.'
                     + (' Shared package identity will be synchronized.' if reconciled else '') + details}
-            bulk._check(e, plan)
+            # Closed, no anti-cheat, and the files above unchanged; each was read once for this review.
+            bulk._check(e, plan, digests, running)
             plans.append(plan)
         except (t.Refusal, e.Stop, OSError, ValueError, KeyError, TypeError) as error:
             blocked.append({'title': name, 'detail': str(error), 'details': ''})
-    more, failures, unchanged = routes.vulkan_plans(e, params, running)
+    more, failures, unchanged = routes.vulkan_plans(e, params, running, digests)
     return {'engine': e, 'plans': plans + more, 'blocked': blocked + failures, 'skipped': skipped + unchanged,
             'record_overlay_updates': True}

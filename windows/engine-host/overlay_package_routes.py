@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import feeder_provider as feeder
+import file_stamps
 import global_controls as bulk
 import overlay_policy
 import overlay_settings
@@ -96,7 +97,17 @@ def menus(e, target, values, owned, checks, writes):
             owned[name] = t.sha(changed)
 
 
-def feeder_plan(e, path, params, running):
+def _digest(digests, path):
+    """feeder.digest's file checks, with the bytes read once per review."""
+    path = t.safe(path)
+    if not path.exists():
+        return None
+    t.need(path.is_file(), 'Expected a regular file: ' + str(path))
+    return digests.digest(path)
+
+
+def feeder_plan(e, path, params, running, digests=None):
+    digests = digests or file_stamps.Operation()
     raw = bulk._read(path)
     record = json.loads(raw)
     if record.get('status') != 'active' or record.get('provider_id') != 'feeder':
@@ -109,7 +120,7 @@ def feeder_plan(e, path, params, running):
         return None, None
     t.need(path.parent == feeder.state_dir(e, target), 'Feeder record location differs.')
     if record.get('legacy_recipe'):
-        return legacy_feeder_plan(e, path, raw, record, params, running)
+        return legacy_feeder_plan(e, path, raw, record, params, running, digests)
     t.need(not running(root), 'Close this game, then review again.')
     values = preferences(params, record, target)
     baseline = copy.deepcopy(record)
@@ -127,7 +138,7 @@ def feeder_plan(e, path, params, running):
         destination = t.safe(target / t.relative(name))
         if name in feeder.CONFIGS:
             continue
-        actual = feeder.digest(destination, cached=False)
+        actual = _digest(digests, destination)
         if actual != expected and (name == RENODX or name.endswith('/' + RENODX)) and actual in shipped:
             owned[name] = expected = actual; adopted = True
         t.need(actual == expected, 'Feeder files changed; repair this game first: ' + name)
@@ -135,7 +146,7 @@ def feeder_plan(e, path, params, running):
     for name, item in available.items():
         if name not in owned:
             destination=t.safe(target / name)
-            actual = feeder.digest(destination, cached=False) if destination.exists() else None
+            actual = _digest(digests, destination) if destination.exists() else None
             adoption = (params or {}).get('adopt_overlay_files', {}).get(str(destination))
             t.need(actual is None or actual == adoption, 'An unowned overlay file is present: ' + name)
             checks[str(destination)]=actual
@@ -169,11 +180,11 @@ def feeder_plan(e, path, params, running):
     writes[str(path)] = bulk._json(baseline)
     plan = {'name': name, 'game': str(root), 'root': str(root), 'target': str(target),
             'checks': checks, 'writes': writes, 'summary': 'Update Feeder overlay and menu settings', 'note': note}
-    bulk._check(e, plan)
+    bulk._check(e, plan, digests, running)
     return plan, None
 
 
-def legacy_feeder_plan(e, path, raw, record, params, running):
+def legacy_feeder_plan(e, path, raw, record, params, running, digests):
     import feeder_legacy as legacy
     target = t.safe(record['target']); root = t.safe(record['game'])
     legacy.validate_state(e, target, record)
@@ -183,12 +194,12 @@ def legacy_feeder_plan(e, path, raw, record, params, running):
     for name, expected in owned.items():
         if name in legacy.config_names(record['legacy_recipe']): continue
         destination = t.safe(target / t.relative(name))
-        t.need(feeder.digest(destination, cached=False) == expected, 'Feeder files changed; repair first: ' + name)
+        t.need(_digest(digests, destination) == expected, 'Feeder files changed; repair first: ' + name)
         checks[str(destination)] = expected
     available = feeder.panel(e)
     for name, source in legacy.panel_names(record['legacy_recipe']).items():
         if source not in available: continue
-        destination = t.safe(target / name); actual = feeder.digest(destination, cached=False)
+        destination = t.safe(target / name); actual = _digest(digests, destination)
         if name not in baseline['originals']:
             t.need(actual is None, 'An unowned panel is present: ' + name)
             baseline['originals'][name] = None
@@ -220,14 +231,15 @@ def legacy_feeder_plan(e, path, raw, record, params, running):
     writes[str(path)] = bulk._json(baseline)
     plan = {'name': name, 'game': str(root), 'root': str(root), 'target': str(target),
             'checks': checks, 'writes': writes, 'summary': 'Update legacy Feeder overlay and menu settings', 'note': note}
-    bulk._check(e, plan)
+    bulk._check(e, plan, digests, running)
     return plan, None
 
 
-def vulkan_plans(e, params, running):
+def vulkan_plans(e, params, running, digests=None):
     """Update only the known immutable overlay/runtime inventory, preserving NR models and all mutable files."""
     import vulkan_app
     import vulkan_dlssg_provider as native
+    digests = digests or file_stamps.Operation()
     plans, blocked, skipped = [], [], []
     candidates = sorted((vulkan_app.state_root() / 'targets').glob('*/baseline.json'))
     t.need(len(candidates) <= 1000, 'Too many Vulkan installation records.')
@@ -253,7 +265,7 @@ def vulkan_plans(e, params, running):
                 mutable = native._mutable()
             baseline = copy.deepcopy(record)
             checks = {str(path): t.sha(raw)}; writes = {}
-            checks[str(manifest)] = t.digest(manifest); checks[str(archive)] = spec['archive']['sha256']
+            checks[str(manifest)] = digests.digest(manifest); checks[str(archive)] = spec['archive']['sha256']
             loader = folder / ('loader-'+profile) / 'bink2w64.dll'
             checks[str(loader)] = spec['profiles'][profile]['loader']['binary']['sha256']
             retained_runtimes = set()
@@ -261,7 +273,7 @@ def vulkan_plans(e, params, running):
             for filename, expected in record['installed'].items():
                 destination = t.safe(target / t.relative(filename))
                 if filename in mutable: continue
-                actual = t.digest(destination)
+                actual = digests.digest(destination)
                 runtime = {'NativeMods/Streamline/nvngx_dlssg.dll': 'fg_runtime',
                            'NativeMods/Streamline/nvngx_dlss.dll': 'sr_runtime',
                            'NativeMods/Streamline/nvngx_dlssd.dll': 'rr_runtime'}.get(filename)
@@ -309,7 +321,7 @@ def vulkan_plans(e, params, running):
             writes[str(path)] = bulk._json(baseline)
             plan = {'name':name,'game':str(root),'root':str(root),'target':str(target),
                     'checks':checks,'writes':writes,'summary':'Update Vulkan overlay package','note':note}
-            bulk._check(e,plan); plans.append(plan)
+            bulk._check(e,plan,digests,running); plans.append(plan)
         except (t.Refusal,e.Stop,OSError,ValueError,KeyError,TypeError) as error:
             blocked.append({'title':name,'detail':str(error),'details':''})
     return plans, blocked, skipped

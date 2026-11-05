@@ -19,7 +19,7 @@
     ]
   },
   "patch": "ada-mfg.patch",
-  "patch_sha256": "2fba011895a891a7b8f6faf0d0f9f0e2852eb7a0eba152e628f5bbf0167ea284",
+  "patch_sha256": "0f9755aa70ad5713faa76e02fb9e83619c15c8c10c4584aa787edcdc5c971a86",
   "license": "GPL-3.0-only",
   "runtime_verified": false,
   "default_promoted": false,

@@ -254,7 +254,7 @@ index 00000000..a00c0317
 +            const bool valid = boolean(request.sharpen) && boolean(request.sharpOverride) && boolean(request.motionSharpen) &&
 +                request.sharpenShader >= 0 && request.sharpenShader <= 2 &&
 +                bounded(request.sharpness, 0.f, 1.f) && bounded(request.motionSharpness, 0.f, 1.f) &&
-+                bounded(request.workScale, .25f, 2.f) && request.passes >= 1 && request.passes <= 3 &&
++                bounded(request.workScale, .25f, 2.f) && request.passes >= 1 && request.passes <= 8 &&
 +                bounded(request.skin, -1.f, 2.f) && boolean(request.autoMask) &&
 +                bounded(request.detail, 0.f, 2.f) && bounded(request.colour, 0.f, 4.f) &&
 +                boolean(request.reduced) && boolean(request.edgeAware) && boolean(request.enabled) && boolean(request.preSr) && boolean(request.cache) &&

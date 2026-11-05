@@ -17,6 +17,10 @@ public sealed partial class EngineForgeService
     static IEnumerable<JsonObject> Objects(JsonNode? node) => (node as JsonArray ?? []).OfType<JsonObject>();
     static string[] Strings(JsonNode? node) => (node as JsonArray ?? []).Select(n => n?.ToString() ?? "").ToArray();
 
+    /// <summary>Retries the required overlay update for games it left pending. The
+    /// result arrives as an overlay-refresh event, like the attempt at app start.</summary>
+    public Task RetryOverlayRefreshAsync() => CallAsync("overlay_refresh_retry");
+
     /// <summary>The scan row for the engine, plus the artwork rtxForge currently shows (local files only).</summary>
     static JsonObject Row(Game game)
     {

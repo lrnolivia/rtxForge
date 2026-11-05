@@ -256,6 +256,23 @@ public sealed class PresetControlsView : UserControl
             choice.SelectionChanged += (_, _) => { if (choice.SelectedIndex >= 0) Change(field.Values[choice.SelectedIndex]); };
             setters[field.Key] = n => choice.SelectedIndex = Array.IndexOf(field.Values, n);
         }
+        else if (field.Kind == "stepper")
+        {
+            // − count +, as in the in-game panels.
+            var count = new TextBlock { MinWidth = 28, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            var fewer = new Button { Content = new FontIcon { Glyph = "", FontSize = 12 }, Width = 36, Height = 32, Padding = new Thickness(0) };
+            var more = new Button { Content = new FontIcon { Glyph = "", FontSize = 12 }, Width = 36, Height = 32, Padding = new Thickness(0) };
+            AutomationProperties.SetName(fewer, "Fewer " + title.ToLowerInvariant()); AutomationProperties.SetName(more, "More " + title.ToLowerInvariant());
+            var current = value;
+            void Show(double n) { current = n; count.Text = n.ToString("0"); fewer.IsEnabled = n > field.Min; more.IsEnabled = n < field.Max; }
+            fewer.Click += (_, _) => { Show(Math.Max(field.Min, current - field.Step)); Change(current); };
+            more.Click += (_, _) => { Show(Math.Min(field.Max, current + field.Step)); Change(current); };
+            var stepper = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Right };
+            stepper.Children.Add(fewer); stepper.Children.Add(count); stepper.Children.Add(more);
+            Grid.SetColumn(stepper, 1); row.Children.Add(stepper);
+            Show(value);
+            setters[field.Key] = Show;
+        }
         else
         {
             var exact = new NumberBox { Minimum = field.Min, Maximum = field.Max, Value = value, SmallChange = field.Step,

@@ -90,11 +90,27 @@ $feeder = [ordered]@{
     style = @{ ini = 'NRStyle' }
     intensity = @{ ini = 'NRIntensity' }
     preset = @{ ini = 'NRPreset' }
-    passes = @{ ini = 'NRPasses'; max = 4; values = @(1, 2, 3, 4); choices = @('1 pass', '2 passes', '3 passes', '4 passes') }
+    passes = @{ ini = 'NRPasses'; max = 4 }
     structure = @{ ini = 'NRLocalStructure' }
     work_scale = @{ ini = 'NRResolutionScale'; min = 0.33; max = 1 }
 }
+# Passes 2-4 each have their own tuning, set live through the same interface.
+foreach ($pass in 2..4) {
+    $feeder["pass${pass}_inherit"] = @{ ini = "NRPass${pass}FollowPass1" }
+    $feeder["pass${pass}_style"] = @{ ini = "NRPass${pass}Style" }
+    $feeder["pass${pass}_strength"] = @{ ini = "NRPass${pass}Intensity" }
+    $feeder["pass${pass}_structure"] = @{ ini = "NRPass${pass}Structure" }
+    $feeder["pass${pass}_tone"] = @{ ini = "NRPass${pass}LocalTone" }
+    $feeder["pass${pass}_skin"] = @{ ini = "NRPass${pass}Skin"; max = 1 }
+}
 $schema = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $bridge 'controls.json') | ConvertFrom-Json
+# OptiScaler tunes passes 2-3 only, so the shared schema stops there; RenoDX
+# has a fourth pass, described by pass 3's controls under pass 4's keys.
+$schema.controls = @($schema.controls) + @($schema.controls | Where-Object { $_.key -like 'pass3_*' } | ForEach-Object {
+    $copy = $_ | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $copy.key = $copy.key -replace '^pass3_', 'pass4_'
+    $copy
+})
 $gen = Join-Path $Output 'gen'
 New-Item -ItemType Directory -Force $gen | Out-Null
 $lines = [Collections.Generic.List[string]]::new()

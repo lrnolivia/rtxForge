@@ -112,7 +112,7 @@ def validate_changes(changes):
                      value in (-1, 0, 2, 3, 4, 5, 6) if key == 'multiplier' else
                      value in _PRESETS[key][1] if key in _PRESETS else
                      1 <= value <= 16 if key == 'interval' else
-                     1 <= value <= 3 if key == 'passes' else
+                     1 <= value <= 8 if key == 'passes' else
                      0 <= value <= 2 if key in ('style', 'sharpen_shader') or key.endswith('_style') else 0 <= value <= 3)
             t.need(valid, 'A control value is outside the supported range.')
             result[key] = value

@@ -16,6 +16,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 
 namespace renodx::addons::dlss5::internal::rtxforge_live {
@@ -125,4 +126,86 @@ extern "C" __declspec(dllexport) uint64_t __cdecl RenoDXNrAppliedGenerationV1() 
     any = true;
   }
   return any ? oldest : 0;
+}
+
+// What RenoDX's corner HUD (OnHudOverlay) would show this frame, for a host
+// that draws it instead: the same decision from the same atomics, in English.
+// kind: 0 nothing, 1 the status pill (NR not working), 2 a health-ledger
+// issue notice, 3 the green "running" toast. sequence changes whenever a new
+// pill, notice or toast begins, so a host shows each once. size must be
+// sizeof(RenoDXNrHudV1) or the call is refused.
+struct RenoDXNrHudV1 {
+  uint32_t size;
+  int32_t kind;
+  uint64_t sequence;
+  char slug[48];
+  char title[160];
+  char detail[200];
+  char fix[240];
+  uint32_t others;
+};
+
+extern "C" __declspec(dllexport) bool __cdecl RenoDXNrHudV1Get(RenoDXNrHudV1* out) {
+  using namespace renodx::addons::dlss5::internal;
+  namespace dlss5 = renodx::addons::dlss5;
+  if (out == nullptr || out->size != sizeof(RenoDXNrHudV1)) return false;
+  const uint32_t size = out->size;
+  std::memset(out, 0, sizeof(*out));
+  out->size = size;
+  const auto copy = [](char* to, size_t room, const char* from) {
+    std::snprintf(to, room, "%s", from != nullptr ? from : "");
+  };
+  // RenoDX hides its HUD while its own overlay is open; so does the host.
+  if (hud_overlay_open.load(std::memory_order_relaxed)) return true;
+  const int64_t now_ns = SteadyNowNs();
+  const dlss5::ui::StatusCard card = dlss5::ui::ComputeStatusCard(
+      CollectCardInputs(ComputeNrVerdict(CollectFunnelInputs()), now_ns));
+  if (dlss5::ui::ShowsOnHud(card)) {
+    out->kind = 1;
+    out->sequence = 1000u + static_cast<uint64_t>(card.id);
+    copy(out->slug, sizeof(out->slug), dlss5::ui::CardSlug(card.id));
+    if (card.id == dlss5::ui::CardId::kActiveWithIssues) {
+      std::snprintf(out->title, sizeof(out->title), card.title, card.issues);
+    } else {
+      copy(out->title, sizeof(out->title), card.title);
+    }
+    copy(out->detail, sizeof(out->detail), card.body);
+    copy(out->fix, sizeof(out->fix), card.fix_count != 0 ? card.fix[0] : nullptr);
+    return true;
+  }
+  const int64_t notice_until = health_notice_until_ns.load(std::memory_order_relaxed);
+  if (notice_until > now_ns && health_notice_enabled.load(std::memory_order_relaxed)) {
+    const uint8_t index = health_notice_row.load(std::memory_order_relaxed);
+    if (index < dlss5::health::kRowCount) {
+      const dlss5::health::Row& row = dlss5::health::kRows[index];
+      out->kind = 2;
+      out->sequence = static_cast<uint64_t>(notice_until);
+      copy(out->slug, sizeof(out->slug), row.slug);
+      copy(out->title, sizeof(out->title), row.title);
+      if (row.measure != nullptr) {
+        std::snprintf(out->detail, sizeof(out->detail), row.measure,
+                      health_row_values[index].load(std::memory_order_relaxed) * row.measure_scale);
+      }
+      copy(out->fix, sizeof(out->fix), row.fix);
+      const uint32_t counted = dlss5::health::CountedIssues(
+          health_active_mask.load(std::memory_order_relaxed));
+      out->others = counted > 0 ? counted - 1u : 0u;
+      return true;
+    }
+  }
+  const int64_t toast_until = hud_toast_until_ns.load(std::memory_order_relaxed);
+  if (toast_until > now_ns && card.tone == dlss5::ui::CardTone::kGood) {
+    out->kind = 3;
+    out->sequence = static_cast<uint64_t>(toast_until);
+    copy(out->slug, sizeof(out->slug), dlss5::ui::CardSlug(card.id));
+    copy(out->title, sizeof(out->title), card.title);
+  }
+  return true;
+}
+
+// A host that draws the HUD from RenoDXNrHudV1Get sets this, and clears it
+// when it stops. While set, OnHudOverlay draws nothing; RenoDX keeps
+// computing the pill, notices and toast exactly as before.
+extern "C" __declspec(dllexport) void __cdecl RenoDXNrHudV1Host(bool hosted) {
+  rtxforge_hud_hosted.store(hosted, std::memory_order_relaxed);
 }

@@ -148,6 +148,30 @@ class RenoDXLiveInterface(unittest.TestCase):
         self.assertIn('RenoDXNrAppliedGenerationV1', shim)
         self.assertIn('ForgePanel::liveTuning = Config::Instance()->Live();', source('windows/feeder-panel/panel.cpp'))
 
+    def test_glass_hosts_renodx_corner_hud(self):
+        # RenoDX's pill and issue notices (e.g. vram_over_budget) reach the
+        # glass toast, and RenoDX skips its own HUD only while glass hosts it.
+        live = source('providers/renodx-dlss5/rtxforge_live.hpp')
+        self.assertIn('RenoDXNrHudV1Get(RenoDXNrHudV1* out)', live)
+        self.assertIn('RenoDXNrHudV1Host(bool hosted)', live)
+        self.assertIn('out->size != sizeof(RenoDXNrHudV1)', live)
+        self.assertIn('inline std::atomic_bool rtxforge_hud_hosted{false};',
+                      source('providers/renodx-dlss5/renodx_compat.hpp'))
+        build = source('providers/renodx-dlss5/Build-RenoDXCandidate.ps1')
+        self.assertIn('if (rtxforge_hud_hosted.load(std::memory_order_relaxed)) return;', build)
+        self.assertIn("'RenoDXNrHudV1Get', 'RenoDXNrHudV1Host'", build)
+        self.assertIn('expected 1', build)
+        glass = source('windows/overlay-rmlui/GlassRuntime.cpp')
+        self.assertIn('GetProcAddress(module,"RenoDXNrHudV1Get")', glass)
+        self.assertIn('HostRenoDXHud(renodxHud&&c.showNotifications&&c.primaryMenu!="optiscaler");', glass)
+        self.assertIn('renodxHost(false)', glass)
+        # Both sides must lay the struct out the same way.
+        self.assertIn('uint32_t size;int32_t kind;uint64_t sequence;char slug[48];char title[160];'
+                      'char detail[200];char fix[240];uint32_t others;', glass)
+        for field in ('uint32_t size;', 'int32_t kind;', 'uint64_t sequence;', 'char slug[48];',
+                      'char title[160];', 'char detail[200];', 'char fix[240];', 'uint32_t others;'):
+            self.assertIn(field, live)
+
     def test_feeder_installs_the_published_live_build(self):
         import json
         spec = json.loads(source('providers/renodx-dlss5/source.json'))

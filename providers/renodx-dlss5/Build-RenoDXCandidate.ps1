@@ -41,6 +41,16 @@ if ($text -notmatch '#include "dlssnr.hpp"') { throw 'addon.cpp no longer includ
 $text = $text.Replace('#include "dlssnr.hpp"', "#include `"$($spec.compat)`"`n#include `"dlssnr.hpp`"")
 [IO.File]::WriteAllText($addon, $text.TrimEnd() + "`n`n#include `"$($spec.patch)`"`n", [Text.UTF8Encoding]::new($false))
 
+# rtxForge's glass overlay can draw the corner HUD itself (RenoDXNrHudV1Get);
+# while it does, OnHudOverlay returns before drawing. Exactly one anchor.
+$dlssnr = Join-Path $target 'dlssnr.hpp'
+$source = [IO.File]::ReadAllText($dlssnr)
+$anchor = '(?m)^(\s*)if \(hud_overlay_open\.load\(std::memory_order_relaxed\)\) return;(\r?\n)(\s*)RefreshUiLanguage\(\);'
+$found = [regex]::Matches($source, $anchor)
+if ($found.Count -ne 1) { throw "OnHudOverlay anchor found $($found.Count) times, expected 1" }
+$source = [regex]::Replace($source, $anchor, '$1if (hud_overlay_open.load(std::memory_order_relaxed)) return;$2$1if (rtxforge_hud_hosted.load(std::memory_order_relaxed)) return;$2$3RefreshUiLanguage();')
+[IO.File]::WriteAllText($dlssnr, $source, [Text.UTF8Encoding]::new($false))
+
 Push-Location $RenoDX
 try {
     cmake --preset ninja-x64
@@ -58,7 +68,7 @@ $binary = Join-Path $Output 'renodx-dlss5.addon64'
 # The interface must be exported, or the candidate is pointless.
 $dumpbin = Get-Command dumpbin.exe -ErrorAction Stop
 $exports = & $dumpbin.Source /exports $binary | Out-String
-foreach ($name in 'RenoDXNrApiVersion', 'RenoDXNrGetV1', 'RenoDXNrSetV1', 'RenoDXNrAppliedGenerationV1') {
+foreach ($name in 'RenoDXNrApiVersion', 'RenoDXNrGetV1', 'RenoDXNrSetV1', 'RenoDXNrAppliedGenerationV1', 'RenoDXNrHudV1Get', 'RenoDXNrHudV1Host') {
     if ($exports -notmatch "\b$name\b") { throw "Export $name is missing" }
 }
 

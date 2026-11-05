@@ -71,3 +71,8 @@ inline bool BeginTransaction() {
 }
 
 }  // namespace renodx::utils::vtable
+
+// rtxForge: set while rtxForge's glass overlay draws the corner HUD itself
+// (rtxforge_live.hpp RenoDXNrHudV1Host). Build-RenoDXCandidate.ps1 adds one
+// check of it at the top of OnHudOverlay; nothing else reads it.
+inline std::atomic_bool rtxforge_hud_hosted{false};

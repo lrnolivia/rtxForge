@@ -42,7 +42,7 @@ static void TestAppearance(ForgeGlass::Draw draw,ForgeGlass::Release release,con
     GetPrivateProfileStringW(L"Appearance",L"TextFont",L"",value,64,ini.c_str());Need(std::wstring(value)==L"inter","Font update was lost");
     std::cout<<"helper_appearance_checks=passed unchanged_preset_revision=passed isolated_profile=passed\n";
 }
-static void TestAdvancedSession(ForgeGlass::Draw draw,ForgeGlass::Release release){
+static void TestAdvancedSession(ForgeGlass::Draw draw,ForgeGlass::Release release,const std::filesystem::path& profile){
     ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;
     Need(SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,D3D11_CREATE_DEVICE_SINGLETHREADED,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context)),"Advanced fixture device failed");
     D3D11_TEXTURE2D_DESC desc{};desc.Width=3840;desc.Height=2160;desc.MipLevels=desc.ArraySize=1;desc.Format=DXGI_FORMAT_R16G16B16A16_FLOAT;desc.SampleDesc.Count=1;desc.BindFlags=D3D11_BIND_RENDER_TARGET;
@@ -63,8 +63,15 @@ static void TestAdvancedSession(ForgeGlass::Draw draw,ForgeGlass::Release releas
         for(int i=0;i<3;++i){frame.visible=true;Need(draw(&host,&frame),"Advanced live-session frame failed");}
     }
     release();
+    bool savedAdvanced=false;
+    for(const auto& entry:std::filesystem::directory_iterator(profile/L"rtxForge"/L"overlay-games")){
+        wchar_t value[64]{};GetPrivateProfileStringW(L"Appearance",L"Layout",L"",value,64,entry.path().c_str());
+        savedAdvanced|=std::wstring(value)==L"centered";
+    }
+    Need(savedAdvanced,"Advanced transition was not persisted");
     // The final layout is persisted by the renderer. Exercise the first live
     // update after restarting with Advanced already loaded, including hidden UI.
+    settings=R"({"revision":1,"ready":true,"settings":{}})";
     for(int i=0;i<3;++i){frame.visible=i!=0;Need(draw(&host,&frame),"Saved Advanced startup failed");}
     release();
     std::cout<<"advanced_live_session_checks=passed transitions=4 follow_up_frames=passed saved_startup=passed transfer=scRGB resolution=3840x2160\n";
@@ -155,5 +162,5 @@ int wmain(int argc,wchar_t** argv){try{
     const auto setup=profile.path/L"rtxForge"/L"overlay-setup.ini";std::filesystem::create_directories(setup.parent_path());Need(WritePrivateProfileStringW(L"Setup",L"Version",L"1",setup.c_str()),"Setup fixture state failed");
     TestHdr11(draw,release,device.Get(),context.Get());if(flags)TestHdr11(draw,release,device.Get(),context.Get(),3840,2160);
     }
-    Test12(dll,release);Test12(dll,release,true);TestAppearance(draw,release,profile.path);TestAdvancedSession(draw,release);TestIdle(draw,release);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
+    Test12(dll,release);Test12(dll,release,true);TestAppearance(draw,release,profile.path);TestAdvancedSession(draw,release,profile.path);TestIdle(draw,release);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

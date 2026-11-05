@@ -117,6 +117,9 @@ assert record['compatibility_policy']['mfg_route']=='unmanaged-skynizz-nr-only'
 assert not record['nr_profile']['runtime_verified']
 assert record['nr_runtime']['sha256']==hashlib.sha256(model.read_bytes()).hexdigest()
 assert not (fresh/'INSTALL.bat').exists() and (fresh/'nvngx.dll_dlssnr.dll').is_file()
+# An NR-only install is judged in its own mode, not the NR + MFG default for new installs.
+installed_row=host.scan({'folders':[str(fresh)],'runtime_provider':'skynizz','feature_mode':'nr-mfg'})[0]
+assert installed_row['feature_mode']=='nr-only' and installed_row['blocked']=='' and installed_row['skynizz_blocked']=='',installed_row
 checks.append('active install, read-only review, SR-only eligibility, source/model provenance and honest route')
 # Exercise the existing y4my MFG policy through the same lifecycle, using only
 # synthetic payload bytes. This establishes config/ownership regression, not GPU MFG.

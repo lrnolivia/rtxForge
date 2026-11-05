@@ -47,6 +47,21 @@ class CandidateTest(unittest.TestCase):
             self.assertTrue(by_id[key]['compatible'])
         self.assertFalse(by_id['feeder']['compatible'])
 
+    def test_shipped_frame_generation_means_d3d12_when_imports_name_only_d3d11(self):
+        # PRAGMATA imports d3d11 and loads d3d12 at runtime; DLSS-G runs only on D3D12 or Vulkan.
+        row=self.fixture.game('RuntimeDX12')|{'native_dlss':True,'native_dlssg':True,'installed':True,'managed':True,'runtime_provider':'skynizz'}
+        self.e.pe_imported_dlls=lambda exe:{'d3d11.dll','dxgi.dll'}
+        self.e.load_baseline=lambda *a,**k:{'status':'active'}
+        found=candidates.decorate(self.e,[row])[0]
+        by_id={p['id']:p for p in found['provider_candidates']}
+        self.assertTrue(by_id['skynizz']['compatible'])
+        self.assertFalse(found.get('feeder_restore_first'))
+        self.assertFalse(found.get('blocked'))
+        self.assertEqual(found['recommended_provider'],'skynizz')
+        # Another package's own Streamline files are not the game's DX12 evidence.
+        other=self.fixture.game('VulkanRoute')|{'native_dlss':True,'native_dlssg':True,'installed':True,'runtime_provider':'vulkan-native'}
+        self.assertFalse({p['id']:p for p in candidates.assess(self.e,other)}['skynizz']['compatible'])
+
     def test_feeder_supplied_sr_dll_does_not_fabricate_native_dlss_support(self):
         row=self.fixture.game('InstalledFeeder',installed=True)|{'native_dlss':True,'installed':True,'runtime_provider':'feeder'}
         self.e.pe_imported_dlls=lambda exe:{'d3d12.dll'}

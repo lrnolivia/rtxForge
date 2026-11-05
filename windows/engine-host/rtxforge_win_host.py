@@ -358,8 +358,13 @@ def _scan(params):
     vulkan_app.decorate(rows, service.config, selected=params.get('runtime_provider')=='vulkan-native')
     import skynizz_provider
     # Games may choose their own package, so keep both verdicts; the selected
-    # package's verdict is the row's.
-    checked = skynizz_provider.scan_rows([dict(row) for row in rows], params.get('feature_mode', 'nr-only'))
+    # package's verdict is the row's. A game with OptiScaler installed is judged
+    # in the mode it runs, not the default mode chosen for new installs.
+    default = params.get('feature_mode', 'nr-only')
+    def mode(row):
+        own = row.get('installed') and row.get('runtime_provider') == 'skynizz' and row.get('feature_mode')
+        return own if own in ('nr-only', 'nr-mfg', 'mfg-only') else default
+    checked = [skynizz_provider.scan_rows([dict(row)], mode(row))[0] for row in rows]
     for row, verdict in zip(rows, checked):
         row['package_blocked'] = row.get('blocked', '')
         row['skynizz_blocked'] = verdict.get('blocked', '')

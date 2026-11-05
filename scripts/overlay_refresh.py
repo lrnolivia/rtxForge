@@ -77,8 +77,11 @@ def run(root,state,prepare,execute):
             return {'status':'newer-revision-kept'}
         if previous.get('bundle')==required['bundle'] and previous.get('status')=='complete':
             return dict(previous, status='current')
-        review=prepare()
-        result=execute(review) if review.get('plans') else {}
+        import writer_gate
+        # Reviews and writes by hand wait for this instead of racing it.
+        with writer_gate.hold('the overlay update'):
+            review=prepare()
+            result=execute(review) if review.get('plans') else {}
         # Games left unchanged because a file was in use stay pending for retry.
         failed=(result or {}).get('failed') or []
         blocked=(review.get('blocked') or [])+failed

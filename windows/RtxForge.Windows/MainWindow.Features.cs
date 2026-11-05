@@ -29,6 +29,14 @@ public sealed partial class MainWindow
 
     void ShowOverlayRefresh(System.Text.Json.Nodes.JsonObject result)
     {
+        // The background update is visible while it runs; changes started now wait for it.
+        if (result["status"]?.ToString() == "running")
+        {
+            overlayRefreshNotice = null;
+            const string running = "Updating game overlays in the background. Changes you start now will wait for it to finish.";
+            AddLog(running); ShowToast(running);
+            return;
+        }
         var updated = result["updated"]?.GetValue<int>() ?? 0;
         var blocked = (result["blocked"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;
         var current = (result["skipped"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;

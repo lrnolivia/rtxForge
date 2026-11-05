@@ -685,6 +685,22 @@ win_features.live_status = METHODS['companion_status']
 
 _download_gate = threading.RLock()
 _DOWNLOAD_METHODS = {'prefetch_install', 'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'update_stage', 'update_apply', 'storage_review', 'feeder_storage'}
+# Reviews and writes take turns (writer_gate) instead of racing the background
+# overlay update or each other. Reads, scans and live in-game tuning stay free;
+# overlay_refresh_retry holds the gate itself.
+_WRITER_METHODS = {'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'update_stage', 'update_apply',
+                   'feeder_storage', 'save_defaults', 'package_use', 'hdr_settings', 'hdr_settings_flush',
+                   'companion_reset', 'companion_forget', 'test_start', 'launch_offline'}
+
+
+def _writer(method):
+    return method in _WRITER_METHODS or method.endswith('_review')
+
+
+import writer_gate  # noqa: E402
+# The app shows the background overlay update while it runs; its result follows.
+writer_gate.on_change(lambda label: label == 'the overlay update'
+                      and send({'event': 'overlay-refresh', 'result': {'status': 'running'}}))
 
 
 def handle(request: dict) -> None:
@@ -706,7 +722,9 @@ def handle(request: dict) -> None:
         # A cleanup cannot race a payload preparation in this host. Scans,
         # hardware checks, live controls and cancellation remain independent.
         gate = _download_gate if request['method'] in _DOWNLOAD_METHODS else contextlib.nullcontext()
-        with gate, ui.report_to(report):
+        writing = (writer_gate.hold('your change', lambda text: report({'kind': 'progress', 'label': text}))
+                   if _writer(request['method']) else contextlib.nullcontext())
+        with writing, gate, ui.report_to(report):
             result = method(request.get("params") or {})
         send({"id": rid, "result": result})
     except BaseException as exc:  # every failure is reported, never left hanging

@@ -215,8 +215,11 @@ def refresh_installed_overlays(config):
 
 
 def apply_review(review):
-    """Apply a global_review or menus_review result; every file is re-checked first."""
-    return _shared('global_controls').execute(review)
+    """Apply a global_review or menus_review result; every file is re-checked first.
+    Waits for another change (such as the background overlay update) to finish."""
+    import writer_gate
+    with writer_gate.hold('your change'):
+        return _shared('global_controls').execute(review)
 
 
 # --- App Storage: inventory and exact-token cleanup of unused downloads ----------------------

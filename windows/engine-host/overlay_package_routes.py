@@ -130,16 +130,17 @@ def feeder_plan(e, path, params, running, digests=None):
     # foreign add-on is never adopted or replaced by the required refresh.
     available = feeder.panel(e)
     missing = []
-    # A RenoDX that is already one of rtxForge's own published builds (put in
+    # A file that is already one of rtxForge's own published builds (put in
     # place by a repair or a manual test install) is adopted, not refused.
-    shipped = {sha for sha, _ in feeder.accepted(feeder.lock(), RENODX, True)}
+    spec = feeder.lock()
     adopted = False
     for name, expected in record['installed_hashes'].items():
         destination = t.safe(target / t.relative(name))
         if name in feeder.CONFIGS:
             continue
         actual = _digest(digests, destination)
-        if actual != expected and (name == RENODX or name.endswith('/' + RENODX)) and actual in shipped:
+        recipe_name = RENODX if name.endswith('/' + RENODX) else name
+        if actual != expected and feeder._published(e, spec, recipe_name, destination, actual):
             owned[name] = expected = actual; adopted = True
         t.need(actual == expected, 'Feeder files changed; repair this game first: ' + name)
         checks[str(destination)] = expected

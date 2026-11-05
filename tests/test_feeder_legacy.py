@@ -77,6 +77,9 @@ class LegacyFeederTest(unittest.TestCase):
                     self.assertFalse((directory / 'nvngx_dlssnr.dll').exists())
                 self.assertEqual(feeder.inspect(self.e, row)['nr_runtime']['version'], '310.9.16.0')
                 self.assertTrue(feeder.inspect(self.e, row)['nr_enabled'], 'consumer and technique were checked in different processes')
+                installed = feeder.expand_rows(self.e, [row])[0]
+                self.assertEqual((installed['installed'], installed['blocked']), (True, ''))
+                self.assertNotIn('feeder_drift', installed)
                 control = legacy.runtime(directory, recipe) / 'ReShade.ini'
                 text = control.read_text()
                 self.assertEqual(t.ini(text)['RenoDX.DLSS5']['NeuralUplift'], '1')

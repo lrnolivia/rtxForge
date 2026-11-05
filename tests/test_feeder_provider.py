@@ -133,6 +133,57 @@ class FeederTest(unittest.TestCase):
         self.assertFalse(found['feeder_managed'])
         self.assertEqual(found['runtime_provider'], 'feeder')
 
+    def installed_fresh(self, name='drift-game'):
+        row = self.game(name)
+        self.apply(self.prepare(row))
+        return row, Path(row['game']) / 'renodx-dlss5.addon64'
+
+    def test_newer_published_build_than_the_record_stays_installed_and_repair_records_it(self):
+        # Mass Effect 1: the record listed older add-on hashes than the published files on disk.
+        row, addon = self.installed_fresh()
+        newer = pe(b'renodx published later')
+        self.spec['assets']['renodx-dlss5.addon64'] = {'sha256': t.sha(newer), 'size': len(newer)}
+        addon.write_bytes(newer)
+        found = feeder.expand_rows(self.e, [row], selected=True)[0]
+        self.assertEqual((found['installed'], found['blocked'], found['runtime_provider']), (True, '', 'feeder'))
+        self.assertEqual(found['feeder_drift']['files'], [{'name': 'renodx-dlss5.addon64', 'fix': 'record'}])
+        import overview_summary
+        cards = {card['title']: card['values'] for card in overview_summary.cards(found)}
+        self.assertEqual(cards['Features'][0], 'Feeder')
+        self.assertEqual(cards['Files'][0], 'Repair recommended')
+        with self.assertRaises(feeder.Drift):
+            feeder.inspect(self.e, row, cached=False)
+        review = self.prepare(row, 'repair')
+        self.assertNotIn('renodx-dlss5.addon64', review['plans'][0]['writes'])
+        self.assertIn('Record the current rtxForge build of: renodx-dlss5.addon64', review['rows'][0]['summary'])
+        self.apply(review)
+        self.assertEqual(addon.read_bytes(), newer)
+        self.assertEqual(feeder.inspect(self.e, row, cached=False)['drift'], [])
+
+    def test_changed_file_is_calm_and_one_repair_puts_back_only_that_file(self):
+        row, addon = self.installed_fresh()
+        addon.write_bytes(pe(b'changed by another tool'))
+        before = self.files(row)
+        found = feeder.expand_rows(self.e, [row], selected=True)[0]
+        self.assertEqual((found['installed'], found['blocked']), (True, ''))
+        self.assertEqual(found['feeder_drift']['files'], [{'name': 'renodx-dlss5.addon64', 'fix': 'restore'}])
+        self.assertIn('Repair puts back', found['feeder_drift']['summary'])
+        review = self.prepare(row, 'repair')
+        self.assertIn('Put back: renodx-dlss5.addon64', review['rows'][0]['summary'])
+        self.apply(review)
+        after = self.files(row)
+        self.assertEqual(addon.read_bytes(), self.assets['renodx-dlss5.addon64'])
+        # The shared install record is rewritten by every repair; no other game file changes.
+        self.assertEqual({name for name in before if before[name] != after.get(name)} - {'.rtxforge-install.json'},
+                         {'renodx-dlss5.addon64'})
+        self.assertNotIn('feeder_drift', feeder.expand_rows(self.e, [row], selected=True)[0])
+
+    def test_restore_is_not_refused_by_a_changed_file(self):
+        row, addon = self.installed_fresh()
+        addon.write_bytes(pe(b'changed by another tool'))
+        self.apply(self.prepare(row, 'uninstall'))
+        self.assertEqual(set(self.files(row)), {'game.exe', 'save.dat'})
+
     def test_clean_dx11_candidate_is_available_without_switching_packages(self):
         row = self.game('clean-dx11') | {'blocked': 'No native DLSS-G detected', 'native_dlss': False}
         before = self.files(row)

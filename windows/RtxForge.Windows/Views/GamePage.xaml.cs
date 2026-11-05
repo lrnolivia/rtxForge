@@ -131,6 +131,7 @@ public sealed partial class GamePage : Page
     {
         game = shell.Games.FirstOrDefault(item => item.Id == game.Id) ?? game;
         StatusBadge.Text = game.AdoptionAvailable ? "Installed · Adoption available" : game.OfflineOnly && !game.Blocked ? game.Installed ? "Installed · Offline only" : "Offline only" : game.Blocked ? game.BlockedStatus
+            : game.RepairRecommended is not null ? "Feeder NR · Repair recommended"
             : game.UsesFeeder ? game.Installed ? "Feeder NR" : "Available · Feeder NR"
             : game.InstalledOnLinux ? "Installed on Linux"
             : game.Installed ? shell.Mode switch { "nr-only" => "NR Only", "nr-mfg" => "NR + MFG", _ => "MFG Only" }
@@ -214,6 +215,16 @@ public sealed partial class GamePage : Page
                     };
                     if (g.BlockedSoft) blocked.ActionButton = TryAnywayButton(g, true);
                     PageHost.Children.Add(blocked);
+                }
+                else if (g.RepairRecommended is { } changed)
+                {
+                    var repair = new Button { Content = "Repair", IsEnabled = !shell.Busy && !shell.Service.IsPreview };
+                    repair.Click += (_, _) => _ = shell.LaunchAction("repair", [g]);
+                    PageHost.Children.Add(new InfoBar
+                    {
+                        IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Informational, Margin = new Thickness(0, 24, 0, 0),
+                        Title = "Repair recommended", Message = changed, ActionButton = repair,
+                    });
                 }
                 else if (g.TryAnyway is { } skipped)
                     PageHost.Children.Add(new InfoBar

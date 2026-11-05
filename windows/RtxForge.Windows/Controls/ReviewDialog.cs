@@ -115,8 +115,11 @@ public sealed class ReviewDialog
         body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 200, HorizontalScrollMode = ScrollMode.Disabled });
     }
 
-    /// <summary>review_entry: artwork bezel (the game's capsule, or an icon), title, detail, badge, expandable full text.</summary>
-    Border Row(ReviewItem item, bool ready)
+    Border Row(ReviewItem item, bool ready) => Entry(shell, item, ready);
+
+    /// <summary>review_entry: artwork bezel (the game's capsule, or an icon), title, detail, badge, expandable full text.
+    /// Shared with Overlay Status so both screens list games the same way.</summary>
+    internal static Border Entry(MainWindow shell, ReviewItem item, bool ready)
     {
         var game = item.GameId is null ? null : shell.Games.FirstOrDefault(g => g.Id == item.GameId)
             ?? shell.Games.FirstOrDefault(g => g.Name == item.Title);

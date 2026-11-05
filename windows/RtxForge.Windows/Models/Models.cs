@@ -33,6 +33,11 @@ public sealed class Game
         .OfType<JsonObject>().LastOrDefault()?["functional"] as JsonObject;
     public string? FunctionalTestText => FunctionalTest?["text"]?.ToString();
     public string? TestSuggestion => FunctionalTest?["suggestion"]?.ToString();
+    /// <summary>Validate: what this game's own logs proved ran (NR, MFG), from log_validation.</summary>
+    public JsonObject? Validation => EngineRow?["test_record"]?["validation"] as JsonObject;
+    public string[] ValidatedFeatures => (Validation?["found"] as JsonArray)?.Select(n => n?.ToString() ?? "").Where(s => s.Length > 0).ToArray() ?? [];
+    public DateTimeOffset? ValidatedAt => Validation?["checked"] is JsonValue v && v.TryGetValue<double>(out var at)
+        ? DateTimeOffset.FromUnixTimeMilliseconds((long)(at * 1000)) : null;
     public string? DlssVersion { get; set; }
     public string Notes { get; set; } = "";
     /// <summary>Steam app id when known (artwork, store metadata).</summary>

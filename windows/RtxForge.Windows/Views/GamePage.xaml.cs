@@ -468,10 +468,39 @@ public sealed partial class GamePage : Page
         testing.Add(Prefs.Row(g.TestActive ? "Test running" : "Test session",
             g.TestActive ? "Play for a minute, then finish here to check each component." : "Check package files, NR, MFG, the panel and helper, with evidence and suggested fixes.",
             actions, ""));
+        testing.Add(ValidationRow(g));
         if (g.FunctionalTestText is not null)
             testing.Add(Prefs.Row("Latest functional test", g.TestSuggestion is { } suggested ? "Suggested: " + suggested + ". You choose the result." : "Some checks need more evidence. Review the suggested fixes.",
                 Prefs.ActionButton("View results", async (_, _) => await shell.ShowFunctionalTestAsync(g))));
         return testing;
+    }
+
+    /// <summary>Validate reads this game's logs for proof NR or MFG ran; with proof it becomes Confirm,
+    /// which records Working and shares the result. A result the person chose is never changed here.</summary>
+    Border ValidationRow(Game g)
+    {
+        var found = g.ValidatedFeatures;
+        var confirmed = g.TestStatus == "Working";
+        if (found.Length > 0 && !confirmed)
+        {
+            var what = string.Join(" and ", found);
+            var confirm = Prefs.ActionButton("Confirm", async (_, _) =>
+            {
+                await shell.SaveNotesAsync(g, "Working", g.Notes, "Marked as working");
+                await shell.ShareResultAsync(g);
+            });
+            confirm.IsEnabled = !shell.Service.IsPreview;
+            return Prefs.Row("Detected in this game's logs",
+                $"We detected {what} running in this game's logs. If that's right and it ran well, press Confirm to share your compatibility.",
+                confirm, "");
+        }
+        var validate = Prefs.ActionButton("Validate", async (_, _) => await shell.ValidateAsync(g));
+        validate.IsEnabled = !shell.Service.IsPreview && g.Installed;
+        var detail = !g.Installed ? "Install features first, then play with them on."
+            : found.Length > 0 ? $"Confirmed. The logs show {string.Join(" and ", found)} running."
+            : g.ValidatedAt is { } at ? $"Checked {at.LocalDateTime:g}: no proof of NR or MFG in the logs yet. Play with them on, then validate again."
+            : "Check this game's logs for proof that NR or MFG ran.";
+        return Prefs.Row("Validate from logs", detail, validate, "");
     }
 
     static Border DetailSurface(UIElement content) => new()

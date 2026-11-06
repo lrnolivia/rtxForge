@@ -68,7 +68,7 @@ class NrInstallTests(unittest.TestCase):
             self.assertEqual((self.game / name).read_bytes(), data)
         ini = t.ini((self.game / 'ReShade.ini').read_text(encoding='utf-8'))
         self.assertEqual(ini['RenoDX.DLSS5']['ForeignNr'], 'observe')
-        self.assertEqual((ini['RenoDX.DLSS5']['NRLocalStructure'], ini['renodx-dlss']['DirectNeuralRenderingSkinStructureStrength']), ('0.40', '0.68'))
+        self.assertEqual((ini['RenoDX.DLSS5']['NRLocalStructure'], ini['RENODX-DLSS']['DirectNeuralRenderingSkinStructureStrength']), ('0.40', '0.68'))
         self.assertTrue(nr_install.status(self.row)['installed'])
         with self.assertRaisesRegex(t.Refusal, 'already installed'):
             nr_install.prepare({}, self.row, COMBO)
@@ -88,7 +88,7 @@ class NrInstallTests(unittest.TestCase):
         ini = t.ini((self.game / 'ReShade.ini').read_text(encoding='utf-8'))
         self.assertEqual(ini['RenoDX.DLSS5']['NRLocalStructure'], '0.80', 'the earlier value came back')
         self.assertNotIn('ForeignNr', ini['RenoDX.DLSS5'])
-        self.assertNotIn('DirectNeuralRenderingSkinStructureStrength', ini['renodx-dlss'] if ini.has_section('renodx-dlss') else {})
+        self.assertNotIn('DirectNeuralRenderingSkinStructureStrength', ini['RENODX-DLSS'] if ini.has_section('RENODX-DLSS') else {})
         self.assertEqual((ini['GENERAL']['PresetPath'], ini['OVERLAY']['TutorialProgress']), ('.\\Mine.ini', '4'))
         self.assertEqual((self.game / 'renodx-dlss.addon64').read_bytes(), pe(b'replaced by the user'))
         self.assertFalse((self.game / 'nvngx_dlssnr.dll').exists())

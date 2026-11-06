@@ -42,8 +42,9 @@
     "shortfuse": {
       "name": "ShortFuse (RenoDX DLSS)",
       "file": "renodx-dlss.addon64",
-      "section": null,
-      "section_candidate": "renodx-dlss",
+      "section": "RENODX-DLSS",
+      "enable": {"key": "DirectNeuralRendering", "value": null, "verified": false,
+                 "note": "Turn on Direct Neural Rendering in ShortFuse's add-on panel in ReShade: its switch value is not confirmed yet, so rtxForge does not write it."},
       "route": "reshade",
       "needs_native_dlss": true,
       "arch": ["x64"],

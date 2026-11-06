@@ -129,6 +129,7 @@ public sealed partial class GamePage
                 var text = ok
                     ? (result["verified"]?.GetValue<bool>() == true ? "Works in this game." : "Works in this game · this pairing is not verified on a test copy yet.")
                       + ((result["skipped"] as JsonArray ?? []).Count > 0 ? " Some settings aren't verified for this add-on and are left out." : "")
+                      + string.Concat((result["manual"] as JsonArray ?? []).Select(note => " " + (string?)note))
                     : (string?)result["reason"] ?? "Not available for this game.";
                 SetSubtitle(verdict, text);
                 install.IsEnabled = ok && !shell.Busy && !shell.Service.IsPreview;

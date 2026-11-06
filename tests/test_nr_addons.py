@@ -34,13 +34,14 @@ class NrAddonTests(unittest.TestCase):
         # Lecram stands down beside another NR add-on unless told to observe.
         self.assertEqual(lecram['ForeignNr'], 'observe')
         self.assertEqual((lecram['NRLocalTone'], lecram['NRLocalStructure'], lecram['NRSkinStructure']), (0.39, 0.40, 0.10))
-        shortfuse = plan['ini']['renodx-dlss']
+        shortfuse = plan['ini']['RENODX-DLSS']
         self.assertEqual(shortfuse['DirectNeuralRenderingSkinStructureStrength'], 0.68)
         self.assertFalse(plan['feeder'], 'a DLSS game needs no Feeder')
-        self.assertTrue(plan['verified'], 'confirmed on the Witcher 3 Forge Lab copy')
+        self.assertFalse(plan['verified'], 'ShortFuse NR has not been switched on in a test yet')
         gitc = nr.plan(DLSS_GAME, {'environment': {'addon': 'gitc'}})
         self.assertTrue(gitc['verified'], 'a single add-on needs no pairing check')
-        self.assertEqual(plan['unconfirmed_sections'], ['renodx-dlss'])
+        self.assertEqual(plan['unconfirmed_sections'], [])
+        self.assertEqual(len(plan['manual']), 1, 'ShortFuse must be switched on in its panel')
 
     def test_shortfuse_needs_the_games_own_dlss(self):
         combo = nr.builtin_combos()['characters-and-world']
@@ -84,8 +85,8 @@ class NrAddonTests(unittest.TestCase):
     def test_unverified_settings_are_reported_not_written(self):
         plan = nr.plan(DLSS_GAME, {'environment': {'addon': 'shortfuse', 'values': {'independent_skin': 1, 'intensity': 1.0}}})
         self.assertEqual(plan['skipped'], ['independent_skin'])
-        self.assertEqual(plan['ini']['renodx-dlss'], {'DirectNeuralRenderingIntensity': 1.0})
-        for key in plan['ini']['renodx-dlss']:
+        self.assertEqual(plan['ini']['RENODX-DLSS'], {'DirectNeuralRenderingIntensity': 1.0})
+        for key in plan['ini']['RENODX-DLSS']:
             self.assertTrue(re.fullmatch(r'DirectNeuralRendering[A-Za-z]+', key), key)
 
     def test_saved_combos_are_shared_validated_and_deletable(self):

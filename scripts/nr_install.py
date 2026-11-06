@@ -203,7 +203,8 @@ def prepare(config, row, setup, gpu='ada'):
     writes[receipt] = (json.dumps(record, indent=2) + '\n').encode()
     review = hdr._plan(row, root, writes, action='install', checks=checks)
     review.update(kind='nr-addons', route=route, prefix=hdr._prefix_review(config, row, route, host),
-                  notes=[NOTICE, *([] if plan['verified'] else ['This pairing has not been verified on a test copy yet.'])],
+                  notes=[NOTICE, *([] if plan['verified'] else ['This pairing has not been verified on a test copy yet.']),
+                         *plan['manual']],
                   setup=setup, skipped=plan['skipped'])
     return hdr._freeze(config, review)
 

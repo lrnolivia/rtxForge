@@ -78,7 +78,10 @@ ReShade settings are kept.
 
 ## Still to confirm in a game
 
-- ShortFuse's ReShade.ini section. It's inferred as `[renodx-dlss]` from the
-  add-on file.
-- Each pairing running together.
+- ShortFuse's on switch (`DirectNeuralRendering`). Its value isn't confirmed,
+  so rtxForge doesn't write it: turn on Direct Neural Rendering in ShortFuse's
+  panel in ReShade. Its section, `[RENODX-DLSS]`, was confirmed in The Witcher 3.
+- Each pairing running together. Lecram 10.8 and ShortFuse load side by side
+  in The Witcher 3, but ShortFuse's NR wasn't on in that run.
+- Lecram 10.8's own Model version key.
 - Old and New models per add-on.

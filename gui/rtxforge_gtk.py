@@ -6815,6 +6815,7 @@ class Window(Adw.ApplicationWindow):
                 if result['ok']:
                     text='Works in this game.' if result['verified'] else 'Works in this game · this pairing is not verified on a test copy yet.'
                     if result['skipped']:text+=" Some settings aren't verified for this add-on and are left out."
+                    for note in result.get('manual',[]):text+=' '+note
                 else:text=result['reason']
                 verdict.set_subtitle(text);install.set_sensitive(result['ok'] and not self.busy)
             def changed(*_):

@@ -30,10 +30,9 @@ RANGES = {'intensity': (0.0, 2.0), 'local_tone': (0.0, 2.0), 'structure': (0.0, 
 SWITCHES = ('character_mask', 'independent_skin', 'ui_correction', 'block_hudless')
 COUNTS = {'passes': (1, 4), 'style': (0, 2)}
 # Pairings confirmed on a Forge Lab copy. Everything else is "not verified".
-VERIFIED_PAIRS: set[frozenset] = {
-    # The Witcher 3 DX12, RTX 4070, driver 621.01, 2026-11-05: both add-ons loaded, NR ran (Lecram readback).
-    frozenset({('lecram', '10.8'), ('shortfuse', '26.1025.0009')}),
-}
+VERIFIED_PAIRS: set[frozenset] = set()
+# Lecram 10.8 + ShortFuse loaded side by side in The Witcher 3 (RTX 4070, 2026-11-05), but ShortFuse's
+# NR was not switched on, so the pairing is not verified yet.
 
 _catalog = None
 
@@ -149,6 +148,9 @@ def plan(game, setup):
     return {'slots': slots, 'install': install, 'model': slots[0]['model'], 'ini': ini, 'feeder': feeder,
             'verified': len(ids) == 1 and len(slots) == 1 or pair in VERIFIED_PAIRS,
             'skipped': sorted({name for s in slots for name in s['skipped']}),
+            # Steps the user takes in the game: an add-on whose on switch rtxForge cannot set yet.
+            'manual': sorted(addons[a]['enable']['note'] for a in ids
+                             if addons[a].get('enable') and not addons[a]['enable'].get('verified')),
             # ShortFuse's ReShade.ini section is inferred from its file and still to be confirmed in a game.
             'unconfirmed_sections': sorted(addons[a]['section_candidate'] for a in ids if not addons[a]['section'])}
 
@@ -219,7 +221,7 @@ def check(game, setup):
     try:
         p = plan(game, setup)
         return {'ok': True, 'verified': p['verified'], 'feeder': p['feeder'], 'skipped': p['skipped'],
-                'install': p['install'], 'model': p['model']}
+                'install': p['install'], 'model': p['model'], 'manual': p['manual']}
     except t.Refusal as error:
         return {'ok': False, 'reason': str(error)}
 

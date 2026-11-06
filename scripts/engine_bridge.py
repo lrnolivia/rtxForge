@@ -486,6 +486,10 @@ def prepare(config,rows,mode,operation,settings):
             e.OVERLAY_UI = overlay_settings.effective(settings,row['game']) if overlay_policy.explicit(settings) else None
             e.Y4MY_PROVIDER=dict(selected_provider)
             g=game(e,row)
+            if operation in ('install','repair','uninstall','reset','adopt','adopt-clean'):
+                import nr_install
+                # The NR add-ons set aside OptiScaler's own DLSS copies; rewriting OptiScaler would bring them back.
+                t.need(not nr_install.set_aside_files(row),'Remove the DLSS5 NR add-ons in Tools first. They changed which DLSS files OptiScaler uses; reinstall them afterwards.')
             if selected!='skynizz' and operation in ('install','repair') and mode!='mfg-only' and not settings.get('nr_runtime'):
                 local_nr=g.target_dir/'nvngx_dlssnr.dll'
                 model_key=str(local_nr) if local_nr.is_file() else bundled_nr

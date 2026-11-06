@@ -143,6 +143,12 @@ def plan(game, setup):
                 values[coexist['key']] = coexist['value']
             ini.setdefault(section, {}).update(values)
             install.append({'addon': s['addon'], 'build': s['build']})
+    for addon_id in ids:
+        # Lecram remembers its F6 toggle as NeuralUplift; an install always starts with NR on.
+        launch = addons[addon_id].get('on_at_launch')
+        if launch:
+            section = addons[addon_id]['section'] or addons[addon_id].get('section_candidate')
+            ini.setdefault(section, {})[launch['key']] = launch['value']
     feeder = any(addons[s['addon']]['route'] == 'feeder' for s in slots) and not game.get('native_dlss')
     pair = frozenset((s['addon'], s['build']) for s in slots)
     return {'slots': slots, 'install': install, 'model': slots[0]['model'], 'ini': ini, 'feeder': feeder,

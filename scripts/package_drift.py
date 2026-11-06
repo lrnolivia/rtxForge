@@ -30,8 +30,11 @@ def summary(files):
     return f"{lead} ({names}). Repair puts back rtxForge's copy; your settings are kept."
 
 
-def check(e, target):
-    """Changed or missing owned files of an active install, or None when unknown."""
+def check(e, target, set_aside=frozenset()):
+    """Changed or missing owned files of an active install, or None when unknown.
+
+    set_aside: OptiScaler files the game's NR add-ons moved out on purpose (nr_install).
+    """
     target = t.safe(target)
     baseline = e.load_baseline(target, readonly=True)
     if not baseline or baseline.get('status') != 'active':
@@ -40,7 +43,7 @@ def check(e, target):
     t.need(isinstance(hashes, dict), 'Installed file record is corrupt')
     files, unknown = [], []
     for name, expected in sorted(hashes.items()):
-        if name.casefold().endswith(SKIP):
+        if name.casefold().endswith(SKIP) or name.replace('\\', '/').casefold() in set_aside:
             continue
         path = t.safe(target / t.relative(name))
         if not path.is_relative_to(target):
@@ -64,7 +67,9 @@ def decorate(e, rows):
                 or row.get('runtime_provider') in OTHER_RECORDS or row.get('feeder_drift')):
             continue
         try:
-            files = check(e, (Path(row['game']) / row['exe']).parent)
+            import nr_install
+            aside = {name.casefold() for name in nr_install.set_aside_files(row)}
+            files = check(e, (Path(row['game']) / row['exe']).parent, aside)
         except (t.Refusal, getattr(e, 'Stop', RuntimeError), OSError, ValueError):
             continue
         if files:

@@ -109,6 +109,54 @@ class NrInstallTests(unittest.TestCase):
         self.assertIn('LoadReShade=false', (self.game / 'OptiScaler.ini').read_text(encoding='utf-8'))
         self.assertFalse((self.game / 'ReShade64.dll').exists())
 
+    def optiscaler(self):
+        proxy = self.game / 'dxgi.dll'; proxy.write_bytes(pe(b'OptiScaler'))
+        (self.game / 'OptiScaler.ini').write_text('[Plugins]\nLoadReShade=false\n', encoding='utf-8')
+        (self.game / 'OptiScaler').mkdir()
+        hashes = {'dxgi.dll': t.digest(proxy)}
+        for name in nr_install.OPTISCALER_DLSS:
+            (self.game / name).write_bytes(pe(name.encode()))
+            (self.game / 'OptiScaler' / name).write_bytes(pe(name.encode()))
+            hashes['OptiScaler/' + name] = t.digest(self.game / 'OptiScaler' / name)
+        self.engine.baseline = {'status': 'active', 'current': {'provider_id': 'skynizz', 'proxy': 'dxgi.dll',
+                                'feature_mode': 'mfg-only', 'installed_hashes': hashes}}
+
+    def test_optiscaler_uses_the_games_own_dlss_files_while_nr_addons_are_installed(self):
+        # The Witcher 3: OptiScaler's private DLSS copies break Ray Reconstruction beside Lecram.
+        import package_drift
+        self.optiscaler()
+        private = {name: (self.game / 'OptiScaler' / name).read_bytes() for name in nr_install.OPTISCALER_DLSS}
+        review = nr_install.prepare({}, self.row, {'environment': {'addon': 'lecram'}})
+        self.assertTrue(any('own DLSS files' in note for note in review['notes']))
+        nr_install.apply({}, review)
+        for name in nr_install.OPTISCALER_DLSS:
+            self.assertFalse((self.game / 'OptiScaler' / name).exists(), name)
+            self.assertTrue((self.game / name).is_file(), 'the game keeps its own ' + name)
+        self.assertEqual(nr_install.set_aside_files(self.row), {'OptiScaler/' + n for n in nr_install.OPTISCALER_DLSS})
+        aside = {n.casefold() for n in nr_install.set_aside_files(self.row)}
+        self.assertEqual(package_drift.check(self.engine, self.game, aside), [], 'set aside on purpose, not missing')
+        self.assertTrue(package_drift.check(self.engine, self.game), 'without the record they would read as missing')
+        self.assertIn('NeuralUplift=1', (self.game / 'ReShade.ini').read_text(encoding='utf-8'))
+        # A game update replaced its own copy: Remove still puts back OptiScaler's exact file.
+        (self.game / 'nvngx_dlss.dll').write_bytes(pe(b'game update'))
+        nr_install.apply({}, nr_install.prepare_remove({}, self.row))
+        for name, data in private.items():
+            self.assertEqual((self.game / 'OptiScaler' / name).read_bytes(), data, name)
+        self.assertEqual(nr_install.set_aside_files(self.row), set())
+
+    def test_a_different_optiscaler_dlss_version_is_never_swapped_for_the_games(self):
+        self.optiscaler()
+        (self.game / 'nvngx_dlssd.dll').write_bytes(pe(b'older RR'))
+        before = self.files()
+        with self.assertRaisesRegex(t.Refusal, 'different version of nvngx_dlssd.dll'):
+            nr_install.prepare({}, self.row, {'environment': {'addon': 'shortfuse'}})
+        self.assertEqual(self.files(), before)
+        # GITC does not hook the game's DLSS, so OptiScaler keeps its copies.
+        self.addons.update({'gitc-uplift.addon64': pe(b'GITC'), 'gitc-uplift.addon32': b'32', 'gitc-uplift-helper64.exe': pe(b'helper'),
+                            'Uplift.fx': b'fx', 'UpliftMask.fx': b'mask', 'LICENSE': b'MIT', 'THIRD_PARTY_NOTICES.md': b'notices'})
+        nr_install.apply({}, nr_install.prepare({}, self.row, {'environment': {'addon': 'gitc'}}))
+        self.assertTrue((self.game / 'OptiScaler' / 'nvngx_dlssd.dll').is_file())
+
     def test_another_tools_model_or_loader_is_never_overwritten(self):
         (self.game / 'nvngx_dlssnr.dll').write_bytes(pe(b'someone else'))
         with self.assertRaisesRegex(t.Refusal, 'Another tool owns nvngx_dlssnr.dll'):

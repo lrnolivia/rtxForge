@@ -9,6 +9,8 @@
       "route": "feeder",
       "needs_native_dlss": false,
       "coexist": {"key": "ForeignNr", "value": "observe", "default": "yield"},
+      "shares_game_dlss": true,
+      "on_at_launch": {"key": "NeuralUplift", "value": 1},
       "builds": {
         "10.8": {
           "label": "10.8.0 · latest free build",
@@ -43,6 +45,7 @@
       "name": "ShortFuse (RenoDX DLSS)",
       "file": "renodx-dlss.addon64",
       "section": "RENODX-DLSS",
+      "shares_game_dlss": true,
       "enable": {"key": "DirectNeuralRendering", "value": null, "verified": false,
                  "note": "Turn on Direct Neural Rendering in ShortFuse's add-on panel in ReShade: its switch value is not confirmed yet, so rtxForge does not write it."},
       "route": "reshade",

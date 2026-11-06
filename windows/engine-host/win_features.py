@@ -64,6 +64,8 @@ import engine_bridge  # noqa: E402
 import extra_tools  # noqa: E402
 import renodx_hdr  # noqa: E402
 import renodx_hdr_settings  # noqa: E402
+import nr_addons  # noqa: E402
+import nr_install  # noqa: E402
 import game_notes  # noqa: E402
 import library_media  # noqa: E402
 import package_catalog  # noqa: E402
@@ -879,6 +881,55 @@ def _run_hdr(plan):
     return renodx_hdr.apply(_config(), plan)
 
 
+# ---------- DLSS5 NR add-ons: Environment and Character slots ----------
+
+
+def nr_catalog(params):
+    return nr_addons.catalog_view(_config())
+
+
+def nr_check(params):
+    """Whether this setup works in this game, without changing anything."""
+    return nr_addons.check(params['row'], params['setup'])
+
+
+def nr_status(params):
+    return nr_install.status(params['row'])
+
+
+def nr_review(params):
+    remove = params.get('remove', False)
+    t.need(type(remove) is bool, 'Choose an NR add-on action.')
+    if remove:
+        plan = nr_install.prepare_remove(_config(), params['row'])
+    else:
+        import hardware
+        plan = nr_install.prepare(_config(), params['row'], params['setup'], hardware.detect().get('family') or 'ada')
+    changes = '\n'.join(('Remove ' if c['after'] is None else 'Update ' if c['before'] else 'Add ') + c['path']
+                        + ('\nSHA-256: ' + c['after'] if c['after'] else '') for c in plan['changes'])
+    slots = ' · '.join(f'{slot.capitalize()}: {spec["addon"]}' for slot, spec in (params.get('setup') or {}).items() if spec)
+    return _review('nr-addons', 'Remove NR add-ons' if remove else 'Install NR add-ons',
+                   [_item(plan['name'], 'Remove the NR add-ons; keep everything else.' if remove else slots,
+                          'Remove' if remove else 'Install', plan['game'], changes)],
+                   action='Remove' if remove else 'Install', payload=plan,
+                   summary='Existing game files and your ReShade settings are kept; only recorded keys are restored.',
+                   note=' '.join(plan.get('notes', [])))
+
+
+def _run_nr(plan):
+    return nr_install.apply(_config(), plan)
+
+
+def nr_combo_save(params):
+    key = nr_addons.save_combo(_config(), params.get('name'), params.get('combo'))
+    return {'id': key, 'combos': nr_addons.combos(_config())}
+
+
+def nr_combo_delete(params):
+    nr_addons.delete_combo(_config(), params.get('id'))
+    return {'combos': nr_addons.combos(_config())}
+
+
 def overview_inspect(params):
     import overview_summary
     import engine_bridge
@@ -1068,7 +1119,7 @@ def update_apply(params):
 
 
 RUNNERS = {"art-sync": _run_art_sync, "dlss-restore": _run_dlss_restore, "report": _run_report, "service": _run_service,
-           'renodx-hdr': _run_hdr,
+           'renodx-hdr': _run_hdr, 'nr-addons': _run_nr,
            "extra": _run_extra, "extra-restore": _run_extra_restore, "update": _run_update, 'global-controls': _run_global_controls, 'overlay-ui': _run_global_controls, 'overlay-packages': _run_global_controls,
            'storage-cleanup': _run_storage}
 
@@ -1087,6 +1138,8 @@ METHODS = {
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "overview_inspect": overview_inspect, "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
     'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush,
+    'nr_catalog': nr_catalog, 'nr_check': nr_check, 'nr_status': nr_status, 'nr_review': nr_review,
+    'nr_combo_save': nr_combo_save, 'nr_combo_delete': nr_combo_delete,
     "packages": packages, "package_inspect": package_inspect, "package_use": package_use,
     "update_check": update_check, "update_stage": update_stage, "update_apply": update_apply,
     "storage_inventory": storage_inventory, "storage_review": storage_review,

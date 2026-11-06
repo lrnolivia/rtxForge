@@ -88,6 +88,14 @@ public interface IForgeService
     Task<HdrStatus> HdrStatusAsync(Game game);
     Task<EngineReview> ReviewHdrAsync(Game game, bool remove = false, string? customPath = null);
 
+    // DLSS5 NR add-ons (nr_addons / nr_install): Environment and Character slots, Old/New model, combos.
+    Task<System.Text.Json.Nodes.JsonObject> NrCatalogAsync();
+    Task<System.Text.Json.Nodes.JsonObject> NrCheckAsync(Game game, System.Text.Json.Nodes.JsonObject setup);
+    Task<System.Text.Json.Nodes.JsonObject> NrStatusAsync(Game game);
+    Task<EngineReview> ReviewNrAsync(Game game, System.Text.Json.Nodes.JsonObject? setup, bool remove = false);
+    Task<System.Text.Json.Nodes.JsonObject> SaveNrComboAsync(string name, System.Text.Json.Nodes.JsonObject combo);
+    Task<System.Text.Json.Nodes.JsonObject> DeleteNrComboAsync(string id);
+
     // DLSS files (runtime_updates): inventory and restoring the latest update's backups.
     Task<DlssInventory> DlssInventoryAsync(Game game);
     Task<EngineReview> ReviewDlssRestoreAsync(Game game);
@@ -316,6 +324,12 @@ public sealed class PreviewForgeService : IForgeService
     public Task<EngineReview> ReviewExtraRestoreAsync(ExtraRecord record) => Disabled<EngineReview>("Restoring tools");
     public Task<HdrStatus> HdrStatusAsync(Game game) => Task.FromResult(new HdrStatus(false, false, false, "HDR support is checked in the installed app.", ""));
     public Task<EngineReview> ReviewHdrAsync(Game game, bool remove = false, string? customPath = null) => Disabled<EngineReview>("Changing HDR");
+    public Task<System.Text.Json.Nodes.JsonObject> NrCatalogAsync() => Disabled<System.Text.Json.Nodes.JsonObject>("NR add-ons");
+    public Task<System.Text.Json.Nodes.JsonObject> NrCheckAsync(Game game, System.Text.Json.Nodes.JsonObject setup) => Disabled<System.Text.Json.Nodes.JsonObject>("NR add-ons");
+    public Task<System.Text.Json.Nodes.JsonObject> NrStatusAsync(Game game) => Task.FromResult(new System.Text.Json.Nodes.JsonObject { ["installed"] = false });
+    public Task<EngineReview> ReviewNrAsync(Game game, System.Text.Json.Nodes.JsonObject? setup, bool remove = false) => Disabled<EngineReview>("Changing NR add-ons");
+    public Task<System.Text.Json.Nodes.JsonObject> SaveNrComboAsync(string name, System.Text.Json.Nodes.JsonObject combo) => Disabled<System.Text.Json.Nodes.JsonObject>("Saving combos");
+    public Task<System.Text.Json.Nodes.JsonObject> DeleteNrComboAsync(string id) => Disabled<System.Text.Json.Nodes.JsonObject>("Deleting combos");
     public Task<DlssInventory> DlssInventoryAsync(Game game) =>
         Task.FromResult(new DlssInventory([], "Preview mode · file versions appear here for your installed games.", null));
     public Task<EngineReview> ReviewDlssRestoreAsync(Game game) => Disabled<EngineReview>("Restoring DLSS files");

@@ -183,10 +183,11 @@ def prepare(config, row, setup, gpu='ada'):
         checks[str(optiscaler_ini)] = t.digest(optiscaler_ini)
     settings = t.safe(directory / 'ReShade.ini')
     text = settings.read_text(encoding='utf-8-sig') if settings.exists() else ''
-    if not settings.exists():
-        text = '[GENERAL]\nEffectSearchPaths=' + SEARCH_PATHS + '\n'
-    else:
+    if settings.exists():
         checks[str(settings)] = t.digest(settings)
+    elif any(rel.startswith(SHADER_DIR + '/') for rel in files):
+        # Only GITC ships shaders; a search path to a missing folder makes ReShade log warnings.
+        text = '[GENERAL]\nEffectSearchPaths=' + SEARCH_PATHS + '\n'
     try:
         parsed = t.ini(text) if text.strip() else None
     except (configparser.Error, ValueError, KeyError) as error:

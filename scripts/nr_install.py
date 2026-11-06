@@ -170,11 +170,15 @@ def prepare(config, row, setup, gpu='ada'):
         owned[path.relative_to(root).as_posix()] = t.sha(data)
     record = {'schema': 1, 'setup': setup, 'route': route, 'host': host, 'model_build': model_build,
               'files': owned, 'ini': {}, 'plugin': None, 'settings_created': None}
-    if route == 'reshade':
+    if route in ('reshade', 'optiscaler'):
+        # Plain games load ReShade as a proxy; OptiScaler loads ReShade64.dll when LoadReShade is on.
         data = _reshade_host(config, arch)
         path = t.safe(directory / host)
-        t.need(not path.exists(), 'Another graphics tool uses ' + host + '. Its files have been kept.')
-        writes[path] = data; owned[path.relative_to(root).as_posix()] = t.sha(data)
+        if path.exists():
+            t.need(route == 'optiscaler' and t.digest(path) == t.sha(data), 'Another graphics tool uses ' + host + '. Its files have been kept.')
+            checks[str(path)] = t.digest(path)
+        else:
+            writes[path] = data; owned[path.relative_to(root).as_posix()] = t.sha(data)
     if optiscaler_ini:
         text = t.safe(optiscaler_ini).read_text(encoding='utf-8-sig')
         record['plugin'] = {'path': optiscaler_ini.relative_to(root).as_posix(),

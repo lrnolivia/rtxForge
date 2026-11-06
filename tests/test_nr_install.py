@@ -104,8 +104,10 @@ class NrInstallTests(unittest.TestCase):
         nr_install.apply({}, nr_install.prepare({}, self.row, COMBO))
         self.assertEqual((self.game / 'dxgi.dll').read_bytes(), pe(b'OptiScaler'), 'OptiScaler keeps its loader')
         self.assertIn('LoadReShade=true', (self.game / 'OptiScaler.ini').read_text(encoding='utf-8'))
+        self.assertTrue((self.game / 'ReShade64.dll').is_file(), 'OptiScaler needs ReShade64.dll to load ReShade')
         nr_install.apply({}, nr_install.prepare_remove({}, self.row))
         self.assertIn('LoadReShade=false', (self.game / 'OptiScaler.ini').read_text(encoding='utf-8'))
+        self.assertFalse((self.game / 'ReShade64.dll').exists())
 
     def test_another_tools_model_or_loader_is_never_overwritten(self):
         (self.game / 'nvngx_dlssnr.dll').write_bytes(pe(b'someone else'))

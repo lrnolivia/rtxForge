@@ -180,11 +180,12 @@ class RenoDXLiveInterface(unittest.TestCase):
         renodx = next(s for s in runtime['sources'] if 'renodx-dlss5.addon64' in s['members'].values())
         self.assertIn('/releases/download/' + spec['release_tag'] + '/', renodx['url'])
         self.assertEqual(lock['version'], runtime['recipe'])
-        # rtxforge-2: per-pass tuning for passes 2-4 through the live interface.
+        # rtxforge-3: rtxforge-2's live tuning plus the corner HUD export glass hosts.
         self.assertEqual(lock['assets']['renodx-dlss5.addon64']['sha256'],
-                         '7fdc1872b5a8553a746b08538fd74990b374a7bcdd5c2c342786a093de6cba74')
-        # Games installed with stock rc10 or rtxforge-1 keep passing checks until updated.
+                         '07d306db5f0e3f187e3e23dafd95c69517308ce35e6872dca3ff4438bc9412f8')
+        # Games installed with stock rc10, rtxforge-1 or rtxforge-2 keep passing checks until updated.
         previous = {item['sha256'] for item in lock['previous_assets']['renodx-dlss5.addon64']}
+        self.assertIn('7fdc1872b5a8553a746b08538fd74990b374a7bcdd5c2c342786a093de6cba74', previous)
         self.assertIn('dcd93881e976ad033d83c2bb01f4bc3e4ddc59c15fe0dd4ca165bc5fc7d1ac68', previous)
         self.assertIn('1e4823637965d3e01ff4840a222a5853fec191b2fa0c9001e2076b5bcf25fdd5', previous)
 

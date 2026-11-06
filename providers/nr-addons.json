@@ -9,7 +9,7 @@
       "route": "feeder",
       "needs_native_dlss": false,
       "coexist": {"key": "ForeignNr", "value": "observe", "default": "yield"},
-      "shares_game_dlss": true,
+      "beside_optiscaler": {"allowed": false, "reason": "ReShade reloads Lecram while the game starts, and each reload hooks DLSS again, which stops OptiScaler's Ray Reconstruction and frame generation from starting. Use it in games without OptiScaler, with the game's own frame generation."},
       "on_at_launch": {"key": "NeuralUplift", "value": 1},
       "builds": {
         "10.8": {
@@ -45,9 +45,9 @@
       "name": "ShortFuse (RenoDX DLSS)",
       "file": "renodx-dlss.addon64",
       "section": "RENODX-DLSS",
-      "shares_game_dlss": true,
-      "enable": {"key": "DirectNeuralRendering", "value": null, "verified": false,
-                 "note": "Turn on Direct Neural Rendering in ShortFuse's add-on panel in ReShade: its switch value is not confirmed yet, so rtxForge does not write it."},
+      "beside_optiscaler": {"allowed": true, "with_optiscaler_nr": true},
+      "load_early": true,
+      "percent": ["resolution_scale"],
       "route": "reshade",
       "needs_native_dlss": true,
       "arch": ["x64"],
@@ -74,6 +74,7 @@
         "character_mask": "DirectNeuralRenderingAutoMask",
         "ui_correction": "DirectNeuralRenderingUiCorrectionMode",
         "passes": "DirectNeuralRenderingPassCount",
+        "resolution_scale": "DirectNeuralRenderingProcessingScale",
         "hook_point": "DirectNeuralRenderingHookStage",
         "block_hudless": "DirectNeuralRenderingBlockHudless",
         "encoding": "DirectNeuralRenderingEncoding",
@@ -177,7 +178,17 @@
         "values": {"intensity": 1.0, "style": 0, "local_tone": 0.60, "structure": 0.60, "character": 0.68,
                    "character_mask": 1, "passes": 1, "block_hudless": 1, "diffuse_white_nits": 70}
       },
-      "verified": false
+      "verified": true
+    },
+    "characters-with-optiscaler": {
+      "name": "Characters + OptiScaler NR",
+      "source": "OptiScaler's NR for the world with ShortFuse for character detail, for games where OptiScaler runs NR + MFG",
+      "character": {
+        "addon": "shortfuse", "build": "26.1025.0009",
+        "values": {"intensity": 1.0, "style": 0, "local_tone": 0.60, "structure": 0.60, "character": 0.68,
+                   "character_mask": 1, "passes": 1, "block_hudless": 1, "resolution_scale": 0.74}
+      },
+      "verified": true
     }
   }
 }

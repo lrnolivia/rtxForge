@@ -60,8 +60,9 @@ class NrInstallTests(unittest.TestCase):
         before = self.files()
         review = nr_install.prepare({}, self.row, COMBO)
         self.assertEqual(self.files(), before, 'review changed the game')
-        self.assertIn('not been verified', ' '.join(review['notes']))
+        self.assertNotIn('not been verified', ' '.join(review['notes']))
         nr_install.apply({}, review)
+        self.assertIn('LoadFromDllMain=renodx-dlss.addon64', (self.game / 'ReShade.ini').read_text(encoding='utf-8'))
         self.assertEqual((self.game / 'dxgi.dll').read_bytes(), self.host)
         self.assertEqual((self.game / 'nvngx_dlssnr.dll').read_bytes(), self.model)
         for name, data in self.addons.items():
@@ -80,6 +81,7 @@ class NrInstallTests(unittest.TestCase):
         (self.game / 'ReShade.ini').write_text('[GENERAL]\nPresetPath=.\\Mine.ini\n[RenoDX.DLSS5]\nNRLocalStructure=0.80\n', encoding='utf-8')
         nr_install.apply({}, nr_install.prepare({}, self.row, COMBO))
         text = (self.game / 'ReShade.ini').read_text(encoding='utf-8')
+        text = text.replace('LoadFromDllMain=renodx-dlss.addon64', 'LoadFromDllMain=renodx-dlss.addon64,mine.addon64')
         (self.game / 'ReShade.ini').write_text(text + '[OVERLAY]\nTutorialProgress=4\n', encoding='utf-8')
         (self.game / 'renodx-dlss.addon64').write_bytes(pe(b'replaced by the user'))
         review = nr_install.prepare_remove({}, self.row)
@@ -90,72 +92,68 @@ class NrInstallTests(unittest.TestCase):
         self.assertNotIn('ForeignNr', ini['RenoDX.DLSS5'])
         self.assertNotIn('DirectNeuralRenderingSkinStructureStrength', ini['RENODX-DLSS'] if ini.has_section('RENODX-DLSS') else {})
         self.assertEqual((ini['GENERAL']['PresetPath'], ini['OVERLAY']['TutorialProgress']), ('.\\Mine.ini', '4'))
+        self.assertEqual(ini['ADDON']['LoadFromDllMain'], 'mine.addon64', 'an add-on the user listed stays')
         self.assertEqual((self.game / 'renodx-dlss.addon64').read_bytes(), pe(b'replaced by the user'))
         self.assertFalse((self.game / 'nvngx_dlssnr.dll').exists())
 
-    def test_optiscaler_must_have_its_own_nr_off(self):
+    def optiscaler(self, mode):
         proxy = self.game / 'dxgi.dll'; proxy.write_bytes(pe(b'OptiScaler'))
         (self.game / 'OptiScaler.ini').write_text('[Plugins]\nLoadReShade=false\n', encoding='utf-8')
         self.engine.baseline = {'status': 'active', 'current': {'provider_id': 'skynizz', 'proxy': 'dxgi.dll',
-                                'feature_mode': 'nr-mfg', 'installed_hashes': {'dxgi.dll': t.digest(proxy)}}}
-        with self.assertRaisesRegex(t.Refusal, 'MFG Only'):
-            nr_install.prepare({}, self.row, COMBO)
-        self.engine.baseline['current']['feature_mode'] = 'mfg-only'
-        nr_install.apply({}, nr_install.prepare({}, self.row, COMBO))
-        self.assertEqual((self.game / 'dxgi.dll').read_bytes(), pe(b'OptiScaler'), 'OptiScaler keeps its loader')
-        self.assertIn('LoadReShade=true', (self.game / 'OptiScaler.ini').read_text(encoding='utf-8'))
-        self.assertTrue((self.game / 'ReShade64.dll').is_file(), 'OptiScaler needs ReShade64.dll to load ReShade')
-        nr_install.apply({}, nr_install.prepare_remove({}, self.row))
-        self.assertIn('LoadReShade=false', (self.game / 'OptiScaler.ini').read_text(encoding='utf-8'))
-        self.assertFalse((self.game / 'ReShade64.dll').exists())
+                                'feature_mode': mode, 'installed_hashes': {'dxgi.dll': t.digest(proxy)}}}
 
-    def optiscaler(self):
-        proxy = self.game / 'dxgi.dll'; proxy.write_bytes(pe(b'OptiScaler'))
-        (self.game / 'OptiScaler.ini').write_text('[Plugins]\nLoadReShade=false\n', encoding='utf-8')
-        (self.game / 'OptiScaler').mkdir()
-        hashes = {'dxgi.dll': t.digest(proxy)}
-        for name in nr_install.OPTISCALER_DLSS:
-            (self.game / name).write_bytes(pe(name.encode()))
-            (self.game / 'OptiScaler' / name).write_bytes(pe(name.encode()))
-            hashes['OptiScaler/' + name] = t.digest(self.game / 'OptiScaler' / name)
-        self.engine.baseline = {'status': 'active', 'current': {'provider_id': 'skynizz', 'proxy': 'dxgi.dll',
-                                'feature_mode': 'mfg-only', 'installed_hashes': hashes}}
+    def test_lecram_never_runs_where_optiscaler_is_installed(self):
+        # ReShade reloads Lecram while the game starts; each reload hooks DLSS again and
+        # OptiScaler's Ray Reconstruction and frame generation fail to start (The Witcher 3).
+        for mode in ('mfg-only', 'nr-mfg'):
+            with self.subTest(mode=mode):
+                self.optiscaler(mode)
+                with self.assertRaisesRegex(t.Refusal, 'Lecram .* where OptiScaler is installed'):
+                    nr_install.prepare({}, self.row, {'environment': {'addon': 'lecram'}})
+        self.engine.baseline['current'].pop('feature_mode')
+        with self.assertRaisesRegex(t.Refusal, 'Repair OptiScaler'):
+            nr_install.prepare({}, self.row, {'character': {'addon': 'shortfuse'}})
 
-    def test_optiscaler_uses_the_games_own_dlss_files_while_nr_addons_are_installed(self):
-        # The Witcher 3: OptiScaler's private DLSS copies break Ray Reconstruction beside Lecram.
-        import package_drift
-        self.optiscaler()
-        private = {name: (self.game / 'OptiScaler' / name).read_bytes() for name in nr_install.OPTISCALER_DLSS}
-        review = nr_install.prepare({}, self.row, {'environment': {'addon': 'lecram'}})
-        self.assertTrue(any('own DLSS files' in note for note in review['notes']))
-        nr_install.apply({}, review)
-        for name in nr_install.OPTISCALER_DLSS:
-            self.assertFalse((self.game / 'OptiScaler' / name).exists(), name)
-            self.assertTrue((self.game / name).is_file(), 'the game keeps its own ' + name)
-        self.assertEqual(nr_install.set_aside_files(self.row), {'OptiScaler/' + n for n in nr_install.OPTISCALER_DLSS})
-        aside = {n.casefold() for n in nr_install.set_aside_files(self.row)}
-        self.assertEqual(package_drift.check(self.engine, self.game, aside), [], 'set aside on purpose, not missing')
-        self.assertTrue(package_drift.check(self.engine, self.game), 'without the record they would read as missing')
-        self.assertIn('NeuralUplift=1', (self.game / 'ReShade.ini').read_text(encoding='utf-8'))
-        # A game update replaced its own copy: Remove still puts back OptiScaler's exact file.
-        (self.game / 'nvngx_dlss.dll').write_bytes(pe(b'game update'))
-        nr_install.apply({}, nr_install.prepare_remove({}, self.row))
-        for name, data in private.items():
-            self.assertEqual((self.game / 'OptiScaler' / name).read_bytes(), data, name)
-        self.assertEqual(nr_install.set_aside_files(self.row), set())
-
-    def test_a_different_optiscaler_dlss_version_is_never_swapped_for_the_games(self):
-        self.optiscaler()
-        (self.game / 'nvngx_dlssd.dll').write_bytes(pe(b'older RR'))
+    def test_shortfuse_adds_character_detail_beside_optiscalers_nr(self):
+        # The Witcher 3: OptiScaler NR + MFG for the world, ShortFuse for characters.
+        self.optiscaler('nr-mfg')
+        (self.game / 'nvngx_dlssnr.dll').write_bytes(pe(b'OptiScaler NR model'))
+        (self.game / 'ReShade.ini').write_text('[ADDON]\nLoadFromDllMain=other.addon64\n', encoding='utf-8')
         before = self.files()
-        with self.assertRaisesRegex(t.Refusal, 'different version of nvngx_dlssd.dll'):
+        with self.assertRaisesRegex(t.Refusal, 'Leave Environment empty'):
             nr_install.prepare({}, self.row, {'environment': {'addon': 'shortfuse'}})
-        self.assertEqual(self.files(), before)
-        # GITC does not hook the game's DLSS, so OptiScaler keeps its copies.
+        review = nr_install.prepare({}, self.row, {'character': {'addon': 'shortfuse', 'values': {'resolution_scale': 0.74}}})
+        self.assertTrue(any('video-memory' in note for note in review['notes']))
+        nr_install.apply({}, review)
+        self.assertEqual((self.game / 'nvngx_dlssnr.dll').read_bytes(), pe(b'OptiScaler NR model'), 'OptiScaler keeps its model')
+        self.assertFalse((self.game / 'renodx-dlss5.addon64').exists())
+        ini = t.ini((self.game / 'ReShade.ini').read_text(encoding='utf-8'))
+        self.assertEqual(ini['ADDON']['LoadFromDllMain'], 'other.addon64,renodx-dlss.addon64')
+        self.assertEqual(ini['RENODX-DLSS']['DirectNeuralRenderingProcessingScale'], '74')
+        self.assertIn('LoadReShade=true', (self.game / 'OptiScaler.ini').read_text(encoding='utf-8'))
+        nr_install.apply({}, nr_install.prepare_remove({}, self.row))
+        self.maxDiff = None
+        after = self.files()
+        # Settings files are compared by value: ReShade and OptiScaler rewrite their own line endings.
+        self.assertIn(b'LoadReShade=false', after.pop('OptiScaler.ini'))
+        ini = t.ini(after.pop('ReShade.ini').decode())
+        self.assertEqual(ini['ADDON']['LoadFromDllMain'], 'other.addon64')
+        self.assertFalse(ini.has_section('RENODX-DLSS') and dict(ini['RENODX-DLSS']))
+        for name in ('OptiScaler.ini', 'ReShade.ini'):
+            before.pop(name)
+        self.assertEqual(after, before)
+
+    def test_gitc_and_shortfuse_still_work_beside_optiscaler_mfg_only(self):
+        self.optiscaler('mfg-only')
         self.addons.update({'gitc-uplift.addon64': pe(b'GITC'), 'gitc-uplift.addon32': b'32', 'gitc-uplift-helper64.exe': pe(b'helper'),
                             'Uplift.fx': b'fx', 'UpliftMask.fx': b'mask', 'LICENSE': b'MIT', 'THIRD_PARTY_NOTICES.md': b'notices'})
-        nr_install.apply({}, nr_install.prepare({}, self.row, {'environment': {'addon': 'gitc'}}))
-        self.assertTrue((self.game / 'OptiScaler' / 'nvngx_dlssd.dll').is_file())
+        for setup in ({'environment': {'addon': 'gitc'}}, {'environment': {'addon': 'shortfuse'}}):
+            with self.subTest(setup=setup):
+                nr_install.apply({}, nr_install.prepare({}, self.row, setup))
+                self.assertEqual((self.game / 'dxgi.dll').read_bytes(), pe(b'OptiScaler'), 'OptiScaler keeps its loader')
+                self.assertTrue((self.game / 'ReShade64.dll').is_file())
+                nr_install.apply({}, nr_install.prepare_remove({}, self.row))
+                self.assertFalse((self.game / 'ReShade64.dll').exists())
 
     def test_another_tools_model_or_loader_is_never_overwritten(self):
         (self.game / 'nvngx_dlssnr.dll').write_bytes(pe(b'someone else'))

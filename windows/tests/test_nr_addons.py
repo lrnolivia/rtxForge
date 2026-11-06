@@ -22,7 +22,14 @@ assert catalog['combos']['characters-and-world']['builtin'] is True
 row={'name':'Game','game':str(base),'exe':'Game.exe','native_dlss':True}
 combo=catalog['combos']['characters-and-world']
 ok=M['nr_check']({'row':row,'setup':{'environment':combo['environment'],'character':combo['character']}})
-assert ok['ok'] and not ok['feeder'] and not ok['verified'],ok
+assert ok['ok'] and not ok['feeder'] and ok['verified'] and not ok['optiscaler_nr'],ok
+opti=dict(row,installed=True,runtime_provider='skynizz',feature_mode='nr-mfg')
+lecram=M['nr_check']({'row':opti,'setup':{'environment':combo['environment']}})
+assert not lecram['ok'] and 'OptiScaler is installed' in lecram['reason'],lecram
+sf=catalog['combos']['characters-with-optiscaler']
+beside=M['nr_check']({'row':opti,'setup':{'character':sf['character']}})
+assert beside['ok'] and beside['optiscaler_nr'] and beside['model'] is None,beside
+assert M['nr_status']({'row':opti})['default']=={'character':{'addon':'shortfuse'}}
 no=M['nr_check']({'row':dict(row,native_dlss=False),'setup':{'environment':combo['environment'],'character':combo['character']}})
 assert not no['ok'] and 'own DLSS' in no['reason'],no
 gitc=M['nr_check']({'row':row,'setup':{'environment':{'addon':'gitc'},'character':{'addon':'lecram'}}})
@@ -38,7 +45,7 @@ except Exception as error:assert 'Built-in' in str(error),error
 else:raise AssertionError('a built-in combo was deleted')
 left=M['nr_combo_delete']({'id':saved['id']})
 assert saved['id'] not in left['combos']
-assert M['nr_status']({'row':row})=={'installed':False}
+assert M['nr_status']({'row':row})=={'installed':False,'default':{'environment':{'addon':'lecram'}}}
 print('NR add-on host methods passed')
 '''
 

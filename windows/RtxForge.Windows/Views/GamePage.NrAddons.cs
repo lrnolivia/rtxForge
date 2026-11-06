@@ -16,8 +16,8 @@ public sealed partial class GamePage
     UIElement NrAddonsGroup(Game g)
     {
         var group = new PreferencesGroup("DLSS5 NR add-ons",
-            "Choose an add-on for the environment and one for characters, each with the Old or New DLSS5 model. "
-            + "rtxForge downloads the pinned files and checks this game before anything is installed.");
+            "Choose an add-on for the environment and one for character detail, each with the Old or New DLSS5 model. "
+            + "Where OptiScaler runs its own NR, that NR is the environment. rtxForge downloads the pinned files and checks this game before anything is installed.");
         var status = group.Add(Prefs.Row("NR add-ons", "Checking…", null, ""));
         _ = FillNrAddonsAsync(g, group, status);
         return group;
@@ -68,9 +68,10 @@ public sealed partial class GamePage
             group.Add(Prefs.Row(title + " build and model", null, extra));
             return new NrSlot(addon, build, model);
         }
-        var environment = MakeSlot("Environment", optional: false, "");
-        var character = MakeSlot("Character", optional: true, "");
+        var environment = MakeSlot("Environment", optional: true,"");
+        var character = MakeSlot("Character detail", optional: true,"");
 
+        // Both slots can be empty: where OptiScaler runs its own NR, that NR is the environment.
         JsonObject? AddonAt(NrSlot slot, bool optional)
         {
             var index = slot.Addon.SelectedIndex - (optional ? 1 : 0);
@@ -103,7 +104,8 @@ public sealed partial class GamePage
         string? envValuesFor = null, charValuesFor = null;
         JsonObject Setup()
         {
-            var setup = new JsonObject { ["environment"] = Spec(environment, false, (string?)AddonAt(environment, false)?["id"] == envValuesFor ? envValues : null) };
+            var setup = new JsonObject();
+            if (Spec(environment, true, (string?)AddonAt(environment, true)?["id"] == envValuesFor ? envValues : null) is { } env) setup["environment"] = env;
             if (Spec(character, true, (string?)AddonAt(character, true)?["id"] == charValuesFor ? charValues : null) is { } c) setup["character"] = c;
             return setup;
         }
@@ -127,9 +129,9 @@ public sealed partial class GamePage
                 if (ticket != checking || g != game) return;
                 var ok = result["ok"]?.GetValue<bool>() == true;
                 var text = ok
-                    ? (result["verified"]?.GetValue<bool>() == true ? "Works in this game." : "Works in this game · this pairing is not verified on a test copy yet.")
+                    ? (result["optiscaler_nr"]?.GetValue<bool>() == true ? "OptiScaler's NR covers the environment. " : "")
+                      + (result["verified"]?.GetValue<bool>() == true ? "Works in this game." : "Works in this game · this pairing is not verified on a test copy yet.")
                       + ((result["skipped"] as JsonArray ?? []).Count > 0 ? " Some settings aren't verified for this add-on and are left out." : "")
-                      + string.Concat((result["manual"] as JsonArray ?? []).Select(note => " " + (string?)note))
                     : (string?)result["reason"] ?? "Not available for this game.";
                 SetSubtitle(verdict, text);
                 install.IsEnabled = ok && !shell.Busy && !shell.Service.IsPreview;
@@ -139,7 +141,7 @@ public sealed partial class GamePage
 
         var filling = false;
         void Changed() { if (!filling) { comboBox.SelectedIndex = 0; _ = CheckAsync(); } }
-        environment.Addon.SelectionChanged += (_, _) => { FillBuilds(environment, false); Changed(); };
+        environment.Addon.SelectionChanged += (_, _) => { FillBuilds(environment, true); Changed(); };
         character.Addon.SelectionChanged += (_, _) => { FillBuilds(character, true); Changed(); };
         foreach (var box in new[] { environment.Build, environment.Model, character.Build, character.Model })
             box.SelectionChanged += (_, _) => Changed();
@@ -157,14 +159,20 @@ public sealed partial class GamePage
                 slot.Model.SelectedIndex = Math.Max(0, models.FindIndex(m => (string?)m["id"] == ((string?)spec?["model"] ?? "new")));
                 keep(spec?["values"] as JsonObject, id);
             }
-            Apply(environment, false, combo["environment"] as JsonObject, (v, id) => { envValues = v; envValuesFor = id; });
+            Apply(environment, true, combo["environment"] as JsonObject, (v, id) => { envValues = v; envValuesFor = id; });
             Apply(character, true, combo["character"] as JsonObject, (v, id) => { charValues = v; charValuesFor = id; });
             filling = false;
             _ = CheckAsync();
         };
         filling = true;
-        environment.Addon.SelectedIndex = Math.Max(0, addons.FindIndex(a => (string?)a["id"] == "lecram"));
-        FillBuilds(environment, false); FillBuilds(character, true);
+        // Starts on Lecram for the environment, or ShortFuse for characters beside OptiScaler's NR.
+        var start = current["default"] as JsonObject;
+        foreach (var (slot, key) in new[] { (environment, "environment"), (character, "character") })
+        {
+            var index = addons.FindIndex(a => (string?)a["id"] == (string?)start?[key]?["addon"]);
+            slot.Addon.SelectedIndex = index < 0 ? 0 : index + 1;
+            FillBuilds(slot, true);
+        }
         filling = false;
         SetSubtitle(status, "Not installed in this game.");
         _ = CheckAsync();

@@ -10,6 +10,9 @@ It refuses what cannot work instead of guessing:
 - GITC Uplift stops itself beside any other NR add-on.
 - Lecram stands down beside another NR add-on unless ForeignNr=observe is set,
   so a pairing sets it.
+- Lecram never runs where OptiScaler is installed (see the catalog's reason).
+- Where OptiScaler runs its own NR, that NR is the Environment: the slot stays
+  empty and only an add-on marked with_optiscaler_nr may take Character.
 - A setting whose key or value encoding is not verified is never written.
 """
 from __future__ import annotations
@@ -30,9 +33,22 @@ RANGES = {'intensity': (0.0, 2.0), 'local_tone': (0.0, 2.0), 'structure': (0.0, 
 SWITCHES = ('character_mask', 'independent_skin', 'ui_correction', 'block_hudless')
 COUNTS = {'passes': (1, 4), 'style': (0, 2)}
 # Pairings confirmed on a Forge Lab copy. Everything else is "not verified".
-VERIFIED_PAIRS: set[frozenset] = set()
-# Lecram 10.8 + ShortFuse loaded side by side in The Witcher 3 (RTX 4070, 2026-11-05), but ShortFuse's
-# NR was not switched on, so the pairing is not verified yet.
+# Lecram 10.8 + ShortFuse: both NR passes, Ray Reconstruction and the game's frame generation
+# ran together in The Witcher 3 (RTX 4070, 2026-11-05).
+VERIFIED_PAIRS: set[frozenset] = {frozenset({('lecram', '10.8'), ('shortfuse', '26.1025.0009')})}
+# OptiScaler's NR as Environment with ShortFuse as Character also ran with Ray Reconstruction and
+# multi-frame generation (The Witcher 3, RTX 4070, 2026-11-06); a single add-on counts as verified.
+OPTISCALER_NR = ('nr-mfg', 'nr-only')
+OTHER_RUNTIMES = (None, 'feeder', 'vulkan-native')
+
+
+def optiscaler_mode(game):
+    """OptiScaler's feature mode in this game, 'unknown' when it can't be read, or None without it."""
+    if 'optiscaler_mode' in game:
+        return game['optiscaler_mode']
+    if game.get('installed') and game.get('runtime_provider') not in OTHER_RUNTIMES:
+        return game.get('feature_mode') or 'unknown'
+    return None
 
 _catalog = None
 
@@ -79,6 +95,9 @@ def _slot(spec, slot, game):
         t.need(game.get('native_dlss'), f'{addon["name"]} hooks the game\'s own DLSS, and this game has none.')
     if addon.get('arch'):
         t.need(game.get('arch', 'x64') in addon['arch'], f'{addon["name"]} supports 64-bit games only.')
+    beside = addon.get('beside_optiscaler') or {}
+    if optiscaler_mode(game):
+        t.need(beside.get('allowed', True), f'{addon["name"]} can\'t run where OptiScaler is installed: {beside.get("reason", "")}')
     values, skipped = {}, []
     for name, value in (spec.get('values') or {}).items():
         value = _value(name, value)
@@ -103,16 +122,34 @@ def _keys(addon_id, values, pass_number=1):
         out = {f'NRPass{pass_number}FollowPass1': 0}
         out.update({f'NRPass{pass_number}{LECRAM_PASS[name]}': value for name, value in values.items() if name in LECRAM_PASS})
         return out
-    return {settings[name]: value for name, value in values.items() if settings.get(name)}
+    # ShortFuse stores its processing scale as a whole percent.
+    percent = catalog()['addons'][addon_id].get('percent', ())
+    return {settings[name]: round(value * 100) if name in percent else value
+            for name, value in values.items() if settings.get(name)}
 
 
 def plan(game, setup):
     """What installing this setup in this game takes, or a Refusal saying why it can't."""
-    t.need(isinstance(setup, dict) and setup.get('environment'), 'Choose an add-on for Environment.')
-    slots = [_slot(setup['environment'], 'environment', game)]
-    if setup.get('character'):
-        slots.append(_slot(setup['character'], 'character', game))
+    t.need(isinstance(setup, dict), 'Choose an add-on for Environment.')
     addons = catalog()['addons']
+    mode = optiscaler_mode(game)
+    t.need(mode != 'unknown', "rtxForge can't tell whether OptiScaler's NR is on in this game. Repair OptiScaler here first.")
+    optiscaler_nr = mode in OPTISCALER_NR
+    if optiscaler_nr:
+        if setup.get('environment'):
+            _slot(setup['environment'], 'environment', game)  # an add-on that can't run here says why first
+        t.need(not setup.get('environment'), "OptiScaler's NR already covers the environment in this game. "
+               'Leave Environment empty and choose a Character add-on.')
+        t.need(setup.get('character'), "OptiScaler's NR covers the environment in this game. Choose a Character add-on.")
+        slots = [_slot(setup['character'], 'character', game)]
+        addon = addons[slots[0]['addon']]
+        t.need((addon.get('beside_optiscaler') or {}).get('with_optiscaler_nr'),
+               f"{addon['name']} can't run beside OptiScaler's NR. Switch OptiScaler to MFG Only to use it.")
+    else:
+        t.need(setup.get('environment'), 'Choose an add-on for Environment.')
+        slots = [_slot(setup['environment'], 'environment', game)]
+        if setup.get('character'):
+            slots.append(_slot(setup['character'], 'character', game))
     ids = {s['addon'] for s in slots}
     for s in slots:
         if addons[s['addon']].get('exclusive') and len(ids) > 1:
@@ -126,7 +163,7 @@ def plan(game, setup):
         only = slots[0]
         t.need(only['addon'] == 'lecram', f'{only["name"]} in both slots is not supported yet: its per-pass '
                'settings are not verified. Use it in one slot.')
-        section = addons[only['addon']]['section'] or addons[only['addon']].get('section_candidate')
+        section = addons[only['addon']]['section']
         values = dict(_keys(only['addon'], only['values']))
         values.update(_keys(only['addon'], slots[1]['values'], pass_number=2))
         passes_key = addons[only['addon']]['settings'].get('passes')
@@ -136,7 +173,7 @@ def plan(game, setup):
         install.append({'addon': only['addon'], 'build': only['build']})
     else:
         for s in slots:
-            section = addons[s['addon']]['section'] or addons[s['addon']].get('section_candidate')
+            section = addons[s['addon']]['section']
             values = _keys(s['addon'], s['values'])
             coexist = addons[s['addon']].get('coexist')
             if coexist and len(ids) > 1:
@@ -147,18 +184,16 @@ def plan(game, setup):
         # Lecram remembers its F6 toggle as NeuralUplift; an install always starts with NR on.
         launch = addons[addon_id].get('on_at_launch')
         if launch:
-            section = addons[addon_id]['section'] or addons[addon_id].get('section_candidate')
-            ini.setdefault(section, {})[launch['key']] = launch['value']
+            ini.setdefault(addons[addon_id]['section'], {})[launch['key']] = launch['value']
     feeder = any(addons[s['addon']]['route'] == 'feeder' for s in slots) and not game.get('native_dlss')
     pair = frozenset((s['addon'], s['build']) for s in slots)
-    return {'slots': slots, 'install': install, 'model': slots[0]['model'], 'ini': ini, 'feeder': feeder,
+    return {'slots': slots, 'install': install, 'ini': ini, 'feeder': feeder,
+            # OptiScaler's NR brings its own model, which the add-on shares.
+            'model': None if optiscaler_nr else slots[0]['model'], 'optiscaler_nr': optiscaler_nr,
             'verified': len(ids) == 1 and len(slots) == 1 or pair in VERIFIED_PAIRS,
             'skipped': sorted({name for s in slots for name in s['skipped']}),
-            # Steps the user takes in the game: an add-on whose on switch rtxForge cannot set yet.
-            'manual': sorted(addons[a]['enable']['note'] for a in ids
-                             if addons[a].get('enable') and not addons[a]['enable'].get('verified')),
-            # ShortFuse's ReShade.ini section is inferred from its file and still to be confirmed in a game.
-            'unconfirmed_sections': sorted(addons[a]['section_candidate'] for a in ids if not addons[a]['section'])}
+            # Add-ons ReShade must load while it starts (ReShade.ini [ADDON] LoadFromDllMain).
+            'load_early': sorted(addons[a]['file'] for a in ids if addons[a].get('load_early'))}
 
 
 MAX_SAVED = 100
@@ -193,9 +228,10 @@ def save_combo(config, name, combo):
     t.need(0 < len(name) <= 60, 'Name the combo (up to 60 characters).')
     t.need(isinstance(combo, dict), 'Choose the add-ons for the combo.')
     combo = {slot: combo[slot] for slot in SLOTS if combo.get(slot)}
-    t.need(combo.get('environment'), 'A combo needs an Environment add-on.')
-    # Validate the add-ons, builds, models and values without a particular game.
-    plan({'native_dlss': True, 'arch': 'x64'}, combo)
+    t.need(combo, 'Choose the add-ons for the combo.')
+    # Validate the add-ons, builds, models and values without a particular game. A combo without
+    # Environment is for games where OptiScaler's NR covers it.
+    plan({'native_dlss': True, 'arch': 'x64', 'optiscaler_mode': None if combo.get('environment') else 'nr-mfg'}, combo)
     key = 'user-' + t.sha(name.casefold().encode())[:12]
     saved = saved_combos(config)
     t.need(key in saved or len(saved) < MAX_SAVED, f'Up to {MAX_SAVED} saved combos.')
@@ -222,12 +258,20 @@ def catalog_view(config):
             'combos': combos(config)}
 
 
+def default_setup(game):
+    """The setup a game's picker starts on: Lecram for the environment, or ShortFuse for
+    characters where OptiScaler's NR covers the environment."""
+    if optiscaler_mode(game) in OPTISCALER_NR:
+        return {'character': {'addon': 'shortfuse'}}
+    return {'environment': {'addon': 'lecram'}}
+
+
 def check(game, setup):
     """Whether this setup works in this game, without changing anything."""
     try:
         p = plan(game, setup)
         return {'ok': True, 'verified': p['verified'], 'feeder': p['feeder'], 'skipped': p['skipped'],
-                'install': p['install'], 'model': p['model'], 'manual': p['manual']}
+                'install': p['install'], 'model': p['model'], 'optiscaler_nr': p['optiscaler_nr']}
     except t.Refusal as error:
         return {'ok': False, 'reason': str(error)}
 

@@ -6751,7 +6751,7 @@ class Window(Adw.ApplicationWindow):
         """DLSS5 NR add-ons: Environment and Character each take the add-on, pinned build and
         Old/New model the user picks; combos fill both slots and every change is checked first."""
         import nr_addons,nr_install
-        group=Adw.PreferencesGroup(title='DLSS5 NR add-ons',description='Choose an add-on for the environment and one for characters, each with the Old or New DLSS5 model. rtxForge downloads the pinned files and checks this game before anything is installed.')
+        group=Adw.PreferencesGroup(title='DLSS5 NR add-ons',description="Choose an add-on for the environment and one for character detail, each with the Old or New DLSS5 model. Where OptiScaler runs its own NR, that NR is the environment. rtxForge downloads the pinned files and checks this game before anything is installed.")
         body.append(group)
         status=row('NR add-ons','Checking…');group.add(status)
         if self.options.demo:status.set_subtitle('NR add-ons are checked in the installed app.');return
@@ -6777,11 +6777,12 @@ class Window(Adw.ApplicationWindow):
             combo_row=safe_combo_row(title='Combo',subtitle='Fill both slots from a saved or built-in combo.',model=Gtk.StringList.new(['Custom']+[value.get('name',key) for key,value in combos]),selected=0)
             group.add(combo_row)
             slots={}
-            for slot,optional in (('environment',False),('character',True)):
+            # Both slots can be empty: where OptiScaler runs its own NR, that NR is the environment.
+            for slot,optional,title in (('environment',True,'Environment'),('character',True,'Character detail')):
                 names=(['None'] if optional else [])+[a['name'] for a in addons]
-                addon=safe_combo_row(title=slot.capitalize(),model=Gtk.StringList.new(names),selected=0)
-                build=safe_combo_row(title=slot.capitalize()+' build',model=Gtk.StringList.new([]),selected=0)
-                model=safe_combo_row(title=slot.capitalize()+' model',model=Gtk.StringList.new([m['label'] for m in models]),selected=max(0,next((i for i,m in enumerate(models) if m['id']=='new'),0)))
+                addon=safe_combo_row(title=title,model=Gtk.StringList.new(names),selected=0)
+                build=safe_combo_row(title=title+' build',model=Gtk.StringList.new([]),selected=0)
+                model=safe_combo_row(title=title+' model',model=Gtk.StringList.new([m['label'] for m in models]),selected=max(0,next((i for i,m in enumerate(models) if m['id']=='new'),0)))
                 for widget in (addon,build,model):group.add(widget)
                 slots[slot]={'optional':optional,'addon':addon,'build':build,'model':model,'builds':[],'values':None,'values_for':None}
             def chosen(slot):
@@ -6814,8 +6815,8 @@ class Window(Adw.ApplicationWindow):
                 result=nr_addons.check(game,setup())
                 if result['ok']:
                     text='Works in this game.' if result['verified'] else 'Works in this game · this pairing is not verified on a test copy yet.'
+                    if result.get('optiscaler_nr'):text="OptiScaler's NR covers the environment. "+text
                     if result['skipped']:text+=" Some settings aren't verified for this add-on and are left out."
-                    for note in result.get('manual',[]):text+=' '+note
                 else:text=result['reason']
                 verdict.set_subtitle(text);install.set_sensitive(result['ok'] and not self.busy)
             def changed(*_):
@@ -6838,8 +6839,11 @@ class Window(Adw.ApplicationWindow):
                 state['filling']=False;check()
             combo_row.connect('notify::selected',combo_chosen)
             state['filling']=True
-            slots['environment']['addon'].set_selected(max(0,next((i for i,a in enumerate(addons) if a['id']=='lecram'),0)))
-            fill_builds('environment');fill_builds('character')
+            start=current.get('default') or {}
+            for slot,s in slots.items():
+                position=next((i for i,a in enumerate(addons) if a['id']==(start.get(slot) or {}).get('addon')),None)
+                s['addon'].set_selected(0 if position is None else position+1)
+                fill_builds(slot)
             state['filling']=False;check()
         threading.Thread(target=load,daemon=True).start()
 

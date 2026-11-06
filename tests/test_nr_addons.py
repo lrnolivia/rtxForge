@@ -37,11 +37,34 @@ class NrAddonTests(unittest.TestCase):
         shortfuse = plan['ini']['RENODX-DLSS']
         self.assertEqual(shortfuse['DirectNeuralRenderingSkinStructureStrength'], 0.68)
         self.assertFalse(plan['feeder'], 'a DLSS game needs no Feeder')
-        self.assertFalse(plan['verified'], 'ShortFuse NR has not been switched on in a test yet')
+        self.assertTrue(plan['verified'], 'verified in The Witcher 3 with the game\'s frame generation')
+        self.assertEqual(plan['load_early'], ['renodx-dlss.addon64'], 'Streamline games crash unless ShortFuse loads early')
         gitc = nr.plan(DLSS_GAME, {'environment': {'addon': 'gitc'}})
         self.assertTrue(gitc['verified'], 'a single add-on needs no pairing check')
-        self.assertEqual(plan['unconfirmed_sections'], [])
-        self.assertEqual(len(plan['manual']), 1, 'ShortFuse must be switched on in its panel')
+        self.assertEqual(gitc['load_early'], [])
+
+    def test_optiscalers_nr_is_the_environment_and_shortfuse_the_character(self):
+        game = dict(DLSS_GAME, installed=True, runtime_provider='skynizz', feature_mode='nr-mfg')
+        combo = nr.builtin_combos()['characters-with-optiscaler']
+        plan = nr.apply_combo(game, combo)['plan']
+        self.assertEqual(plan['install'], [{'addon': 'shortfuse', 'build': '26.1025.0009'}])
+        self.assertIsNone(plan['model'], "OptiScaler's NR brings the model")
+        self.assertTrue(plan['optiscaler_nr'])
+        self.assertEqual(plan['ini']['RENODX-DLSS']['DirectNeuralRenderingProcessingScale'], 74, 'a whole percent')
+        for setup, reason in (({'environment': {'addon': 'lecram'}}, 'where OptiScaler is installed'),
+                              ({'environment': {'addon': 'shortfuse'}}, 'Leave Environment empty'),
+                              ({'character': {'addon': 'gitc'}}, "can't run beside OptiScaler's NR"),
+                              ({}, 'Choose a Character add-on')):
+            with self.subTest(setup=setup), self.assertRaisesRegex(t.Refusal, reason):
+                nr.plan(game, setup)
+        for mode in ('mfg-only', 'nr-mfg'):
+            with self.subTest(mode=mode):
+                result = nr.apply_combo(dict(game, feature_mode=mode), nr.builtin_combos()['characters-and-world'])
+                self.assertIn('Lecram', result['reason'])
+        self.assertTrue(nr.check(dict(game, feature_mode='mfg-only'), {'environment': {'addon': 'shortfuse'}})['ok'])
+        self.assertFalse(nr.check(dict(game, feature_mode=None), {'character': {'addon': 'shortfuse'}})['ok'])
+        self.assertEqual(nr.default_setup(game), {'character': {'addon': 'shortfuse'}})
+        self.assertEqual(nr.default_setup(dict(game, runtime_provider='feeder')), {'environment': {'addon': 'lecram'}})
 
     def test_shortfuse_needs_the_games_own_dlss(self):
         combo = nr.builtin_combos()['characters-and-world']
@@ -104,7 +127,9 @@ class NrAddonTests(unittest.TestCase):
             self.assertTrue(nr.apply_combo(DLSS_GAME, saved[key])['ok'])
             self.assertFalse(nr.apply_combo(PLAIN_GAME, saved[key])['ok'])
             self.assertEqual([a['id'] for a in nr.catalog_view({})['addons']], ['lecram', 'shortfuse', 'gitc'])
-            for bad in ({'character': {'addon': 'lecram'}}, {'environment': {'addon': 'gitc'}, 'character': {'addon': 'lecram'}}):
+            # A combo without Environment is for games where OptiScaler's NR covers it.
+            self.assertTrue(nr.save_combo({}, 'Characters only', {'character': {'addon': 'shortfuse'}}))
+            for bad in ({'character': {'addon': 'lecram'}}, {'environment': {'addon': 'gitc'}, 'character': {'addon': 'lecram'}}, {}):
                 with self.subTest(bad=bad), self.assertRaises(t.Refusal):
                     nr.save_combo({}, 'Bad', bad)
             with self.assertRaises(t.Refusal):

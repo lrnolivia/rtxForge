@@ -2,8 +2,9 @@
 
 Open a game's **Tools → DLSS5 NR add-ons**. The group has two slots:
 
-- **Environment** — required.
-- **Character** — optional; choose **None** to run one add-on.
+- **Environment** — required, except where OptiScaler runs its own NR. There,
+  OptiScaler's NR is the environment and this slot stays **None**.
+- **Character detail** — optional; choose **None** to run one add-on.
 
 Each slot takes the add-on, one of its pinned builds, and the **Old** or **New**
 DLSS5 model. rtxForge checks the choice against the game every time it changes
@@ -14,8 +15,8 @@ usual review, which lists every file and its SHA-256 before anything changes.
 
 | Add-on | Builds | How it runs |
 | --- | --- | --- |
-| Lecram (`renodx-dlss5.addon64`) | 10.8 | ReShade add-on. In a game without DLSS it runs through Feeder NR, which uses rtxForge's own 8.5 build. |
-| ShortFuse (`renodx-dlss.addon64`) | 26.1025.0009 | Hooks the game's own DLSS calls, so it needs a 64-bit game with DLSS. |
+| Lecram (`renodx-dlss5.addon64`) | 10.8 | ReShade add-on. Not offered where OptiScaler is installed. In a game without DLSS it runs through Feeder NR, which uses rtxForge's own 8.5 build. |
+| ShortFuse (`renodx-dlss.addon64`) | 26.1025.0009 | Hooks the game's own DLSS calls, so it needs a 64-bit game with DLSS. ReShade loads it while it starts (`[ADDON] LoadFromDllMain`). |
 | GITC Uplift | 1.8.0 | ReShade add-on with its helper and shaders. It runs alone. |
 
 ## Models
@@ -45,8 +46,18 @@ verified before use.
 - **Unverified settings are never written.** If a combo carries a setting
   whose key or value encoding isn't verified for the chosen add-on, the check
   says so and the setting is left out.
-- **With OptiScaler, it must be on MFG Only first.** Otherwise two NR tools
-  would process the same frame.
+- **Lecram never runs where OptiScaler is installed.** ReShade reloads Lecram
+  while the game starts, and each reload hooks DLSS again. Beside OptiScaler,
+  or the standalone frame-generation unlocker, that stops Ray Reconstruction
+  and frame generation from starting on some launches. Use Lecram with the
+  game's own frame generation.
+- **With OptiScaler NR + MFG**, OptiScaler's NR is the environment and
+  **ShortFuse** adds character detail. rtxForge installs no NR model there:
+  ShortFuse uses OptiScaler's. With OptiScaler on **MFG Only**, the slots work
+  as in any other game, without Lecram.
+- **OptiScaler NR + ShortFuse runs close to a 12 GB card's video memory.**
+  Switching windows can stall the game. Lower Character detail's resolution
+  scale if it does.
 - **Another tool's files are kept.** rtxForge refuses the install rather than
   replace them.
 
@@ -55,11 +66,15 @@ A pairing that hasn't been confirmed on a Forge Lab test copy is marked as
 
 ## Combos
 
-The **Combo** picker fills both slots at once. The built-in **Characters and
-world** combo pairs:
+The **Combo** picker fills both slots at once. Two combos are built in:
 
-- **Environment:** Lecram 10.8.
-- **Character:** ShortFuse for character detail.
+- **Characters + world:** Lecram 10.8 for the environment, ShortFuse for
+  character detail. For games without OptiScaler.
+- **Characters + OptiScaler NR:** ShortFuse for character detail at a 74%
+  resolution scale, beside OptiScaler's NR + MFG.
+
+Both were verified in The Witcher 3 on an RTX 4070, each with Ray
+Reconstruction and frame generation running.
 
 **Save combo…** stores the current slots under a name, with up to 100 saved
 combos. Every combo is available for every game. Each game checks a combo
@@ -73,15 +88,12 @@ apps share them.
 
 **Remove** deletes only files rtxForge recorded that are still unchanged. A
 changed file is kept and listed. ReShade.ini keys are put back to the values
-recorded at install, and OptiScaler's `LoadReShade` is restored. Your other
+recorded at install, and OptiScaler's `LoadReShade` is restored. In
+`LoadFromDllMain`, only the add-ons rtxForge added are removed. Your other
 ReShade settings are kept.
 
 ## Still to confirm in a game
 
-- ShortFuse's on switch (`DirectNeuralRendering`). Its value isn't confirmed,
-  so rtxForge doesn't write it: turn on Direct Neural Rendering in ShortFuse's
-  panel in ReShade. Its section, `[RENODX-DLSS]`, was confirmed in The Witcher 3.
-- Each pairing running together. Lecram 10.8 and ShortFuse load side by side
-  in The Witcher 3, but ShortFuse's NR wasn't on in that run.
+- GITC Uplift beside other tools and with each model.
 - Lecram 10.8's own Model version key.
 - Old and New models per add-on.

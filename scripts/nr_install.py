@@ -8,8 +8,9 @@ the same reviewed-transaction path as RenoDX HDR:
 - A receipt in the game's .rtxforge folder lists every file this owns and the
   previous value of every ReShade.ini key it set, so restore puts back exactly
   what was there and keeps everything ReShade or the user changed since.
-- It never processes a frame twice: OptiScaler must be in MFG Only (its NR off),
-  and an NR model owned by another tool is never overwritten.
+- Where OptiScaler runs its own NR, that NR is the Environment and its model is
+  shared: only a Character add-on that works beside it is installed, without a
+  model. An NR model owned by another tool is never overwritten.
 Games without their own DLSS use Feeder NR for Lecram; this module refuses them.
 """
 from __future__ import annotations
@@ -36,6 +37,10 @@ SHADER_DIR = 'reshade-shaders/Shaders'
 SEARCH_PATHS = '.\\reshade-shaders\\Shaders\\**'
 NOTICE = ('Each NR add-on adds a full neural-rendering pass. Expect a large GPU cost, '
           'more so with frame generation on.')
+MEMORY_NOTE = ("With OptiScaler's NR and multi-frame generation, a second NR pass runs close to the GPU's "
+               'video-memory limit on 12 GB cards. Switching windows can stall the game; lower Character '
+               'detail resolution if it does.')
+LOAD_EARLY = ('ADDON', 'LoadFromDllMain')
 
 
 def _receipt(row):
@@ -49,14 +54,12 @@ def _read_receipt(root, path):
     t.need(record.get('schema') == 1 and isinstance(record.get('files'), dict) and isinstance(record.get('ini'), dict)
            and record.get('route') in ('reshade', 'existing-reshade', 'optiscaler') and isinstance(record.get('setup'), dict),
            'Invalid NR add-on record.')
-    aside = record.get('set_aside') or {}
-    t.need(isinstance(aside, dict), 'Invalid NR add-on record.')
-    for name, digest in [*record['files'].items(), *aside.items()]:
+    for name, digest in record['files'].items():
         t.relative(name); t.safe(root / name)
         t.need(isinstance(digest, str) and re.fullmatch('[a-f0-9]{64}', digest), 'Invalid NR add-on record member.')
-    for name in aside:
-        t.need(PurePosixPath(name).name in OPTISCALER_DLSS and PurePosixPath(name).parent.name == 'OptiScaler',
-               'Invalid NR add-on record member.')
+    early = record.get('load_early') or []
+    t.need(isinstance(early, list) and all(isinstance(n, str) and re.fullmatch(r'[\w.-]+\.addon(?:32|64)', n) for n in early),
+           'Invalid NR add-on record.')
     return record
 
 
@@ -64,7 +67,7 @@ def status(row):
     try:
         root = t.safe(row['game']); path = _receipt(row)
         if not path.exists():
-            return {'installed': False}
+            return {'installed': False, 'default': nr_addons.default_setup(row)}
         record = _read_receipt(root, path)
         changed = [n for n, h in record['files'].items() if not (root / n).is_file() or t.digest(t.safe(root / n)) != h]
         return {'installed': True, 'setup': record['setup'], 'changed': changed}
@@ -137,6 +140,8 @@ def _payload(config, plan, gpu):
                 files[f'rtxForge-NR-Licenses/{item["addon"]}-{path.name}'] = blob
             else:
                 files[path.name] = blob
+    if plan['model'] is None:
+        return files, None  # OptiScaler's NR brings the model
     build_id, build = _model_build(plan['model'], gpu)
     model = _model(_fetch(config, build['archive'], Path(build['archive']['url']).name), build.get('file', {}))
     gitc = any(i['addon'] == 'gitc' for i in plan['install'])
@@ -155,13 +160,13 @@ def prepare(config, row, setup, gpu='ada'):
     receipt = _receipt(row)
     t.need(not receipt.exists(), 'An NR add-on setup is already installed. Remove it before choosing another.')
     arch = hdr.architecture(exe)
-    plan = nr_addons.plan(dict(row, arch=arch), setup)
-    t.need(not plan['feeder'], 'This game has no DLSS of its own, so Lecram runs through Feeder NR. Choose Feeder NR for it.')
     route, host, optiscaler_ini = hdr._route(e, exe, arch)
+    # The game folder, not the library row, says whether OptiScaler is here and runs its own NR.
+    mode = None
     if route == 'optiscaler':
-        current = (hdr._managed(e, exe.parent) or {}).get('current') or {}
-        t.need(current.get('feature_mode') == 'mfg-only', 'OptiScaler is running its own NR here. Switch it to MFG Only first, '
-               'so two NR tools never process the same frame.')
+        mode = ((hdr._managed(e, exe.parent) or {}).get('current') or {}).get('feature_mode') or 'unknown'
+    plan = nr_addons.plan(dict(row, arch=arch, optiscaler_mode=mode), setup)
+    t.need(not plan['feeder'], 'This game has no DLSS of its own, so Lecram runs through Feeder NR. Choose Feeder NR for it.')
     directory = exe.parent
     files, model_build = _payload(config, plan, gpu)
     writes, checks, owned = {}, {str(exe): t.digest(exe)}, {}
@@ -190,10 +195,6 @@ def prepare(config, row, setup, gpu='ada'):
                             'value': t.ini(text).get('Plugins', 'LoadReShade', fallback=None)}
         writes[optiscaler_ini] = t.setvalue(text, 'Plugins', 'LoadReShade', 'true').encode('utf-8')
         checks[str(optiscaler_ini)] = t.digest(optiscaler_ini)
-    notes = []
-    if route == 'optiscaler' and any(nr_addons.catalog()['addons'][i['addon']].get('shares_game_dlss') for i in plan['install']):
-        record['set_aside'], aside_notes = _set_aside(config, root, directory, writes, checks)
-        notes += aside_notes
     settings = t.safe(directory / 'ReShade.ini')
     text = settings.read_text(encoding='utf-8-sig') if settings.exists() else ''
     if settings.exists():
@@ -210,6 +211,14 @@ def prepare(config, row, setup, gpu='ada'):
             before = parsed.get(section, key, fallback=None) if parsed else None
             record['ini'].setdefault(section, {})[key] = before
             text = t.setvalue(text, section, key, _value(value))
+    if plan['load_early']:
+        # ShortFuse must load while ReShade starts, or Streamline games crash during startup.
+        # LoadFromDllMain is a list shared with other add-ons: add ours, and remove only ours later.
+        listed = _names(parsed.get(*LOAD_EARLY, fallback='') if parsed else '')
+        added = [n for n in plan['load_early'] if n.casefold() not in {x.casefold() for x in listed}]
+        record['load_early'] = added
+        if added:
+            text = t.setvalue(text, *LOAD_EARLY, ','.join(listed + added))
     writes[settings] = text.encode('utf-8')
     if not checks.get(str(settings)):
         record['settings_created'] = t.sha(writes[settings])
@@ -217,68 +226,13 @@ def prepare(config, row, setup, gpu='ada'):
     review = hdr._plan(row, root, writes, action='install', checks=checks)
     review.update(kind='nr-addons', route=route, prefix=hdr._prefix_review(config, row, route, host),
                   notes=[NOTICE, *([] if plan['verified'] else ['This pairing has not been verified on a test copy yet.']),
-                         *plan['manual'], *notes],
+                         *([MEMORY_NOTE] if plan['optiscaler_nr'] else [])],
                   setup=setup, skipped=plan['skipped'])
     return hdr._freeze(config, review)
 
 
-# OptiScaler runs DLSS and Ray Reconstruction from its own copies of these files. An add-on
-# that hooks the game's DLSS (Lecram, ShortFuse) breaks OptiScaler's copies: in The Witcher 3,
-# Ray Reconstruction and frame generation failed to start or the game crashed while loading.
-# With the copies set aside, OptiScaler loads the game's own identical files and all of
-# Ray Reconstruction, multi-frame generation and NR run together.
-OPTISCALER_DLSS = ('nvngx_dlss.dll', 'nvngx_dlssd.dll')
-SET_ASIDE_NOTE = ('OptiScaler uses this game\'s own DLSS files while the NR add-ons are installed, so they can share '
-                  'Ray Reconstruction and frame generation. This runs close to the GPU\'s video-memory limit and can stall '
-                  'when you switch windows. To update or repair OptiScaler, remove the NR add-ons first.')
-
-
-def _kept_copy(config, name, digest):
-    return state_storage.storage(config, 128 * 1024**2) / 'nr-cache' / 'set-aside' / digest / name
-
-
-def _set_aside(config, root, directory, writes, checks):
-    """Set aside OptiScaler's private DLSS copies that match the game's own files exactly."""
-    aside, notes = {}, []
-    for name in OPTISCALER_DLSS:
-        private = t.safe(directory / 'OptiScaler' / name)
-        if not private.is_file():
-            continue
-        own = t.safe(directory / name)
-        digest = t.digest(private)
-        if not own.is_file():
-            notes.append(f'This game keeps no {name} beside its executable, so OptiScaler keeps its own copy. '
-                         'If Ray Reconstruction looks broken, remove the NR add-ons.')
-            continue
-        t.need(t.digest(own) == digest,
-               f'OptiScaler brings a different version of {name} than this game\'s own. The NR add-ons need OptiScaler to '
-               'use the game\'s DLSS files, which would change your DLSS version here, so nothing was installed.')
-        copy = _kept_copy(config, name, digest)
-        if not (copy.is_file() and t.digest(copy) == digest):
-            t.atomic_file(copy, private.read_bytes(), 0o644)
-        writes[private] = None
-        checks[str(private)] = digest
-        aside[private.relative_to(root).as_posix()] = digest
-    if aside:
-        notes.append(SET_ASIDE_NOTE)
-    return aside, notes
-
-
-def set_aside_files(row):
-    """OptiScaler files this game's NR add-ons set aside, relative to the executable's folder."""
-    try:
-        root = t.safe(row['game']); path = _receipt(row)
-        if not path.is_file():
-            return set()
-        record = _read_receipt(root, path)
-    except (t.Refusal, OSError, ValueError, KeyError):
-        return set()
-    base = PurePosixPath(t.relative(row['exe'])).parent
-    out = set()
-    for rel in record.get('set_aside') or {}:
-        path = PurePosixPath(rel)
-        out.add(str(path.relative_to(base)) if base != PurePosixPath('.') and path.is_relative_to(base) else str(path))
-    return out
+def _names(value):
+    return [n.strip() for n in (value or '').split(',') if n.strip()]
 
 
 def _reshade_host(config, arch):
@@ -320,18 +274,6 @@ def prepare_remove(config, row):
         if consumers and path.name == record['host']:
             continue
         writes[path] = None; checks[str(path)] = digest
-    for name, digest in (record.get('set_aside') or {}).items():
-        # Put OptiScaler's own copy back: from the game's identical file, or the verified copy kept at install.
-        path = t.safe(root / t.relative(name))
-        if path.exists():
-            continue
-        own = t.safe(directory / PurePosixPath(name).name)
-        copy = _kept_copy(config, PurePosixPath(name).name, digest)
-        source = own if own.is_file() and t.digest(own) == digest else copy if copy.is_file() and t.digest(copy) == digest else None
-        if source is None:
-            kept.append(f'{name} could not be put back; Repair OptiScaler to restore it')
-            continue
-        writes[path] = source.read_bytes()
     settings = t.safe(directory / 'ReShade.ini')
     if settings.exists():
         current = settings.read_bytes()
@@ -342,6 +284,14 @@ def prepare_remove(config, row):
             for section, keys in record['ini'].items():
                 for key, before in keys.items():
                     text = _restore_key(text, section, key, before)
+            if record.get('load_early'):
+                ours = {n.casefold() for n in record['load_early']}
+                try:
+                    listed = _names(t.ini(text).get(*LOAD_EARLY, fallback=''))
+                except (configparser.Error, ValueError, KeyError) as error:
+                    raise t.Refusal('ReShade settings in this game could not be read safely; they were kept. ' + str(error)) from error
+                rest = [n for n in listed if n.casefold() not in ours]
+                text = t.setvalue(text, *LOAD_EARLY, ','.join(rest)) if rest else _restore_key(text, *LOAD_EARLY, None)
             writes[settings] = text.encode('utf-8')
         checks[str(settings)] = t.digest(settings)
     if record.get('plugin') and not consumers:
@@ -352,8 +302,7 @@ def prepare_remove(config, row):
     review = hdr._plan(row, root, writes, action='remove', checks=checks)
     review.update(kind='nr-addons', route=record['route'], consumers=consumers,
                   prefix=None if consumers or record['route'] != 'reshade' else hdr._prefix_review(config, row, 'reshade', record['host'], remove=True),
-                  notes=([f'Changed since install, kept: {", ".join(k for k in kept if " could not " not in k)}'] if any(" could not " not in k for k in kept) else [])
-                  + [k for k in kept if ' could not ' in k]
+                  notes=([f'Changed since install, kept: {", ".join(kept)}'] if kept else [])
                   + (['ReShade stays installed for: ' + ', '.join(consumers)] if consumers else []))
     return hdr._freeze(config, review)
 

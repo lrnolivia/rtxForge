@@ -107,6 +107,13 @@ struct Runtime {
     unsigned outputSpace=0;
     bool receivedSnapshot=false,messageInitialized=false,dx12Interop=false,systemReducedMotion=false;
     bool nrActivationPending=false,nrActivationAnnounced=false;
+    // RenoDX's corner HUD (providers/renodx-dlss5 RenoDXNrHudV1Get/Host), shown
+    // as rtxForge notifications. RenoDX skips its own HUD only while glass
+    // hosts it, so an older RenoDX, or notifications turned off, keep RenoDX's.
+    struct RenoDXHud{uint32_t size;int32_t kind;uint64_t sequence;char slug[48];char title[160];char detail[200];char fix[240];uint32_t others;};
+    using RenoDXHudGet=bool(__cdecl*)(RenoDXHud*);using RenoDXHudHost=void(__cdecl*)(bool);
+    RenoDXHudGet renodxHud=nullptr;RenoDXHudHost renodxHost=nullptr;bool renodxHosted=false;double nextRenodxLookup=0;uint64_t renodxShown=0;
+    void HostRenoDXHud(bool hosted){if(renodxHost&&hosted!=renodxHosted){renodxHost(hosted);renodxHosted=hosted;}}
     int helperRevision=-1;bool helperReady=false;std::set<std::string> supportedKeys;
     std::map<std::string,nlohmann::json> pendingSettings;
     bool settingInFlight=false, tuningPending=false, restartRequired=false, displayedRestart=false;
@@ -228,7 +235,7 @@ struct Runtime {
         const auto message=data.value("message",std::string());if(!message.empty()){c.Message(message);const auto operation=data.value("op",std::string());if(operation=="preset-save"&&!data.value("error",false)){c.edits.saved=c.values;c.Notify("Preset saved","floppy-disk");}else if(operation=="preset-delete"&&!data.value("error",false))c.Notify("Preset deleted","floppy-disk");else if(data.value("error",false)&&(operation=="preset-save"||operation=="preset-delete"))c.Notify("Couldn’t update this preset. Try again.","info");}
     }
 
-    ~Runtime(){if(controls)controls->RestorePreviewForTeardown();if(controls&&controls->prefsDirty)controls->SavePreferences();if(document&&controls)for(const auto* event:{"click","change","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,controls.get());if(initialized)Rml::Shutdown();controls.reset();}
+    ~Runtime(){if(renodxHosted&&GetModuleHandleW(L"renodx-dlss5.addon64"))renodxHost(false);if(controls)controls->RestorePreviewForTeardown();if(controls&&controls->prefsDirty)controls->SavePreferences();if(document&&controls)for(const auto* event:{"click","change","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,controls.get());if(initialized)Rml::Shutdown();controls.reset();}
     void Init(const ForgeGlass::Host& host,const ForgeGlass::Frame& frame,const D3D11_TEXTURE2D_DESC& desc) {
         device=frame.device;device->GetImmediateContext(&immediate);width=int(desc.Width);height=int(desc.Height);format=desc.Format;outputSpace=frame.colorSpace;
         ComPtr<ID3D11On12Device> interop;dx12Interop=SUCCEEDED(device.As(&interop));
@@ -247,6 +254,22 @@ struct Runtime {
         D3D11_TEXTURE2D_DESC layer{};layer.Width=width;layer.Height=height;layer.MipLevels=layer.ArraySize=1;layer.Format=DXGI_FORMAT_R8G8B8A8_UNORM;layer.SampleDesc.Count=1;layer.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;Check(device->CreateTexture2D(&layer,nullptr,&windowLayer));Check(device->CreateRenderTargetView(windowLayer.Get(),nullptr,&windowView));Check(device->CreateShaderResourceView(windowLayer.Get(),nullptr,&windowSource));Check(device->CreateTexture2D(&layer,nullptr,&inkLayer));Check(device->CreateRenderTargetView(inkLayer.Get(),nullptr,&inkView));Check(device->CreateShaderResourceView(inkLayer.Get(),nullptr,&inkSource));
         if(frame.welcome){c.Welcome();c.toastUntil=system.GetElapsedTime()+7;}
         if(frame.visible)c.MaybeSetup();
+    }
+    // Each new RenoDX pill or issue notice once, in rtxForge's toast. Its green
+    // "running" toast is skipped: "Neural rendering active" already says it.
+    void RenoDXHudNotice(ForgeGlass::Controller& c,double now){
+        if(!renodxHud&&now>=nextRenodxLookup){nextRenodxLookup=now+2;if(const auto module=GetModuleHandleW(L"renodx-dlss5.addon64")){renodxHud=reinterpret_cast<RenoDXHudGet>(GetProcAddress(module,"RenoDXNrHudV1Get"));renodxHost=reinterpret_cast<RenoDXHudHost>(GetProcAddress(module,"RenoDXNrHudV1Host"));if(!renodxHud||!renodxHost)renodxHud=nullptr,renodxHost=nullptr;}}
+        HostRenoDXHud(renodxHud&&c.showNotifications&&c.primaryMenu!="optiscaler");
+        if(!renodxHosted)return;
+        RenoDXHud hud{};hud.size=sizeof(hud);
+        if(!renodxHud(&hud))return;
+        if(hud.kind!=1&&hud.kind!=2){renodxShown=0;return;}
+        if(hud.sequence==renodxShown||c.toastUntil>0||c.Element("welcome")->IsVisible())return;
+        renodxShown=hud.sequence;
+        std::string text=hud.title;
+        if(hud.detail[0])text+=std::string(" · ")+hud.detail;
+        if(hud.kind==2&&hud.others>0)text+=" · "+std::to_string(hud.others)+(hud.others==1?" more issue":" more issues");
+        c.Notify(text,hud.kind==1?"cpu":"info");
     }
     bool SkipHidden(bool visible){return !visible&&!hostVisible&&!controls->colorPicking&&controls->toastUntil<=0&&!nrActivationPending&&system.GetElapsedTime()<nextIdlePoll;}
     bool Draw(const ForgeGlass::Host& host,ForgeGlass::Frame& frame,ID3D11Texture2D* target) {
@@ -332,6 +355,7 @@ struct Runtime {
         frame.visible=c.Element("main-panel")->IsVisible()||(c.setupStep>=0&&c.Element("type-panel")->IsVisible());hostVisible=frame.visible;
         if(c.toastUntil>0&&now>c.toastUntil){c.Visible("welcome",false);c.toastUntil=0;}
         if(c.primaryMenu!="optiscaler"&&nrActivationPending&&!nrActivationAnnounced&&c.toastUntil==0&&!c.Element("welcome")->IsVisible()){nrActivationAnnounced=true;nrActivationPending=false;c.Notify("Neural rendering active","cpu");}
+        RenoDXHudNotice(c,now);
         if(c.prefsDirty&&now>=nextPreferences){c.SavePreferences();nextPreferences=now+.5;}c.savePreset={};c.deletePreset={};c.requestJson={};
             std::vector<Backdrop::Panel> panels;
             for(const auto* id : {"main-panel","inspector","welcome","type-panel"}) {

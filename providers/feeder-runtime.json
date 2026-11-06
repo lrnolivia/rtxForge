@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "recipe": "Feeder 1.19.0 / RenoDX 8.5.0-rc10 (rtxForge live settings 2)",
+  "recipe": "Feeder 1.19.0 / RenoDX 8.5.0-rc10 (rtxForge live settings 3)",
   "sources": [
     {
       "name": "DLSS5-Feeder",
@@ -16,9 +16,9 @@
     {
       "name": "RenoDX DLSS5 with rtxForge live settings",
       "archive": "renodx.zip",
-      "url": "https://github.com/lrnolivia/rtxForge/releases/download/renodx-dlss5-8.5.0-rc10-rtxforge-2/renodx-dlss5-8.5.0-rc10-rtxforge-2.zip",
-      "size": 1166932,
-      "sha256": "b916ce63a699cba8c10d3f41347e3de231969dc430147d9468f2f4d8a2e5af60",
+      "url": "https://github.com/lrnolivia/rtxForge/releases/download/renodx-dlss5-8.5.0-rc10-rtxforge-3/renodx-dlss5-8.5.0-rc10-rtxforge-3.zip",
+      "size": 1167884,
+      "sha256": "ed8cd7bc128f85b14150b663f51e454e4572943ba292beeec00382c07c47d8ee",
       "members": {
         "renodx-dlss5.addon64": "renodx-dlss5.addon64"
       }

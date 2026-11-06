@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "id": "renodx-dlss5-live-candidate-2",
-  "release_tag": "renodx-dlss5-8.5.0-rc10-rtxforge-2",
+  "id": "renodx-dlss5-live-candidate-3",
+  "release_tag": "renodx-dlss5-8.5.0-rc10-rtxforge-3",
   "addon_version": "v8.5.0-rc10",
   "addon_source": {
     "repository": "https://github.com/Andarael/RenoDX-DLSS5-Generic",

@@ -30,7 +30,10 @@ RANGES = {'intensity': (0.0, 2.0), 'local_tone': (0.0, 2.0), 'structure': (0.0, 
 SWITCHES = ('character_mask', 'independent_skin', 'ui_correction', 'block_hudless')
 COUNTS = {'passes': (1, 4), 'style': (0, 2)}
 # Pairings confirmed on a Forge Lab copy. Everything else is "not verified".
-VERIFIED_PAIRS: set[frozenset] = set()
+VERIFIED_PAIRS: set[frozenset] = {
+    # The Witcher 3 DX12, RTX 4070, driver 621.01, 2026-11-05: both add-ons loaded, NR ran (Lecram readback).
+    frozenset({('lecram', '10.8'), ('shortfuse', '26.1025.0009')}),
+}
 
 _catalog = None
 

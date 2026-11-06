@@ -37,7 +37,9 @@ class NrAddonTests(unittest.TestCase):
         shortfuse = plan['ini']['renodx-dlss']
         self.assertEqual(shortfuse['DirectNeuralRenderingSkinStructureStrength'], 0.68)
         self.assertFalse(plan['feeder'], 'a DLSS game needs no Feeder')
-        self.assertFalse(plan['verified'], 'the pair has not been tested on a Forge Lab copy yet')
+        self.assertTrue(plan['verified'], 'confirmed on the Witcher 3 Forge Lab copy')
+        gitc = nr.plan(DLSS_GAME, {'environment': {'addon': 'gitc'}})
+        self.assertTrue(gitc['verified'], 'a single add-on needs no pairing check')
         self.assertEqual(plan['unconfirmed_sections'], ['renodx-dlss'])
 
     def test_shortfuse_needs_the_games_own_dlss(self):

@@ -22,7 +22,7 @@ assert catalog['combos']['characters-and-world']['builtin'] is True
 row={'name':'Game','game':str(base),'exe':'Game.exe','native_dlss':True}
 combo=catalog['combos']['characters-and-world']
 ok=M['nr_check']({'row':row,'setup':{'environment':combo['environment'],'character':combo['character']}})
-assert ok['ok'] and not ok['feeder'] and not ok['verified'],ok
+assert ok['ok'] and not ok['feeder'] and ok['verified'],ok
 no=M['nr_check']({'row':dict(row,native_dlss=False),'setup':{'environment':combo['environment'],'character':combo['character']}})
 assert not no['ok'] and 'own DLSS' in no['reason'],no
 gitc=M['nr_check']({'row':row,'setup':{'environment':{'addon':'gitc'},'character':{'addon':'lecram'}}})

@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -19,10 +20,12 @@ class FileStampsTests(unittest.TestCase):
         patcher = mock.patch.dict(os.environ, {'RTXFORGE_STAMP_CACHE': str(self.cache)})
         patcher.start(); self.addCleanup(patcher.stop)
         file_stamps.forget(); self.addCleanup(file_stamps.forget)
-        self.reads = []
+        self.reads, self.scan_reads = [], []
         real = file_stamps._hash
         def counted(path):
             self.reads.append(Path(path).name)
+            if threading.current_thread() is threading.main_thread():
+                self.scan_reads.append(Path(path).name)
             return real(path)
         patcher = mock.patch.object(file_stamps, '_hash', counted)
         patcher.start(); self.addCleanup(patcher.stop)
@@ -124,9 +127,10 @@ class FileStampsTests(unittest.TestCase):
         first = package_drift.decorate(engine, [dict(row)])[0]
         # The large file is not read during the scan; it is warmed for the next one.
         self.assertEqual(first['package_drift']['files'], [{'name': 'OptiScaler/missing.dll', 'fix': 'missing'}])
-        self.assertNotIn('nvngx_dlssnr.dll', self.reads)
-        for thread in [t for t in __import__('threading').enumerate() if t.name == 'file-stamps-warm']:
+        # The warm-up thread may already be reading it; only the scan's own thread must not.
+        for thread in [t for t in threading.enumerate() if t.name == 'file-stamps-warm']:
             thread.join(10)
+        self.assertNotIn('nvngx_dlssnr.dll', self.scan_reads)
         large.write_bytes(self.data[:-1] + b'!')
         file_stamps.warm([large]).join(10)
         loader.write_bytes(b'MZ replaced')

@@ -99,6 +99,8 @@ static void TestVisibleCost(ForgeGlass::Draw draw,ForgeGlass::Release release){
     const auto start=std::chrono::steady_clock::now();for(unsigned i=0;i<300;++i){frame.visible=true;Need(draw(&host,&frame),"Visible frame failed");}
     const auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();release();
     std::cout<<"visible_overlay_cost frames=300 cpu_mean_ms="<<ms/300<<"\n";
+    // Also as a check annotation, so a build's number can be read without its log.
+    std::cout<<"::notice title=visible_overlay_cost::frames=300 cpu_mean_ms="<<ms/300<<"\n";
 }
 static void Test12(HMODULE dll,ForgeGlass::Release release,bool hdr=false){
     const auto draw=reinterpret_cast<ForgeGlass::Draw12>(GetProcAddress(dll,"ForgeGlassDraw12"));Need(draw,"DX12 export missing");

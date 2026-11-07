@@ -486,9 +486,12 @@ def review_prepare(params):
     Every step and offer is an ordinary prepared review with its own token."""
     import review_plan
     settings = params.get('settings') or {}
+    # The engine operation a planned one runs as (Windows Desktop: Repair and Apply re-apply presets as a reset).
+    engine_operations = params.get('engine_operations') or {}
 
     def prepare_step(rows, mode, operation, values):
-        return prepare({'rows': rows, 'mode': mode, 'operation': operation, 'settings': values, 'save_defaults': False})
+        return prepare({'rows': rows, 'mode': mode, 'operation': engine_operations.get(operation, operation),
+                        'settings': values, 'save_defaults': False})
 
     def prefetch(batches):
         ui.progress('Downloading packages/files', checked=0, total=0)

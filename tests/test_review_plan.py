@@ -51,6 +51,15 @@ class BatchTest(unittest.TestCase):
         self.assertEqual([(name, [row['name'] for row in group]) for name, group in groups],
                          [('skynizz', ['a']), ('feeder', ['B', 'C']), ('skynizz', ['d'])])
 
+    def test_a_large_selection_on_one_route_is_checked_once_and_keeps_every_game(self):
+        rows = [game(f'Game {index:02}') for index in range(48)]
+        self.assertEqual([(name, len(group)) for name, group in plan.batches(rows, 'install', 'nr-mfg', SETTINGS)], [('skynizz', 48)])
+        mixed = [dict(row, runtime_provider='feeder') if 10 <= index < 20 else row for index, row in enumerate(rows)]
+        groups = plan.batches(mixed, 'install', 'nr-mfg', SETTINGS)
+        self.assertEqual([name for name, _ in groups], ['skynizz', 'feeder', 'skynizz'])
+        self.assertEqual([row['name'] for _, group in groups for row in group], [row['name'] for row in rows])
+        self.assertEqual(plan.batches([], 'install', 'nr-mfg', SETTINGS), [])
+
     def test_downloads_cover_each_route_once_and_never_adoption(self):
         rows = [game('A'), game('B', runtime_provider='feeder'), game('C'), game('D', adoption_available=True)]
         groups = plan.batches(rows, 'install', 'nr-mfg', SETTINGS)

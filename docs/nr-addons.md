@@ -84,6 +84,23 @@ when it uses ShortFuse.
 Saved combos live in `nr-combos.json` in the rtxForge state folder, and both
 apps share them.
 
+## In the rtxForge overlay
+
+Where the rtxForge overlay runs, its **NR add-ons** section lists the settings of
+each add-on rtxForge installed, under its role: **Environment · Lecram** and
+**Character detail · ShortFuse**. Lecram never appears where OptiScaler is
+installed.
+
+The add-ons read these settings when the game starts, and ShortFuse writes them
+back while it runs. So, like HDR preferences, a change is saved after the game
+closes and applies at the next launch. A value changed in the add-on's own
+ReShade panel in the meantime wins: rtxForge keeps your change and says so
+instead of overwriting it. Live adjustments stay in each add-on's own panel.
+
+Only settings whose key and value encoding are verified appear. ShortFuse's
+resolution scale is a whole percent. A setting the game's ReShade.ini doesn't
+set yet shows as **Add-on default**.
+
 ## Remove
 
 **Remove** deletes only files rtxForge recorded that are still unchanged. A

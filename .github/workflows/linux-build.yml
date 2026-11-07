@@ -162,6 +162,7 @@ jobs:
           /usr/bin/python3 -m unittest discover -s tests -p test_file_stamps.py
           /usr/bin/python3 -m unittest discover -s tests -p test_nr_addons.py
           /usr/bin/python3 -m unittest discover -s tests -p test_nr_install.py
+          /usr/bin/python3 -m unittest discover -s tests -p test_nr_addon_settings.py
           /usr/bin/python3 -m unittest discover -s tests -p test_linux_skynizz_adoption.py
           /usr/bin/python3 -m unittest discover -s tests -p test_cross_distro.py
           /usr/bin/python3 -m unittest discover -s tests -p test_gpu_families.py

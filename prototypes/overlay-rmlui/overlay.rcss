@@ -1038,4 +1038,4 @@ select selectbox { opacity: 0; }
 .effect-entry { display: flex; align-items: center; gap: 10dp; margin-top: 8dp; }
 .effect-entry .effect-number { flex: 1 1 auto; min-width: 0; }
 .effect-entry .quiet { flex: 0 0 auto; }
-#effects-section .hint { margin-top: 6dp; }
+#effects-section .hint, #addons-section .hint { margin-top: 6dp; }

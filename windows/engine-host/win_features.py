@@ -66,6 +66,7 @@ import renodx_hdr  # noqa: E402
 import renodx_hdr_settings  # noqa: E402
 import nr_addons  # noqa: E402
 import nr_install  # noqa: E402
+import nr_addon_settings  # noqa: E402
 import game_notes  # noqa: E402
 import library_media  # noqa: E402
 import package_catalog  # noqa: E402
@@ -861,6 +862,16 @@ def hdr_settings_flush(params):
     return renodx_hdr_settings.flush(_config())
 
 
+def nr_addon_settings_snapshot(params):
+    if params.get('changes') is not None:
+        return nr_addon_settings.save(_config(), params['row'], params['changes'])
+    return nr_addon_settings.snapshot(_config(), params['row'])
+
+
+def nr_addon_settings_flush(params):
+    return nr_addon_settings.flush(_config())
+
+
 def hdr_review(params):
     remove = params.get('remove', False)
     t.need(type(remove) is bool, 'Choose an HDR action.')
@@ -1138,6 +1149,7 @@ METHODS = {
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "overview_inspect": overview_inspect, "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
     'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush,
+    'nr_addon_settings': nr_addon_settings_snapshot, 'nr_addon_settings_flush': nr_addon_settings_flush,
     'nr_catalog': nr_catalog, 'nr_check': nr_check, 'nr_status': nr_status, 'nr_review': nr_review,
     'nr_combo_save': nr_combo_save, 'nr_combo_delete': nr_combo_delete,
     "packages": packages, "package_inspect": package_inspect, "package_use": package_use,

@@ -287,11 +287,21 @@ class Host:
                 response['status']=self.controls.status(params)
                 import renodx_hdr_settings
                 response['hdr']=renodx_hdr_settings.snapshot({'storage':{'root':str(self.state)}},row)
+                # Carried inside hdr: installed Skynizz bridges forward that object whole.
+                import nr_addon_settings
+                response['hdr']['nr_addons']=nr_addon_settings.snapshot({'storage':{'root':str(self.state)}},row)
                 if response['status'].get('can_save'):response.update(self.controls.preset_list(params))
             elif op=='hdr-save':
                 import renodx_hdr_settings
                 response['hdr']=renodx_hdr_settings.save({'storage':{'root':str(self.state)}},row,message.get('changes'))
                 response['message']='HDR preferences saved. Close and restart the game to apply.'
+                import nr_addon_settings
+                response['hdr']['nr_addons']=nr_addon_settings.snapshot({'storage':{'root':str(self.state)}},row)
+            elif op=='nr-addons-save':
+                import renodx_hdr_settings,nr_addon_settings
+                saved=nr_addon_settings.save({'storage':{'root':str(self.state)}},row,message.get('changes'))
+                response['hdr']=renodx_hdr_settings.snapshot({'storage':{'root':str(self.state)}},row)|{'nr_addons':saved}
+                response['message']='NR add-on settings saved. Close and restart the game to apply.'
             elif op=='use-native-overlays':
                 updated=overlay_settings.native_overlays(settings,row['game'],message.get('global_default',False))
                 changed={key:updated[key] for key in ('game_overlay_settings','overlay_renderer','optiscaler_ui','reshade_ui','optiscaler_hotkey') if key in updated and updated.get(key)!=settings.get(key)}
@@ -347,6 +357,9 @@ class Host:
             self.next_hdr_flush=time.monotonic()+3
             import renodx_hdr_settings
             try:renodx_hdr_settings.flush({'storage':{'root':str(self.state)}})
+            except (OSError,ValueError,t.Refusal):pass
+            import nr_addon_settings
+            try:nr_addon_settings.flush({'storage':{'root':str(self.state)}})
             except (OSError,ValueError,t.Refusal):pass
         active=set()
         for row in self.controls.targets():

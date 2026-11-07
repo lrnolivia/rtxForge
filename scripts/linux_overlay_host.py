@@ -37,25 +37,58 @@ def host_lock(path=None):
     return fd
 
 
-def mapped_process(prefix, exe, channel, proc=Path('/proc')):
+def _wine_process(entry):
+    """(resolved WINEPREFIX, mapped file paths) of one /proc entry, or None."""
+    try:
+        env=(entry/'environ').read_bytes().split(b'\0')
+        wine=next((item[11:] for item in env if item.startswith(b'WINEPREFIX=')),None)
+        if not wine: return None
+        # Proton exports the prefix with a trailing slash ('.../pfx/').
+        prefix=str(Path(os.fsdecode(wine)).resolve())
+        paths={line.split(None,5)[5].replace('\\040',' ') for line in (entry/'maps').read_text().splitlines() if len(line.split(None,5))==6}
+        return prefix,paths
+    except OSError:
+        return None
+
+
+def wine_processes(proc=Path('/proc')):
+    """[(pid, prefix, mapped paths)] for every Wine process, read once, or
+    None inside Flatpak, where only flatpak_host can see the games.
+
+    A poll checks every game's channels against this one reading instead of
+    walking /proc again for each channel file."""
+    if proc == Path('/proc'):
+        import flatpak_host
+        if flatpak_host.sandboxed():
+            return None
+    found=[]
+    for entry in proc.iterdir():
+        if entry.name.isdigit() and (process:=_wine_process(entry)):
+            found.append((int(entry.name),*process))
+    return found
+
+
+def mapped_process(prefix, exe, channel, proc=Path('/proc'), processes=None):
     """Bind both the Windows executable and channel to one actual Linux process."""
     prefix, exe, channel = (str(Path(p).resolve()) for p in (prefix, exe, channel))
     if proc == Path('/proc'):
         import flatpak_host
         if flatpak_host.sandboxed():
             return flatpak_host.probe('mapped-process', prefix, exe, channel)
-    for entry in proc.iterdir():
-        if not entry.name.isdigit(): continue
-        try:
-            env=(entry/'environ').read_bytes().split(b'\0')
-            wine=next((item[11:] for item in env if item.startswith(b'WINEPREFIX=')),None)
-            # Proton exports the prefix with a trailing slash ('.../pfx/').
-            if not wine or str(Path(os.fsdecode(wine)).resolve())!=prefix: continue
-            paths={line.split(None,5)[5].replace('\\040',' ') for line in (entry/'maps').read_text().splitlines() if len(line.split(None,5))==6}
-            if exe in paths and channel in paths:
-                return int(entry.name)
-        except OSError: continue
+    for pid,wine,paths in (wine_processes(proc) if processes is None else processes):
+        if wine==prefix and exe in paths and channel in paths:
+            return pid
     return None
+
+
+def still_mapped(pid, prefix, exe, channel, proc=Path('/proc')):
+    """True while that same process still maps the executable and channel."""
+    if proc == Path('/proc'):
+        import flatpak_host
+        if flatpak_host.sandboxed():
+            return flatpak_host.probe('mapped-process', *(str(Path(p).resolve()) for p in (prefix, exe, channel))) == pid
+    process=_wine_process(proc/str(pid))
+    return bool(process) and process[0]==str(Path(prefix).resolve()) and {str(Path(exe).resolve()),str(Path(channel).resolve())}<=process[1]
 
 
 def exe_processes(proc=Path('/proc')):
@@ -104,7 +137,7 @@ class FileMailbox(controls.Mailbox):
         except BaseException:self.close();raise
 
     def WaitForSingleObject(self,process,timeout):
-        return 258 if mapped_process(self.prefix,self.exe,self.path)==self.linux_pid else 0
+        return 258 if still_mapped(self.linux_pid,self.prefix,self.exe,self.path) else 0
 
     def GetTickCount(self):return int(time.monotonic()*1000)&0xffffffff
 
@@ -362,12 +395,14 @@ class Host:
             try:nr_addon_settings.flush({'storage':{'root':str(self.state)}})
             except (OSError,ValueError,t.Refusal):pass
         active=set()
+        processes,read=None,False  # read on the first channel file, then shared by every game
         for row in self.controls.targets():
             try:
                 prefix=proton_prefix.find_prefix(row['game'],row.get('appid'))
                 exe=Path(row['game'])/row['exe']
                 for path in proton_overlay.channel_path(prefix,0).parent.glob('panel.*.map'):
-                    linux_pid=mapped_process(prefix,exe,path)
+                    if not read:processes,read=wine_processes(),True
+                    linux_pid=mapped_process(prefix,exe,path,processes=processes)
                     if linux_pid is None:continue
                     active.add(path)
                     cached=self.channels.get(path)

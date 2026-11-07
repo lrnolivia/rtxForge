@@ -22,14 +22,28 @@ using Microsoft::WRL::ComPtr;
 namespace {
 using EffectRead=size_t(__cdecl*)(char*,size_t);
 using EffectWrite=bool(__cdecl*)(const char*);
+// 1: the module exports the effects API and use() succeeded; 0: it exports
+// the API and use() failed; -1: it is gone or exports nothing.
+int UseEffectsModule(HMODULE module,const std::function<bool(EffectRead,EffectWrite)>& use) {
+    HMODULE held{};if(!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,reinterpret_cast<LPCWSTR>(module),&held))return -1;
+    const auto read=reinterpret_cast<EffectRead>(GetProcAddress(held,"ForgeReShadeReadV1"));
+    const auto write=reinterpret_cast<EffectWrite>(GetProcAddress(held,"ForgeReShadeWriteV1"));
+    const int result=read&&write?int(use(read,write)):-1;FreeLibrary(held);return result;
+}
+// The effects add-on is found once, not by walking every loaded module four
+// times a second. The module isn't kept loaded: each use takes and drops its
+// own reference, and a module that went away is searched for again (at most
+// every two seconds while none is loaded).
 bool WithEffects(const std::function<bool(EffectRead,EffectWrite)>& use) {
+    static HMODULE found{};static ULONGLONG nextSearch{};
+    if(found){const int result=UseEffectsModule(found,use);if(result>=0)return result==1;found={};}
+    if(GetTickCount64()<nextSearch)return false;
+    nextSearch=GetTickCount64()+2000;
     HMODULE modules[1024]{};DWORD needed{};
     if(!K32EnumProcessModules(GetCurrentProcess(),modules,sizeof(modules),&needed))return false;
     for(size_t i=0;i<std::min<size_t>(needed/sizeof(HMODULE),std::size(modules));++i){
-        HMODULE held{};if(!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,reinterpret_cast<LPCWSTR>(modules[i]),&held))continue;
-        const auto read=reinterpret_cast<EffectRead>(GetProcAddress(held,"ForgeReShadeReadV1"));
-        const auto write=reinterpret_cast<EffectWrite>(GetProcAddress(held,"ForgeReShadeWriteV1"));
-        const bool result=read&&write&&use(read,write);FreeLibrary(held);if(result)return true;
+        const int result=UseEffectsModule(modules[i],use);
+        if(result>=0){found=modules[i];return result==1;}
     }
     return false;
 }
@@ -166,30 +180,35 @@ struct Runtime {
         const auto bar=a.value("BarPosition",c.barPosition);if((bar=="top"||bar=="bottom")&&bar!=c.barPosition)c.BarEdge(bar);
     }
     float rememberedMfgMultiplier{-1},rememberedMfgDynamic{0};
+    // The helper's HDR and NR add-on settings share one schema: a list of
+    // slider/choice controls plus their values. False when any part is invalid,
+    // in which case the panel keeps what it shows. Throws json exceptions.
+    static bool Fields(const nlohmann::json& data,bool resettable,std::vector<ForgeGlass::HdrField>& fields) {
+        if(!data.contains("controls")||!data["controls"].is_array()||data["controls"].size()>64||!data.contains("values")||!data["values"].is_object())return false;
+        std::set<std::string> seen,automatic;
+        if(data.contains("unreported")&&data["unreported"].is_array())for(const auto& key:data["unreported"])if(key.is_string())automatic.insert(key.get<std::string>());
+        for(const auto& f:data["controls"]){
+            ForgeGlass::HdrField field;field.key=f.at("key").get<std::string>();
+            if(field.key.empty()||field.key.size()>64||field.key.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")!=std::string::npos||!seen.insert(field.key).second)return false;
+            field.label=f.at("label").get<std::string>();field.section=f.at("section").get<std::string>();field.kind=f.at("kind").get<std::string>();field.unit=f.value("unit",std::string());
+            if(field.label.size()>120||field.section.size()>120||field.unit.size()>16||(field.kind!="slider"&&field.kind!="choice"))return false;
+            field.minimum=f.at("min").get<float>();field.maximum=f.at("max").get<float>();field.step=f.at("step").get<float>();field.initial=f.at("default").get<float>();field.value=data["values"].at(field.key).get<float>();field.reset=resettable&&f.value("reset",true);field.automatic=automatic.contains(field.key);
+            if(!std::isfinite(field.minimum)||!std::isfinite(field.maximum)||!std::isfinite(field.step)||!std::isfinite(field.initial)||!std::isfinite(field.value)||field.minimum>field.maximum||field.step<=0||field.value<field.minimum||field.value>field.maximum)return false;
+            if(field.kind=="choice") {const auto& choices=f.at("choices");if(!choices.is_array()||choices.empty()||choices.size()>32||field.minimum!=0||field.maximum!=choices.size()-1||field.value!=std::floor(field.value))return false;size_t index=0;for(const auto& choice:choices){const auto label=choice.get<std::string>();if(label.size()>120)return false;field.options+="<option value=\""+std::to_string(index++)+"\">"+Rml::StringUtilities::EncodeRml(label)+"</option>";}}
+            fields.push_back(std::move(field));
+        }
+        return true;
+    }
     void Hdr(const nlohmann::json& data) {
         if(!data.is_object())return;
         // NR add-on settings ride inside hdr, which installed Skynizz bridges forward whole.
         if(data.contains("nr_addons"))Addons(data["nr_addons"]);
-        auto& ui=controls->hdr;
         try {
             std::vector<ForgeGlass::HdrField> fields;
             const bool supported=data.value("available",false),installed=data.value("installed",false);
             const auto message=data.value("message",std::string());if(message.size()>1000)return;
-            if(supported){
-                if(!data.contains("controls")||!data["controls"].is_array()||data["controls"].size()>64||!data.contains("values")||!data["values"].is_object())return;
-                std::set<std::string> seen;
-                for(const auto& f:data["controls"]){
-                    ForgeGlass::HdrField field;field.key=f.at("key").get<std::string>();
-                    if(field.key.empty()||field.key.size()>64||field.key.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")!=std::string::npos||!seen.insert(field.key).second)return;
-                    field.label=f.at("label").get<std::string>();field.section=f.at("section").get<std::string>();field.kind=f.at("kind").get<std::string>();field.unit=f.value("unit",std::string());
-                    if(field.label.size()>120||field.section.size()>120||field.unit.size()>16||(field.kind!="slider"&&field.kind!="choice"))return;
-                    field.minimum=f.at("min").get<float>();field.maximum=f.at("max").get<float>();field.step=f.at("step").get<float>();field.initial=f.at("default").get<float>();field.value=data["values"].at(field.key).get<float>();field.reset=f.value("reset",true);if(data.contains("unreported")&&data["unreported"].is_array()){for(const auto& key:data["unreported"])if(key.is_string()&&key.get<std::string>()==field.key)field.automatic=true;}
-                    if(!std::isfinite(field.minimum)||!std::isfinite(field.maximum)||!std::isfinite(field.step)||!std::isfinite(field.initial)||!std::isfinite(field.value)||field.minimum>field.maximum||field.step<=0||field.value<field.minimum||field.value>field.maximum)return;
-                    if(field.kind=="choice") {const auto& choices=f.at("choices");if(!choices.is_array()||choices.empty()||choices.size()>32||field.minimum!=0||field.maximum!=choices.size()-1||field.value!=std::floor(field.value))return;size_t index=0;for(const auto& choice:choices){const auto label=choice.get<std::string>();if(label.size()>120)return;field.options+="<option value=\""+std::to_string(index++)+"\">"+Rml::StringUtilities::EncodeRml(label)+"</option>";}}
-                    fields.push_back(std::move(field));
-                }
-            }
-            ui.Set(std::move(fields),supported,installed,message);
+            if(supported&&!Fields(data,true,fields))return;
+            controls->hdr.Set(std::move(fields),supported,installed,message);
         }catch(const nlohmann::json::exception&){}
     }
     void Addons(const nlohmann::json& data) {
@@ -198,28 +217,24 @@ struct Runtime {
             std::vector<ForgeGlass::HdrField> fields;
             const bool supported=data.value("available",false);
             const auto message=data.value("message",std::string());if(message.size()>1000)return;
-            if(supported){
-                if(!data.contains("controls")||!data["controls"].is_array()||data["controls"].size()>64||!data.contains("values")||!data["values"].is_object())return;
-                std::set<std::string> seen,automatic;
-                if(data.contains("unreported")&&data["unreported"].is_array())for(const auto& key:data["unreported"])if(key.is_string())automatic.insert(key.get<std::string>());
-                for(const auto& f:data["controls"]){
-                    ForgeGlass::HdrField field;field.key=f.at("key").get<std::string>();
-                    if(field.key.empty()||field.key.size()>64||field.key.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")!=std::string::npos||!seen.insert(field.key).second)return;
-                    field.label=f.at("label").get<std::string>();field.section=f.at("section").get<std::string>();field.kind=f.at("kind").get<std::string>();field.unit=f.value("unit",std::string());
-                    if(field.label.size()>120||field.section.size()>120||field.unit.size()>16||(field.kind!="slider"&&field.kind!="choice"))return;
-                    field.minimum=f.at("min").get<float>();field.maximum=f.at("max").get<float>();field.step=f.at("step").get<float>();field.initial=f.at("default").get<float>();field.value=data["values"].at(field.key).get<float>();field.reset=false;field.automatic=automatic.contains(field.key);
-                    if(!std::isfinite(field.minimum)||!std::isfinite(field.maximum)||!std::isfinite(field.step)||!std::isfinite(field.initial)||!std::isfinite(field.value)||field.minimum>field.maximum||field.step<=0||field.value<field.minimum||field.value>field.maximum)return;
-                    if(field.kind=="choice") {const auto& choices=f.at("choices");if(!choices.is_array()||choices.empty()||choices.size()>32||field.minimum!=0||field.maximum!=choices.size()-1||field.value!=std::floor(field.value))return;size_t index=0;for(const auto& choice:choices){const auto label=choice.get<std::string>();if(label.size()>120)return;field.options+="<option value=\""+std::to_string(index++)+"\">"+Rml::StringUtilities::EncodeRml(label)+"</option>";}}
-                    fields.push_back(std::move(field));
-                }
-            }
+            if(supported&&!Fields(data,false,fields))return;
             controls->addons.Set(std::move(fields),supported,message);
         }catch(const nlohmann::json::exception&){}
     }
-    static bool ReShadeLoaded() {
-        for(const auto* name:{L"dxgi.dll",L"d3d9.dll",L"d3d10.dll",L"d3d11.dll",L"ReShade64.dll",L"ReShade32.dll"}){HMODULE module{};if(GetModuleHandleExW(0,name,&module)){const bool found=GetProcAddress(module,"ReShadeRegisterAddon")!=nullptr;FreeLibrary(module);if(found)return true;}}
+    // Asked every frame on OptiScaler routes. ReShade stays loaded once it is,
+    // so a yes is kept and a no is asked again every two seconds.
+    bool reshadeLoaded=false;ULONGLONG nextReShadeCheck{};
+    bool ReShadeLoaded() {
+        if(reshadeLoaded||GetTickCount64()<nextReShadeCheck)return reshadeLoaded;
+        nextReShadeCheck=GetTickCount64()+2000;
+        for(const auto* name:{L"dxgi.dll",L"d3d9.dll",L"d3d10.dll",L"d3d11.dll",L"ReShade64.dll",L"ReShade32.dll"}){HMODULE module{};if(GetModuleHandleExW(0,name,&module)){const bool found=GetProcAddress(module,"ReShadeRegisterAddon")!=nullptr;FreeLibrary(module);if(found)return reshadeLoaded=true;}}
         return false;
     }
+    // Labels that rarely change are rewritten only when they do: SetInnerRML
+    // parses markup and dirties layout, and Draw runs every frame.
+    static void Text(Rml::Element* e,const std::string& rml){if(e&&e->GetInnerRML()!=rml)e->SetInnerRML(rml);}
+    static void Hide(Rml::Element* e){if(e&&e->GetComputedValues().display()!=Rml::Style::Display::None)e->SetProperty("display","none");}
+    std::set<std::string> availabilityKeys;bool availabilityShown=false;
     void Helper(const char* text) {
         if(!text||std::strlen(text)>65536||lastHelper==text)return;lastHelper=text;const auto data=nlohmann::json::parse(text,nullptr,false);if(!data.is_object())return;
         auto& c=*controls;if(data.value("op",std::string())=="use-native-overlays")c.NativeOverlaysResult(data.value("error",false));helperReady=data.value("ready",false);c.Disabled("save",!helperReady||!data.value("named_supported",false)||data.value("pending",false));
@@ -316,16 +331,21 @@ struct Runtime {
             c.values["mfg_enabled"]=current.contains("multiplier")&&current["multiplier"]!=0;
             if(receivedSnapshot&&current.contains("enabled")&&beforeValues.at("enabled")!=current.at("enabled"))c.Notify(current.at("enabled")?"Neural rendering on":"Neural rendering off","cpu");receivedSnapshot=true;
             if(c.values!=beforeValues)c.Sync();c.Capabilities(snapshot.nrAvailable,snapshot.fgAvailable);
-            if(snapshot.title)document->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(snapshot.title));
+            if(snapshot.title)Text(document->QuerySelector("h1"),Rml::StringUtilities::EncodeRml(snapshot.title));
             if(snapshot.accent){const std::string color=snapshot.accent;if(color.size()==7&&color[0]=='#'&&color.find_first_not_of("0123456789abcdefABCDEF",1)==std::string::npos){const auto rgb=std::stoul(color.substr(1),nullptr,16);c.accent={float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255};}}
-            const int runtimeKind=current.contains("__runtime_kind")?int(current.at("__runtime_kind")):0;const std::string stack=runtimeKind==1?(ReShadeLoaded()?"OptiScaler + ReShade":"OptiScaler"):runtimeKind==2?"ReShade · Feeder NR":runtimeKind==3?"ReShade":"Not reported";for(const auto* id:{"overview-stack","popup-stack"})c.Element(id)->SetInnerRML(stack);
-            for(const auto* id:{"compact-api","overview-api","popup-api"})c.Element(id)->SetInnerRML(dx12Interop?"DirectX 12":"DirectX 11");for(const auto* id:{"compact-output","overview-output","popup-output"})c.Element(id)->SetInnerRML(outputSpace==1?"HDR · scRGB":outputSpace==2?"HDR10":"SDR");c.Element("open-session")->QuerySelector(".session-name")->SetInnerRML("Live session");
+            const int runtimeKind=current.contains("__runtime_kind")?int(current.at("__runtime_kind")):0;const std::string stack=runtimeKind==1?(ReShadeLoaded()?"OptiScaler + ReShade":"OptiScaler"):runtimeKind==2?"ReShade · Feeder NR":runtimeKind==3?"ReShade":"Not reported";for(const auto* id:{"overview-stack","popup-stack"})Text(c.Element(id),stack);
+            for(const auto* id:{"compact-api","overview-api","popup-api"})Text(c.Element(id),dx12Interop?"DirectX 12":"DirectX 11");for(const auto* id:{"compact-output","overview-output","popup-output"})Text(c.Element(id),outputSpace==1?"HDR · scRGB":outputSpace==2?"HDR10":"SDR");Text(c.Element("open-session")->QuerySelector(".session-name"),"Live session");
             // Advanced reparents this row into overview-metadata. Resolve it
             // by its stable identity instead of its compact-layout ancestor.
-            c.Element("feature-status")->QuerySelector(".status-note")->SetInnerRML("Live");
+            Text(c.Element("feature-status")->QuerySelector(".status-note"),"Live");
             for(int ratio=2;ratio<=6;ratio++)c.Disabled(("ratio-"+std::to_string(ratio)).c_str(),current.contains("__multiplier_max")&&ratio>current.at("__multiplier_max"));c.Disabled("mode-dynamic",current.contains("__dynamic_supported")&&current.at("__dynamic_supported")==0);
+            // Which runtime keys exist changes only when the route does, not per
+            // frame; the availability notes walk every option group, so they are
+            // refreshed only then.
+            if(!availabilityShown||supportedKeys!=availabilityKeys){availabilityShown=true;availabilityKeys=supportedKeys;
             for(const auto& [id,control]:c.extraFields){const bool missing=!current.contains(control->key);c.Disabled(id.c_str(),missing);c.Disabled(("reset-"+id).c_str(),missing);c.Element(id.c_str())->SetAttribute("title",missing?"Not available in this runtime":control->advanced);}
             Rml::ElementList optionGroups;document->QuerySelectorAll(optionGroups,".group-body");for(auto* group:optionGroups){if(auto* note=group->QuerySelector(".group-availability")){bool available=false,missing=false;for(const auto& [id,control]:c.extraFields)if(group->QuerySelector("#"+id)){available|=current.contains(control->key);missing|=!current.contains(control->key);}note->SetInnerRML(missing?(available?"Some options are not available in this runtime.":"These options are not available in this runtime."):"");note->SetProperty("display",missing?"block":"none");}}
+            }
             for(const auto& [id,key]:std::map<std::string,std::string>{{"strength","intensity"},{"render-resolution","work_scale"},{"processing-stage","pre_sr"},{"model-preset","preset"},{"detail","detail"},{"colour","colour"},{"tone","tone"}})c.Disabled(id.c_str(),!current.contains(key));
             c.passesMax=current.contains("__passes_max")?std::clamp(int(current.at("__passes_max")),1,8):3;
             c.Disabled("pass-minus",!current.contains("passes")||c.values["passes"]<=1);c.Disabled("pass-plus",!current.contains("passes")||c.values["passes"]>=c.passesMax);
@@ -337,8 +357,8 @@ struct Runtime {
             liveState=nextLive;
             if(!messageInitialized){c.Message("");messageInitialized=true;}
             Helper(snapshot.helperJson);
-            for(const auto* id:{"overview-metadata","popup-metadata"}){auto* metadata=c.Element(id);metadata->QuerySelector(".preview-badge")->SetProperty("display","none");metadata->QuerySelector(".session-heading")->GetChild(1)->SetInnerRML("Live session");}
-            c.Element("status-sr")->SetProperty("display","none");c.Element("status-rr")->SetProperty("display","none");
+            for(const auto* id:{"overview-metadata","popup-metadata"}){auto* metadata=c.Element(id);Hide(metadata->QuerySelector(".preview-badge"));Text(metadata->QuerySelector(".session-heading")->GetChild(1),"Live session");}
+            Hide(c.Element("status-sr"));Hide(c.Element("status-rr"));
             c.Element("status-nr")->SetClass("active",snapshot.nrKnown&&snapshot.nrRunning);c.Element("status-nr")->SetClass("unavailable",!snapshot.nrAvailable);c.Element("status-fg")->SetClass("active",snapshot.fgKnown&&snapshot.fgRunning);c.Element("status-fg")->SetClass("waiting",snapshot.fgAvailable&&!snapshot.fgKnown);
             if(!nrActivationAnnounced)nrActivationPending=snapshot.nrKnown&&snapshot.nrRunning;
             history.Add(now,snapshot.nrRunning?snapshot.nrGpuMs:-1,snapshot.gameFps,snapshot.framesKnown?snapshot.displayedFps:-1);

@@ -46,10 +46,28 @@ def _progress(text):
 def hold(label, waiting=None):
     """Hold the gate for `label`. waiting(text) is told when this has to wait;
     by default the wait is reported as operation progress."""
-    global _holder, _depth
     if not _gate.acquire(blocking=False):
         (waiting or _progress)('Waiting for ' + (_holder or 'another change') + ' to finish…')
         _gate.acquire()
+    with _held(label):
+        yield
+
+
+@contextlib.contextmanager
+def attempt(label):
+    """hold() for work that can come back later: yields False, holding
+    nothing, while another writer runs, instead of waiting behind it."""
+    if not _gate.acquire(blocking=False):
+        yield False
+        return
+    with _held(label):
+        yield True
+
+
+@contextlib.contextmanager
+def _held(label):
+    """The gate is acquired; record the holder and release on exit."""
+    global _holder, _depth
     _depth += 1
     outer = _depth == 1
     if outer:

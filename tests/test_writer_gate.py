@@ -35,6 +35,27 @@ class WriterGate(unittest.TestCase):
             self.assertEqual(writer_gate.holder(), 'your change')
         self.assertEqual(writer_gate.holder(), '')
 
+    def test_an_attempt_comes_back_later_instead_of_waiting(self):
+        entered, release = threading.Event(), threading.Event()
+        def update():
+            with writer_gate.hold('the overlay update'):
+                entered.set()
+                release.wait(2)
+        worker = threading.Thread(target=update)
+        worker.start()
+        try:
+            self.assertTrue(entered.wait(2))
+            with writer_gate.attempt('saved game settings') as held:
+                self.assertFalse(held)
+            self.assertEqual(writer_gate.holder(), 'the overlay update')
+        finally:
+            release.set()
+            worker.join(2)
+        with writer_gate.attempt('saved game settings') as held:
+            self.assertTrue(held)
+            self.assertEqual(writer_gate.holder(), 'saved game settings')
+        self.assertEqual(writer_gate.holder(), '')
+
     def test_listeners_see_start_and_finish(self):
         seen = []
         writer_gate.on_change(seen.append)

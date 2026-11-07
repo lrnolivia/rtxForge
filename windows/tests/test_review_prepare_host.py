@@ -1,0 +1,58 @@
+"""The Windows host's review_prepare: the shared review planner behind Windows Desktop."""
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+WORKER = r'''
+import json,sys
+from pathlib import Path
+repo=Path(sys.argv[1]);sys.path[:0]=[str(repo/'scripts'),str(repo/'windows/engine-host')]
+out=sys.stdout
+import rtxforge_win_host as host
+sys.stdout=out
+calls,discarded,downloads=[],[],[]
+def prepare(params):
+    calls.append((params['operation'],params['mode'],params['settings']['runtime_provider'],[row['name'] for row in params['rows']]))
+    return {'token':str(len(calls)),'rows':[{'name':row['name'],'game':row['game']} for row in params['rows']],'blocked':[],'warnings':[]}
+host.prepare=prepare
+host.discard_operation=lambda params:discarded.extend(params['tokens'])
+host.prefetch_install=lambda params:downloads.append([batch['settings']['runtime_provider'] for batch in params['batches']])
+rows=[{'name':'B','game':'/games/B','exe':'B.exe','runtime_provider':'feeder','installed':True},
+      {'name':'A','game':'/games/A','exe':'A.exe','installed':True,'runtime_provider':'skynizz'}]
+settings={'runtime_provider':'skynizz','manage_dlss_files':True}
+# Desktop Repair runs as a reset; the routes, batches and downloads are the planner's.
+result=host.review_prepare({'rows':rows,'operation':'repair','mode':'nr-mfg','settings':settings,
+                            'engine_operations':{'repair':'reset','apply':'reset'}})
+assert calls==[('reset','nr-mfg','skynizz',['A']),('reset','nr-mfg','skynizz',['B'])],calls
+assert downloads==[['skynizz','feeder']],downloads
+assert [step['route'] for step in result['steps']]==['skynizz','feeder'],result
+assert [step['operation'] for step in result['steps']]==['repair','repair'],result
+assert result['supported']==[] and result['blocked']==[] and discarded==[],result
+# Without a mapping (Game Mode) the planned operation is the engine's.
+calls.clear()
+host.review_prepare({'rows':rows[1:],'operation':'repair','mode':'nr-mfg','settings':settings})
+assert calls==[('repair','nr-mfg','skynizz',['A'])],calls
+print('PASS: review_prepare plans routes and runs each as the requested engine operation')
+'''
+
+
+class ReviewPrepareHostTest(unittest.TestCase):
+    def test_desktop_operations_follow_the_shared_plan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root/'Steam').mkdir()
+            env = dict(os.environ, RTXFORGE_ROOT=str(ROOT), RTXFORGE_STATE_ROOT=str(root/'state'),
+                       RTXFORGE_DLSS_UNLOCKED_STATE=str(root/'engine-state'), LOCALAPPDATA=str(root/'appdata'),
+                       RTXFORGE_STEAM_ROOTS=str(root/'Steam'), PYTHONUTF8='1')
+            result = subprocess.run([sys.executable, '-X', 'utf8', '-c', WORKER, str(ROOT)], env=env,
+                                    capture_output=True, text=True, timeout=120)
+            self.assertEqual(result.returncode, 0, result.stderr[-8000:] + result.stdout[-2000:])
+            print(result.stdout.strip().splitlines()[-1])
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -290,34 +290,10 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     {
         var ordered = targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
         var counted = progress is null ? null : new OneCount(progress, targets.Count);
-        if (operation is "install" or "repair" && ordered.Length > 0)
-        {
-            var batches = new JsonArray();
-            foreach (var route in ordered.Select(g => RouteFor(g, operation, mode)).Distinct())
-            {
-                if (route == "adopt") continue;
-                batches.Add(new JsonObject
-                {
-                    ["mode"] = mode,
-                    ["settings"] = PrepareSettings(route, tuning, mode, false),
-                });
-            }
-            if (batches.Count > 0)
-            {
-                counted?.Report(new PrepareProgress("Downloading packages/files", null, 0, 0));
-                await CallAsync("prefetch_install", new JsonObject
-                {
-                    ["batches"] = batches,
-                    ["manage_dlss_files"] = Settings.ManageDlssFiles,
-                }, _ => counted?.Report(new PrepareProgress("Downloading packages/files", null, 0, 0)), cancel);
-            }
-        }
-        return await PrepareCoreAsync(operation, ordered, tuning, mode, counted, cancel, false);
+        return operation is "install" or "repair" or "uninstall" or "reset" or "apply"
+            ? await PlanAsync(operation, ordered, tuning, mode, counted, cancel)
+            : await PrepareOneAsync(operation, ordered, tuning, mode, counted, cancel);
     }
-
-    string RouteFor(Game g, string operation, string mode) => operation == "install" && g.AdoptionAvailable ? "adopt"
-        : g.UsesVulkan && (g.Installed || mode != "nr-only") ? "vulkan-native"
-        : g.UsesFeeder ? "feeder" : operation is "install" or "repair" ? Settings.PackageFor(g, operation) : Settings.RuntimeProvider;
 
     /// <summary>
     /// Checking progress as one pass over the selection: each package's route and each
@@ -363,52 +339,56 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         return settings;
     }
 
-    async Task<OperationReview> PrepareCoreAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
-        IProgress<PrepareProgress>? progress, CancellationToken cancel, bool supportedSubset, string? provider = null)
+    static JsonArray Rows(IReadOnlyList<Game> targets) =>
+        new(targets.Where(g => g.EngineRow is not null).Select(g => (JsonNode)g.EngineRow!.DeepClone()).ToArray());
+
+    static Action<JsonObject> Reporter(IProgress<PrepareProgress>? progress) => message => progress?.Report(new PrepareProgress(
+        message["label"]?.ToString() ?? "", message["game"]?.ToString(), I(message, "checked"), I(message, "total")));
+
+    /// <summary>
+    /// One review planned by the shared planner (scripts/review_plan.py), as Game Mode on
+    /// both systems: each game takes its route (Adoption, Vulkan, Feeder NR or its own DLSS
+    /// package), consecutive games on one route share a check, packages download first, and
+    /// games that support only NR or only MFG get opt-in offers. Every step runs in turn, by name.
+    /// </summary>
+    async Task<OperationReview> PlanAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
+        IProgress<PrepareProgress>? progress, CancellationToken cancel)
     {
-        if (provider is null && operation is "install" or "repair" or "uninstall" or "reset" or "apply")
+        var settings = PrepareSettings(Settings.RuntimeProvider, tuning, mode, false);
+        settings["game_packages"] = JsonSerializer.SerializeToNode(Settings.GamePackages);
+        var result = await CallAsync("review_prepare", new JsonObject
         {
-            // Feeder games take their own route and games may choose their own package:
-            // one review, prepared game by game on each one's route and run in turn.
-            // Confirmed Vulkan games take the Vulkan package automatically, as Feeder games take Feeder NR.
-            // It always brings frame generation, so NR Only installs keep the DLSS package's route.
-            // Another tool's setup in an install is adopted as it is, in the same review and run.
-            string Route(Game g) => RouteFor(g, operation, mode);
-            // The engine sends a selection of only Feeder games down the Feeder route; the package setting stays.
-            string Provider(string route) => route is "feeder" or "adopt" ? Settings.RuntimeProvider : route;
-            string Operation(string route) => route == "adopt" ? "adopt" : operation;
-            // The host's verified payload/model caches live within a prepare call.
-            // Batch consecutive games on the same route so those expensive checks
-            // are shared, retaining name order and separate provider review tokens.
-            if (targets.Count > 1)
-            {
-                var parts = new List<OperationReview>();
-                foreach (var batch in OperationRoutes.Consecutive(targets, Route))
-                {
-                    cancel.ThrowIfCancellationRequested();
-                    parts.Add(await PrepareCoreAsync(Operation(batch.Route), batch.Games, tuning, mode, progress, cancel, supportedSubset, Provider(batch.Route)));
-                }
-                // A part whose games all get only some features keeps its token in Supported; discard only unused ones.
-                var supportedTokens = parts.SelectMany(p => p.Supported).Select(s => s.Review.Token).ToHashSet();
-                foreach (var empty in parts.Where(p => p.Ready.Count == 0 && !supportedTokens.Contains(p.Token))) DiscardOperation(empty with { Supported = [] });
-                var byName = StringComparer.CurrentCultureIgnoreCase;
-                return new OperationReview(operation, "", parts.SelectMany(p => p.Ready).OrderBy(r => r.Game.Name, byName).ToArray(),
-                    parts.SelectMany(p => p.Blocked).OrderBy(b => b.Name, byName).ToArray(), parts.SelectMany(p => p.Warnings).ToArray())
-                {
-                    // Games run in turn, by name.
-                    Steps = parts.Where(p => p.Ready.Count > 0).OrderBy(p => p.Ready.Select(r => r.Game.Name).Min(byName), byName).Select(p => p with { Supported = [] }).ToArray(),
-                    Supported = parts.SelectMany(p => p.Supported).ToArray(),
-                };
-            }
-            if (targets.FirstOrDefault() is { } only) (provider, operation) = (Provider(Route(only)), Operation(Route(only)));
-        }
-        provider ??= Settings.RuntimeProvider;
-        var rows = new JsonArray(targets.Where(g => g.EngineRow is not null).Select(g => (JsonNode)g.EngineRow!.DeepClone()).ToArray());
+            ["rows"] = Rows(targets),
+            ["operation"] = operation,
+            ["mode"] = mode,
+            ["settings"] = settings,
+            // Desktop Repair and Apply re-apply each game's reviewed launch settings and presets.
+            ["engine_operations"] = new JsonObject { ["repair"] = "reset", ["apply"] = "reset" },
+        }, Reporter(progress), cancel);
+        OperationReview Step(JsonObject entry) => Reviewed(entry["operation"]?.ToString() ?? operation,
+            entry["provider"]?.ToString() ?? Settings.RuntimeProvider, entry["review"] as JsonObject, targets) with { Blocked = [], Warnings = [] };
+        var steps = Objects(result?["steps"]).Select(Step).ToArray();
+        var supported = Objects(result?["supported"]).Select(offer => new SupportedOperationReview(Step(offer),
+            offer["nr"]?.GetValue<bool>() == true, offer["mfg"]?.GetValue<bool>() == true, offer["reason"]?.ToString() ?? "")).ToArray();
+        var blocked = Blocks(result?["blocked"], targets, true);
+        var warnings = Blocks(result?["warnings"], targets, false);
+        if (steps.Length == 1) return steps[0] with { Blocked = blocked, Warnings = warnings, Supported = supported };
+        var byName = StringComparer.CurrentCultureIgnoreCase;
+        return new OperationReview(operation, "", steps.SelectMany(s => s.Ready).OrderBy(r => r.Game.Name, byName).ToArray(), blocked, warnings)
+        {
+            Steps = steps,
+            Supported = supported,
+        };
+    }
+
+    /// <summary>One prepare call: DLSS file updates and the operations the planner does not route.</summary>
+    async Task<OperationReview> PrepareOneAsync(string operation, IReadOnlyList<Game> targets, Tuning tuning, string mode,
+        IProgress<PrepareProgress>? progress, CancellationToken cancel)
+    {
+        var rows = Rows(targets);
         if (operation == "update-dlss")
         {
-            var checkedFiles = await CallAsync("prepare_dlss", new JsonObject { ["rows"] = rows },
-                message => progress?.Report(new PrepareProgress(message["label"]?.ToString() ?? "",
-                    message["game"]?.ToString(), I(message, "checked"), I(message, "total"))), cancel);
+            var checkedFiles = await CallAsync("prepare_dlss", new JsonObject { ["rows"] = rows }, Reporter(progress), cancel);
             // Paths identify installations even when Steam and Non-Steam names match.
             Game? Installation(JsonObject row) => targets.FirstOrDefault(g =>
                 string.Equals(g.Location, row["game"]?.ToString(), StringComparison.OrdinalIgnoreCase));
@@ -420,90 +400,38 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
                 new ReviewBlock(Installation(r), r["name"]?.ToString() ?? "", r["reason"]?.ToString() ?? "", r["summary"]?.ToString())).ToList();
             return new OperationReview(operation, checkedFiles?["token"]?.ToString() ?? "", ready, skipped);
         }
-        var engineOperation = operation switch { "install" => "install", "uninstall" => "uninstall", "adopt" => "adopt", "adopt-clean" => "adopt-clean", _ => "reset" };
-        var settings = PrepareSettings(provider, tuning, mode, supportedSubset);
+        var engineOperation = operation switch { "adopt" => "adopt", "adopt-clean" => "adopt-clean", _ => "reset" };
         var result = await CallAsync("prepare", new JsonObject
         {
             ["rows"] = rows,
             ["mode"] = mode,
             ["operation"] = engineOperation,
-            ["settings"] = settings,
+            ["settings"] = PrepareSettings(Settings.RuntimeProvider, tuning, mode, false),
             ["save_defaults"] = false,
-        }, message => progress?.Report(new PrepareProgress(
-            message["label"]?.ToString() ?? "",
-            message["game"]?.ToString(),
-            message["checked"] is JsonValue c && c.TryGetValue<int>(out var done) ? done : 0,
-            message["total"] is JsonValue n && n.TryGetValue<int>(out var all) ? all : 0)), cancel);
+        }, Reporter(progress), cancel);
+        return Reviewed(operation, Settings.RuntimeProvider, result as JsonObject, targets);
+    }
 
-        Game? Match(string? name, string? path = null) => path is not null
-            ? targets.FirstOrDefault(g => string.Equals(g.Location, path, StringComparison.OrdinalIgnoreCase))
-            : targets.FirstOrDefault(g => g.Name == name);
-        var readyRows = (result?["rows"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(r => (Game: Match(r["name"]?.ToString(), r["game"]?.ToString()), Detail: r["detail"]?.ToString() ?? "", Summary: r["summary"]?.ToString()))
+    static Game? Match(IReadOnlyList<Game> targets, string? name, string? path = null) => path is not null
+        ? targets.FirstOrDefault(g => string.Equals(g.Location, path, StringComparison.OrdinalIgnoreCase))
+        : targets.FirstOrDefault(g => g.Name == name);
+
+    static IReadOnlyList<ReviewBlock> Blocks(JsonNode? items, IReadOnlyList<Game> targets, bool summary) =>
+        Objects(items).Select(b => new ReviewBlock(Match(targets, b["name"]?.ToString()), b["name"]?.ToString() ?? "",
+            b["reason"]?.ToString() ?? "", summary ? b["summary"]?.ToString() : null)).ToArray();
+
+    /// <summary>A host review (token, rows, blocked, warnings, trust) as the dialog shows it.</summary>
+    OperationReview Reviewed(string operation, string provider, JsonObject? result, IReadOnlyList<Game> targets)
+    {
+        var ready = Objects(result?["rows"])
+            .Select(r => (Game: Match(targets, r["name"]?.ToString(), r["game"]?.ToString()), Detail: r["detail"]?.ToString() ?? "", Summary: r["summary"]?.ToString()))
             .Where(r => r.Game is not null).Select(r => new OperationGameReview(r.Game!, r.Detail,
                 (r.Summary ?? "Review the technical details before continuing.")
                 // Games can use different packages in one review, so each says which.
                 + (operation is "install" or "repair"
-                    ? "\nPackage: " + (r.Game!.UsesFeeder ? "Feeder NR" : Settings.PackageName(provider)) : ""))).ToList();
-        var blocked = (result?["blocked"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(b => new ReviewBlock(Match(b["name"]?.ToString()), b["name"]?.ToString() ?? "", b["reason"]?.ToString() ?? "", b["summary"]?.ToString())).ToList();
-        var warnings = (result?["warnings"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(w => new ReviewBlock(Match(w["name"]?.ToString()), w["name"]?.ToString() ?? "", w["reason"]?.ToString() ?? "")).ToList();
-        var prepared = new OperationReview(operation, result?["token"]?.ToString() ?? "", readyRows, blocked, warnings)
-        { OfflineNotice = result?["trust"]?.ToString() };
-        if (operation == "install" && !supportedSubset && (mode is "nr-mfg" or "nr-only"))
-        {
-            var available = new List<SupportedOperationReview>();
-            if (mode == "nr-mfg" && readyRows.Count > 0 && readyRows.All(r => r.Game.UsesFeeder))
-            {
-                available.Add(new(prepared, true, false, "Feeder provides neural rendering. Frame generation is unavailable for this route."));
-                prepared = prepared with { Ready = [] };
-            }
-            var candidates = targets.Where(g => !readyRows.Any(r => r.Game.Id == g.Id)
-                && !g.AntiCheatDetected && g.EngineRow?["exe"] is not null).ToArray();
-            var feeder = candidates.Where(g => g.UsesFeeder).ToArray();
-            var nrOnly = candidates.Where(g => mode == "nr-mfg" && !g.UsesFeeder && provider == "skynizz"
-                && g.EngineRow?["native_dlss"]?.GetValue<bool>() == true
-                && g.EngineRow?["native_dlssg"]?.GetValue<bool>() != true).ToArray();
-            foreach (var group in new[] { feeder, nrOnly })
-            {
-                if (group.Length == 0) continue;
-                OperationReview supported;
-                try { supported = await PrepareCoreAsync(operation, group, tuning, "nr-only", progress, cancel, true, provider); }
-                catch (EngineException) { continue; } // Keep the original refusal; no partial recipe was admitted.
-                // Keep route-specific setup problems even when other Feeder
-                // targets in this group can proceed.
-                foreach (var failure in supported.Blocked.Where(b => b.Game?.UsesFeeder == true))
-                {
-                    var index = blocked.FindIndex(b => b.Game?.Id == failure.Game!.Id);
-                    if (index >= 0) blocked[index] = failure;
-                }
-                if (supported.Ready.Count > 0)
-                    available.Add(new(supported, true, false, group[0].UsesFeeder
-                        ? "Feeder provides neural rendering. Frame generation is unavailable for this route."
-                        : "Use DirectX 12 and enable DLSS in the game for NR. Native frame generation is unavailable."));
-                else DiscardOperation(supported);
-            }
-            var mfgOnly = candidates.Where(g => mode == "nr-mfg" && !g.UsesFeeder && provider == "skynizz"
-                && !available.SelectMany(p => p.Review.Ready).Any(p => p.Game.Id == g.Id)
-                && g.EngineRow?["native_dlssg"]?.GetValue<bool>() == true
-                && blocked.Any(b => b.Game?.Id == g.Id && (b.Reason.Contains("NR runtime", StringComparison.OrdinalIgnoreCase)
-                    || b.Reason.Contains("NR model", StringComparison.OrdinalIgnoreCase) || b.Reason.Contains("nvngx_dlssnr", StringComparison.OrdinalIgnoreCase)))).ToArray();
-            if (mfgOnly.Length > 0)
-            {
-                try
-                {
-                    var supported = await PrepareCoreAsync(operation, mfgOnly, tuning, "mfg-only", progress, cancel, false, provider);
-                    if (supported.Ready.Count > 0)
-                        available.Add(new(supported, false, true, "Frame generation is supported. Neural rendering could not be prepared with the selected NR runtime."));
-                    else DiscardOperation(supported);
-                }
-                catch (EngineException) { } // Preserve the original refusal when no subset was admitted.
-            }
-            var included = available.SelectMany(r => r.Review.Ready).Select(r => r.Game.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            prepared = prepared with { Supported = available, Blocked = blocked.Where(b => b.Game is null || !included.Contains(b.Game.Id)).ToArray() };
-        }
-        return prepared;
+                    ? "\nPackage: " + (r.Game!.UsesFeeder ? "Feeder NR" : Settings.PackageName(provider)) : ""))).ToArray();
+        return new OperationReview(operation, result?["token"]?.ToString() ?? "", ready, Blocks(result?["blocked"], targets, true),
+            Blocks(result?["warnings"], targets, false)) { OfflineNotice = result?["trust"]?.ToString() };
     }
 
     public void DiscardOperation(OperationReview review)

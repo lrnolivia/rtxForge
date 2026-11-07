@@ -104,6 +104,59 @@ class MentionedApisTest(unittest.TestCase):
             exe.write_bytes(b'opengl32.dll d3dx9_43.dll dxgi.dll')
             self.assertEqual(feeder.mentioned_apis(exe), set())
 
+    def test_a_name_across_a_chunk_boundary_is_found(self):
+        import re
+        pattern = re.compile(rb'(?i)d3d(9|10_1|10|11|12)\.dll')
+        with tempfile.TemporaryDirectory() as folder:
+            exe = Path(folder) / 'packed.exe'
+            for offset in range(0, 24):
+                data = b'x' * offset + b'D3D10_1.Dll' + b'y' * 7 + b'd3D12.DLL' + b'z' * 5
+                exe.write_bytes(data)
+                expected = {'d3d' + match[1].decode().lower() for match in pattern.finditer(data)}
+                self.assertEqual(feeder.mentioned_apis(exe, chunk=8), expected, offset)
+
+
+class PrefetchTest(unittest.TestCase):
+    def test_prefetch_fills_the_cache_the_later_digests_read(self):
+        import file_stamps
+        with tempfile.TemporaryDirectory() as folder:
+            files = [Path(folder) / f'part{i}.dll' for i in range(4)]
+            for index, path in enumerate(files):
+                path.write_bytes(bytes([index]) * (file_stamps.MIN_SIZE + 1))
+            small = Path(folder) / 'small.txt'; small.write_bytes(b'small')
+            with mock.patch.dict(os.environ, {'RTXFORGE_STAMP_CACHE': ''}):
+                file_stamps.forget()
+                self.addCleanup(file_stamps.forget)
+                expected = [file_stamps._hash(path) for path in files]
+                with mock.patch.object(file_stamps, '_hash', wraps=file_stamps._hash) as read:
+                    file_stamps.prefetch([*files, small, Path(folder) / 'absent.dll', files[0]])
+                    self.assertEqual(read.call_count, 4)  # each large file once; small and absent ones left alone
+                    self.assertEqual([file_stamps.digest(path) for path in files], expected)
+                    self.assertEqual(read.call_count, 4)
+                    file_stamps.prefetch(files)
+                    self.assertEqual(read.call_count, 4)
+
+    def test_intact_gives_the_same_answer_with_prefetched_digests(self):
+        import cross_os
+        import file_stamps
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder)
+            names = ['nvngx.dll', 'sub/OptiScaler.asi', 'OptiScaler.ini']
+            for name in names:
+                (target / name).parent.mkdir(parents=True, exist_ok=True)
+                (target / name).write_bytes(name.encode() * (file_stamps.MIN_SIZE // len(name) + 1))
+            with mock.patch.dict(os.environ, {'RTXFORGE_STAMP_CACHE': ''}):
+                file_stamps.forget()
+                self.addCleanup(file_stamps.forget)
+                record = {'provider': {'id': 'skynizz'}, 'files': {name: file_stamps._hash(target / name) for name in names}}
+                self.assertTrue(cross_os.intact(target, record))
+                (target / 'OptiScaler.ini').write_bytes(b'edited in game')  # tuning never breaks identity
+                self.assertTrue(cross_os.intact(target, record))
+                (target / 'nvngx.dll').write_bytes(b'changed')
+                self.assertFalse(cross_os.intact(target, record))
+                (target / 'nvngx.dll').unlink()
+                self.assertFalse(cross_os.intact(target, record))
+
     def test_delay_imports_of_a_file_that_is_not_a_program(self):
         with tempfile.TemporaryDirectory() as folder:
             exe = Path(folder) / 'empty.exe'

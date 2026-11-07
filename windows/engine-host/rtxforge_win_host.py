@@ -342,7 +342,8 @@ def hello(_params):
 
 def scan(params):
     import executable_selection
-    with executable_selection.choices(params.get('game_executables')):
+    import transactions
+    with executable_selection.choices(params.get('game_executables')), transactions.read_only_pass():
         return _scan(params)
 
 
@@ -702,6 +703,9 @@ _WRITER_METHODS = {'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'update_
                    'nr_addon_settings', 'nr_addon_settings_flush', 'companion_reset', 'companion_forget', 'test_start', 'launch_offline'}
 
 
+_DEFERRED_WRITERS = {'hdr_settings_flush', 'nr_addon_settings_flush'}
+
+
 def _writer(method):
     return method in _WRITER_METHODS or method.endswith('_review')
 
@@ -731,6 +735,14 @@ def handle(request: dict) -> None:
         # A cleanup cannot race a payload preparation in this host. Scans,
         # hardware checks, live controls and cancellation remain independent.
         gate = _download_gate if request['method'] in _DOWNLOAD_METHODS else contextlib.nullcontext()
+        if request['method'] in _DEFERRED_WRITERS:
+            # The overlay helper asks every few seconds and polls the game panel
+            # in the same loop, so it never waits behind an install or the
+            # startup overlay update; the next request writes instead.
+            with writer_gate.attempt('saved game settings') as held:
+                result = method(request.get("params") or {}) if held else {'applied': 0, 'deferred': True}
+            send({"id": rid, "result": result})
+            return
         writing = (writer_gate.hold('your change', lambda text: report({'kind': 'progress', 'label': text}))
                    if _writer(request['method']) else contextlib.nullcontext())
         with writing, gate, ui.report_to(report):

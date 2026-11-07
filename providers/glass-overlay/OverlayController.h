@@ -643,7 +643,8 @@ struct Controller : Rml::EventListener
         QuickLayoutTheme();
     }
     Rml::Element* Element(const char* id) { auto* e=document->GetElementById(id);Require(e!=nullptr,id);return e; }
-    void Disabled(const char* id,bool disabled) {auto* e=Element(id);if(disabled)e->SetAttribute("disabled","");else e->RemoveAttribute("disabled");e->SetPseudoClass("disabled",disabled);e->SetProperty("focus",disabled?"none":"auto");}
+    // Runs for dozens of controls every frame; an unchanged state touches nothing.
+    void Disabled(const char* id,bool disabled) {auto* e=Element(id);if(e->HasAttribute("disabled")==disabled&&e->IsPseudoClassSet("disabled")==disabled)return;if(disabled)e->SetAttribute("disabled","");else e->RemoveAttribute("disabled");e->SetPseudoClass("disabled",disabled);e->SetProperty("focus",disabled?"none":"auto");}
     void Visible(const char* id,bool visible) { Element(id)->SetProperty("display",visible ? (std::string(id)=="welcome"||std::string(id)=="main-panel"||std::string(id)=="appearance-more"||std::string(id)=="appearance-god-mode"||std::string(id)=="accent-tint"?"flex":"block"):"none"); }
     void Message(const std::string& text) { Element("feedback")->SetInnerRML(text); }
     void Put(const std::string& key,float value) { auto before=values;values[key]=value;edits.Record(before,values); }

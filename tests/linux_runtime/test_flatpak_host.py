@@ -306,7 +306,8 @@ class NoBlindProcessReads(unittest.TestCase):
         ('scripts/proton_prefix.py', 'restore'), ('scripts/proton_overlay.py', 'plan'),
         ('scripts/proton_overlay.py', 'apply'), ('scripts/proton_overlay.py', 'restore'),
         ('scripts/offline_routes.py', 'protected_running'), ('scripts/linux_overlay_host.py', 'mapped_process'),
-        ('scripts/linux_overlay_host.py', 'exe_processes'),
+        ('scripts/linux_overlay_host.py', 'exe_processes'), ('scripts/linux_overlay_host.py', 'wine_processes'),
+        ('scripts/linux_overlay_host.py', 'still_mapped'),
         # Replaced by flatpak_host.adopt in every engine the app loads.
         ('engine/rtxengine.py', '_steam_process_names'), ('engine/rtxengine.py', '_running_processes_under_root'),
         # Kernel-wide driver and CPU facts, the same inside the sandbox.

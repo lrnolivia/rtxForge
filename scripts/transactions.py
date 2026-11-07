@@ -39,13 +39,34 @@ def relative(s):
     need(all((not x.endswith((' ', '.')) and (not re.match('(?i)^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\.|$)', x)) for x in p.parts)), 'Windows ambiguous path')
     return p
 
+_checked_dirs = None
+
+
+@contextlib.contextmanager
+def read_only_pass():
+    """Within a read-only pass (a library scan), safe() checks each parent
+    folder once instead of once per path; a scan otherwise re-checks the same
+    few folders tens of thousands of times. Writes never run inside one."""
+    global _checked_dirs
+    outer = _checked_dirs
+    if outer is None:
+        _checked_dirs = set()
+    try:
+        yield
+    finally:
+        _checked_dirs = outer
+
+
 def safe(p):
     p = P(os.path.abspath(p))
     need(p == p.resolve(), 'Symlink/path alias refused: ' + str(p))
     # One lstat per component (scans call this thousands of times); a missing
     # component is skipped, as before.
     final = None
+    checked, passed = _checked_dirs, []
     for part in [p, *p.parents]:
+        if checked is not None and part is not p and part in checked:
+            break  # this folder and all of its parents passed earlier in the pass
         try:
             st = os.lstat(part)
         except (OSError, ValueError):
@@ -53,6 +74,10 @@ def safe(p):
         need(not stat.S_ISLNK(st.st_mode) and (not getattr(st, 'st_file_attributes', 0) & 1024), 'Link/reparse point refused')
         if part is p:
             final = st
+        elif stat.S_ISDIR(st.st_mode):
+            passed.append(part)
+    if checked is not None:
+        checked.update(passed)
     if final is not None:
         # Not a link (checked above), so lstat is the file's own stat.
         need(stat.S_ISDIR(final.st_mode) or (stat.S_ISREG(final.st_mode) and final.st_nlink == 1), 'Special/shared file refused')

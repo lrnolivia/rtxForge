@@ -56,6 +56,16 @@ class IntegrationContracts(unittest.TestCase):
             self.assertEqual(host.mapped_process(prefix,exe,channel,proc),42)
             (p/'environ').write_bytes(b'WINEPREFIX='+str(root/'prefix2').encode()+b'/\0')
             self.assertIsNone(host.mapped_process(prefix,exe,channel,proc))
+            self.assertFalse(host.still_mapped(42,prefix,exe,channel,proc))
+            # One reading of /proc answers every channel in a poll.
+            (p/'environ').write_bytes(b'WINEPREFIX='+str(prefix).encode()+b'/\0')
+            processes=host.wine_processes(proc)
+            self.assertEqual(processes,[(42,str(prefix.resolve()),{str(exe),str(channel)})])
+            self.assertEqual(host.mapped_process(prefix,exe,channel,proc,processes=processes),42)
+            self.assertIsNone(host.mapped_process(prefix,exe,channel,proc,processes=[]))
+            # A running game is checked through its own process only.
+            self.assertTrue(host.still_mapped(42,prefix,exe,channel,proc))
+            self.assertFalse(host.still_mapped(43,prefix,exe,channel,proc))
 
     def test_mapping_refuses_links_and_wrong_size(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -80,7 +90,7 @@ class IntegrationContracts(unittest.TestCase):
             struct.pack_into('<i',raw,112,5)
             struct.pack_into('<i',raw,420,1)
             path.write_bytes(raw)
-            with patch.object(host,'mapped_process',return_value=42):
+            with patch.object(host,'mapped_process',return_value=42),patch.object(host,'still_mapped',return_value=True):
                 with host.FileMailbox(Path(directory),'Game.exe',path) as box:
                     self.assertEqual(box.read()['version'],7)
                     def acknowledge():

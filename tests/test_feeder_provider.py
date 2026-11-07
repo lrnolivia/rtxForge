@@ -684,6 +684,9 @@ class ExecutableProbeCacheTest(unittest.TestCase):
                 # An updated executable is probed again.
                 exe.write_bytes(b'longer')
                 self.assertEqual(feeder.cached_probe('direct3d', exe, lambda: {'d3d12'}), {'d3d12'})
+                # Answers reach the file once per scan, not once per probe.
+                self.assertFalse(store.exists())
+                feeder.save_probes()
             # A new process reads the answers kept on disk.
             with patch.dict('os.environ', {'RTXFORGE_PROBE_CACHE': str(store)}), patch.object(feeder, '_PROBES', None):
                 self.assertEqual(feeder.cached_probe('direct3d', exe, probe), {'d3d12'})

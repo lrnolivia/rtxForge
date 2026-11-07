@@ -85,6 +85,23 @@ static void TestIdle(ForgeGlass::Draw draw,ForgeGlass::Release release){
     const auto start=std::chrono::steady_clock::now();for(unsigned i=0;i<600;++i)Need(draw(&host,&frame),"Idle frame failed");const auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
     Need(reads<=2+unsigned(ms/250),"Hidden overlay polled its host every frame");release();std::cout<<"hidden_overlay_checks=passed frames=600 host_reads="<<reads<<" cpu_mean_ms="<<ms/600<<"\n";
 }
+// Per-frame CPU of an open panel on a live OptiScaler session, for comparing
+// builds. WARP rasterizes on the CPU too, so read it as relative, not absolute.
+static void TestVisibleCost(ForgeGlass::Draw draw,ForgeGlass::Release release){
+    ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;Need(SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,0,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context)),"Visible device failed");
+    D3D11_TEXTURE2D_DESC desc{};desc.Width=1280;desc.Height=720;desc.MipLevels=desc.ArraySize=1;desc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;desc.SampleDesc.Count=1;desc.BindFlags=D3D11_BIND_RENDER_TARGET;
+    ComPtr<ID3D11Texture2D> target;ComPtr<ID3D11RenderTargetView> view;Need(SUCCEEDED(device->CreateTexture2D(&desc,nullptr,&target))&&SUCCEEDED(device->CreateRenderTargetView(target.Get(),nullptr,&view)),"Visible target failed");
+    ForgeGlass::Host host{sizeof(host),ForgeGlass::Abi};
+    host.read=[](void*,ForgeGlass::Snapshot* s){static const ForgeGlass::Value values[]={{"enabled",1},{"intensity",.75f},{"style",1},{"passes",2},{"preset",0},{"multiplier",2},{"__multiplier_max",4},{"__runtime_kind",1}};
+        *s={"FRAME COST TEST","#d58975",values,uint32_t(std::size(values)),true,true,true,true,true,true,2.34,60,120,2,true,false,true};s->helperJson=R"({"revision":3,"ready":true,"settings":{}})";return true;};
+    ForgeGlass::Frame frame{};frame.size=sizeof(frame);frame.abi=ForgeGlass::Abi;frame.device=device.Get();frame.target=view.Get();frame.visible=true;
+    for(int i=0;i<30;++i){frame.visible=true;Need(draw(&host,&frame),"Visible warm-up frame failed");}
+    const auto start=std::chrono::steady_clock::now();for(unsigned i=0;i<300;++i){frame.visible=true;Need(draw(&host,&frame),"Visible frame failed");}
+    const auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();release();
+    std::cout<<"visible_overlay_cost frames=300 cpu_mean_ms="<<ms/300<<"\n";
+    // Also as a check annotation, so a build's number can be read without its log.
+    std::cout<<"::notice title=visible_overlay_cost::frames=300 cpu_mean_ms="<<ms/300<<"\n";
+}
 static void Test12(HMODULE dll,ForgeGlass::Release release,bool hdr=false){
     const auto draw=reinterpret_cast<ForgeGlass::Draw12>(GetProcAddress(dll,"ForgeGlassDraw12"));Need(draw,"DX12 export missing");
     ComPtr<ID3D12Device> device;if(FAILED(D3D12CreateDevice(nullptr,D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&device)))){ComPtr<IDXGIFactory4> factory;Need(SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))),"DXGI factory failed");ComPtr<IDXGIAdapter> warp;Need(SUCCEEDED(factory->EnumWarpAdapter(IID_PPV_ARGS(&warp)))&&SUCCEEDED(D3D12CreateDevice(warp.Get(),D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&device))),"DX12 fixture device failed");}
@@ -162,5 +179,5 @@ int wmain(int argc,wchar_t** argv){try{
     const auto setup=profile.path/L"rtxForge"/L"overlay-setup.ini";std::filesystem::create_directories(setup.parent_path());Need(WritePrivateProfileStringW(L"Setup",L"Version",L"1",setup.c_str()),"Setup fixture state failed");
     TestHdr11(draw,release,device.Get(),context.Get());if(flags)TestHdr11(draw,release,device.Get(),context.Get(),3840,2160);
     }
-    Test12(dll,release);Test12(dll,release,true);TestAppearance(draw,release,profile.path);TestAdvancedSession(draw,release,profile.path);TestIdle(draw,release);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
+    Test12(dll,release);Test12(dll,release,true);TestAppearance(draw,release,profile.path);TestAdvancedSession(draw,release,profile.path);TestIdle(draw,release);TestVisibleCost(draw,release);FreeLibrary(dll);std::cout<<"game_facing_dx11_checks=passed formats=RGBA,BGRA frames="<<renders<<" state_restore=passed single_threaded=passed hdr_rejection=passed\n";return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

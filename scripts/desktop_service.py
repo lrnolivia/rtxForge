@@ -283,36 +283,22 @@ class DesktopService:
             review['blocked']=review['blocked']+companion.get('blocked',[])
         return review
 
-    # Second-review offers when a game supports only part of NR + MFG (reason code -> user text).
-    SUBSET_REASONS={
-        'feeder-nr-only':'Feeder provides neural rendering. Frame generation is unavailable for this route.',
-        'no-native-dlssg':'Use DirectX 12 and enable DLSS in the game for NR. Native frame generation is unavailable.',
-        'nr-runtime-unavailable':'Frame generation is supported. Neural rendering could not be prepared with the selected NR runtime.',
-    }
-
     def prepare_supported(self,rows,mode,operation,adopt=False,visual_settings=None,scope=None):
         """The requested review plus separate, opt-in reviews for games that support only NR or only MFG.
 
-        Mirrors the Windows rule (EngineForgeService.PrepareCoreAsync). Hard
-        blockers (anti-cheat, no executable) are never offered. Each offer is
+        The offers follow the one rule every rtxForge review uses (review_plan.offer_groups).
+        Hard blockers (anti-cheat, no executable) are never offered. Each offer is
         its own review over exactly its games, so applying it needs an explicit
         choice and its own scope; nothing is merged into the main review.
         """
+        import review_plan
         review=self.prepare(rows,mode,operation,adopt,visual_settings=visual_settings,scope=scope)
         review['supported']=[]
-        if operation!='install' or mode not in ('nr-mfg','nr-only'):return review
         settings=dict(library_media.load_settings(self.config),**(visual_settings or {}))
-        skynizz=settings.get('runtime_provider')=='skynizz'
         planned=lambda result:{(p.get('row') or {}).get('game') for p in result.get('plans',[])}-{None}
-        ready=planned(review)
-        feeder=lambda r:r.get('runtime_provider')=='feeder' or r.get('install_provider')=='feeder' and r.get('feeder_available') is True
-        candidates=[r for r in rows if r.get('game') not in ready and not r.get('anti_cheat') and r.get('exe')]
+        ready={review_plan.identity(game) for game in planned(review)}
         blocked={b.get('name'):b.get('reason','') for b in review.get('blocked',[])}
-        groups=[('feeder-nr-only','nr-only',[r for r in candidates if feeder(r)])]
-        if mode=='nr-mfg' and skynizz:
-            groups.append(('no-native-dlssg','nr-only',[r for r in candidates if not feeder(r) and r.get('native_dlss') and not r.get('native_dlssg')]))
-            nr_missing=lambda reason:any(word in reason.casefold() for word in ('nr runtime','nr model','nvngx_dlssnr'))
-            groups.append(('nr-runtime-unavailable','mfg-only',[r for r in candidates if not feeder(r) and r.get('native_dlssg') and nr_missing(blocked.get(r.get('name'),''))]))
+        groups=review_plan.offer_groups(operation,mode,settings.get('runtime_provider'),rows,ready,blocked)
         offered=set()
         for code,subset_mode,group in groups:
             group=[r for r in group if r.get('game') not in offered]
@@ -325,7 +311,7 @@ class DesktopService:
             games=sorted(planned(supported))
             if not games:continue
             offered.update(games)
-            review['supported'].append({'reason_code':code,'reason':self.SUBSET_REASONS[code],'mode':subset_mode,
+            review['supported'].append({'reason_code':code,'reason':review_plan.REASONS[code],'mode':subset_mode,
                                         'nr':subset_mode!='mfg-only','mfg':subset_mode!='nr-only','games':[g for g in games if g],
                                         'review':supported})
         if offered:

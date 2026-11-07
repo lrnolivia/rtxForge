@@ -175,7 +175,7 @@ def main():
             raise ValueError('Feeder acquisition is managed. User-provided stacks are not required.')
         return original_feeder_storage(params)
     host['METHODS']['feeder_storage'] = managed_feeder_storage
-    from review_routes import ReviewedRoutes
+    from review_plan import ReviewedRoutes
     def execute_child(params):
         token = params['token']
         host['running'][token] = host['reviews'].get(token, {})
@@ -184,7 +184,7 @@ def main():
         finally:
             host['running'].pop(token, None)
     routes = ReviewedRoutes(prepare, execute_child, host['cancel'], discard_reviews, lambda: media.load_settings(host['service'].config),
-                            defaults=(settings_review, host['METHODS']['run']))
+                            defaults=(settings_review, host['METHODS']['run']), prefetch=host['METHODS']['prefetch_install'])
     host['METHODS'].update(prepare_routes=routes.prepare, execute_routes=routes.execute, cancel_routes=routes.cancel, discard_routes=routes.discard)
     host['_DOWNLOAD_METHODS'].update(('prepare_routes', 'execute_routes'))
     host['send']({'event': 'ready', 'adapter': 'existing Windows reviewed host', 'automaticRefresh': False})

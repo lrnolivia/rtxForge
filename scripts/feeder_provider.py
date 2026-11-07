@@ -451,6 +451,7 @@ def _probe_path():
 
 
 _PROBES_DIRTY = False
+_PROBES_LOAD = threading.Lock()
 
 
 def cached_value(kind, exe, compute, valid=lambda value: isinstance(value, list)):
@@ -465,15 +466,16 @@ def cached_value(kind, exe, compute, valid=lambda value: isinstance(value, list)
         stat = exe.stat()
     except OSError:
         return compute()
-    if _PROBES is None:
-        _PROBES = {}
-        path = _probe_path()
-        if path and path.is_file():
-            try:
-                loaded = json.loads(path.read_text(encoding='utf-8'))
-                _PROBES = loaded if isinstance(loaded, dict) else {}
-            except (OSError, ValueError):
-                _PROBES = {}
+    with _PROBES_LOAD:
+        if _PROBES is None:
+            loaded = {}
+            path = _probe_path()
+            if path and path.is_file():
+                try:
+                    loaded = json.loads(path.read_text(encoding='utf-8'))
+                except (OSError, ValueError):
+                    loaded = {}
+            _PROBES = loaded if isinstance(loaded, dict) else {}
     key = f'{kind}|{os.path.normcase(str(exe))}'
     stamp = [stat.st_size, stat.st_mtime_ns]
     hit = _PROBES.get(key)
@@ -509,26 +511,28 @@ def save_probes():
 atexit.register(save_probes)
 
 
-def mentioned_apis(exe, limit=2 * 1024**3):
+def mentioned_apis(exe, limit=2 * 1024**3, chunk=32 * 1024**2):
     import mmap
     try:
         with open(exe, 'rb') as file:
             if not 0 < os.fstat(file.fileno()).st_size <= limit:
                 return set()
             with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
-                # One pass over the file, stopping once every name is seen. The
-                # character classes match any case, as (?i) does, several times faster.
-                found = set()
-                for match in _MENTIONED.finditer(data):
-                    found.add('d3d' + match[1].decode())
-                    if len(found) == 5:
-                        break
+                # Any-case DLL names, chunk by chunk, stopping once every name is
+                # seen: a lowercased chunk and five literal searches are 2-3x
+                # faster than a case-insensitive pattern over packed executables.
+                # Chunks overlap by one name, so a name across a boundary is found.
+                found, start, overlap = set(), 0, max(len(name) for _, name in _MENTIONED) - 1
+                while start < len(data) and len(found) < len(_MENTIONED):
+                    block = data[start:start + chunk + overlap].lower()
+                    found.update(api for api, name in _MENTIONED if api not in found and name in block)
+                    start += chunk
                 return found
     except (OSError, ValueError):
         return set()
 
 
-_MENTIONED = re.compile(rb'[dD]3[dD](9|10_1|10|11|12)\.[dD][lL][lL]')
+_MENTIONED = tuple((api, (api + '.dll').encode()) for api in ('d3d9', 'd3d10', 'd3d10_1', 'd3d11', 'd3d12'))
 
 
 def route_note(e, row):
@@ -614,8 +618,45 @@ def leftover_sr(e, directory):
         return False
 
 
+def _prefetch(rows):
+    """Open, side by side, the files the loop below reads from each game first.
+
+    A first scan otherwise waits on one cold executable or DLL open at a time.
+    Every answer is still computed by the same cached call, so none changes:
+    an executable's PE machine type, and the digests of a Feeder stack."""
+    exes, files, names = [], [], None
+    for row in rows:
+        if row.get('executable_error') or not row.get('game'):
+            continue
+        root = Path(row['game'])
+        paths = [] if row.get('executable_selected') else [
+            root / f'Game/ME{index}/Binaries/Win64/MassEffect{index}.exe' for index in (1, 2, 3)]
+        if row.get('exe'):
+            paths.append(root / row['exe'])
+        for exe in paths:
+            if not exe.is_file():
+                continue
+            exes.append(exe)
+            if any((exe.parent / name).is_file() for name in ('dlss5-feed.addon64', 'dlss5-feed.addon32')):
+                names = names or [*lock()['assets'], MODEL]
+                files += [exe.parent / name for name in names]
+    import feeder_legacy
+
+    def machine(exe):
+        try:
+            feeder_legacy.machine(exe)
+        except (t.Refusal, OSError, ValueError):
+            pass
+    if len(exes) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(min(file_stamps.WORKERS, len(exes)), thread_name_prefix='exe-probe') as pool:
+            list(pool.map(machine, exes))
+    file_stamps.prefetch(files)
+
+
 def expand_rows(e, rows, selected=False):
     import skynizz_provider
+    _prefetch(rows)
     result = []
     for original in rows:
         if original.get('executable_error'):

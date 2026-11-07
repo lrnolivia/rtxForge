@@ -113,21 +113,22 @@ def read(target):
 def intact(target, record):
     """True when every managed file is still exactly what the installing OS wrote."""
     target = Path(target)
+    # Tuning is deliberately edited in-game. It is not the identity of a
+    # loader, and must not make the other OS forget a managed installation.
+    provider = (record.get('provider') or {}).get('id')
+    mutable = {'OptiScaler.ini'} if provider in ('skynizz', 'dlss-unlocked', 'y4my') else (
+        {'ReShade.ini', 'ReShadePreset.ini', 'dlss5-feed.cfg', 'host64/ReShade.ini', 'host64/ReShadePreset.ini'}
+        if provider == 'feeder' else set())
+    checked = []
     for name, digest in record['files'].items():
         path = target / name
         if '..' in Path(name).parts or path.is_symlink() or not path.is_file():
             return False
-        # Tuning is deliberately edited in-game. It is not the identity of a
-        # loader, and must not make the other OS forget a managed installation.
-        provider = (record.get('provider') or {}).get('id')
-        mutable = {'OptiScaler.ini'} if provider in ('skynizz', 'dlss-unlocked', 'y4my') else (
-            {'ReShade.ini', 'ReShadePreset.ini', 'dlss5-feed.cfg', 'host64/ReShade.ini', 'host64/ReShadePreset.ini'}
-            if provider == 'feeder' else set())
-        if name in mutable:
-            continue
-        if _sha256(path) != digest:
-            return False
-    return True
+        if name not in mutable:
+            checked.append((path, digest))
+    # A first scan reads every managed file; read them side by side.
+    file_stamps.prefetch(path for path, _ in checked)
+    return all(_sha256(path) == digest for path, digest in checked)
 
 
 def remove(target, os_name):

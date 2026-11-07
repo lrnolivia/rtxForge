@@ -143,6 +143,36 @@ def known(path):
 
 
 _warming: set[str] = set()
+# Opening a game file is the slow part of a first scan (the antivirus checks
+# each executable and DLL as it opens), and those checks run side by side.
+WORKERS = min(8, (os.cpu_count() or 2) * 2)
+
+
+def prefetch(paths):
+    """Hash, side by side, the large files not hashed yet, so the digest() calls that follow hit the cache.
+
+    Changes no answer: each file is measured exactly as digest() measures it.
+    Missing, unreadable and small files are left to the caller."""
+    pending, seen = [], set()
+    for path in paths:
+        key = _key(path)
+        version = stamp(path)
+        if key in seen or version is None or version[0] < MIN_SIZE or _recall(key, version):
+            continue
+        seen.add(key)
+        pending.append((path, key))
+    def measure(item):
+        try:
+            _measure(*item)
+        except OSError:
+            pass
+    if len(pending) < 2:
+        for item in pending:
+            measure(item)
+        return
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(min(WORKERS, len(pending)), thread_name_prefix='file-stamps') as pool:
+        list(pool.map(measure, pending))
 
 
 def warm(paths):
@@ -155,11 +185,7 @@ def warm(paths):
 
     def run():
         try:
-            for path in pending:
-                try:
-                    digest(path)
-                except OSError:
-                    pass
+            prefetch(pending)
             save()
         finally:
             with _lock:

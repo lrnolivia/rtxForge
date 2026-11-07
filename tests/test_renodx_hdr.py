@@ -73,6 +73,19 @@ class HdrTests(unittest.TestCase):
         with self.assertRaisesRegex(t.Refusal,'dependencies changed'):hdr.apply({},plan)
         self.assertEqual((self.game/'dxgi.dll').read_bytes(),self.host)
 
+    def test_streamline_games_use_the_direct3d_detection(self):
+        # Witcher 3 DX12 imports sl.interposer.dll instead of dxgi/d3d12.
+        import feeder_provider
+        self.engine.imports = {'sl.interposer.dll', 'kernel32.dll'}
+        exe = self.game / 'Game.exe'
+        for apis, proxy in (({'d3d12'}, 'dxgi.dll'), ({'d3d11', 'd3d12'}, 'dxgi.dll'), ({'d3d9'}, 'd3d9.dll')):
+            with self.subTest(apis=apis), patch.object(feeder_provider, 'graphics_apis', return_value=apis):
+                self.assertEqual(hdr._route(self.engine, exe, 'x64')[:2], ('reshade', proxy))
+        for apis in (set(), {'d3d9', 'd3d11'}):
+            with self.subTest(apis=apis), patch.object(feeder_provider, 'graphics_apis', return_value=apis), \
+                    self.assertRaisesRegex(t.Refusal, 'could not be identified'):
+                hdr._route(self.engine, exe, 'x64')
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve(); self.game = self.root / 'game'; self.game.mkdir()

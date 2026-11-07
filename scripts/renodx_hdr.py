@@ -209,7 +209,14 @@ def _route(e, exe, arch, selected=None):
     if 'd3d9.dll' in imports: proxy = 'd3d9.dll'
     elif 'opengl32.dll' in imports: proxy = 'opengl32.dll'
     elif imports.intersection({'dxgi.dll', 'd3d10.dll', 'd3d11.dll', 'd3d12.dll'}): proxy = 'dxgi.dll'
-    else: raise t.Refusal('The graphics API could not be identified safely for automatic ReShade setup.')
+    else:
+        # Streamline games import sl.interposer.dll in place of dxgi/d3d12 (Witcher 3 DX12),
+        # and some load Direct3D late. Use the same cached Direct3D detection as Feeder NR.
+        import feeder_provider
+        apis = feeder_provider.graphics_apis(e, exe)
+        if apis == {'d3d9'}: proxy = 'd3d9.dll'
+        elif apis and 'd3d9' not in apis: proxy = 'dxgi.dll'
+        else: raise t.Refusal('The graphics API could not be identified safely for automatic ReShade setup.')
     t.need(not (directory / proxy).exists(), 'Another graphics tool uses ' + proxy + '. Its files have been kept.')
     return 'reshade', proxy, None
 

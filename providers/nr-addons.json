@@ -1,0 +1,194 @@
+{
+  "schema": 1,
+  "note": "DLSS5 neural-rendering add-ons a game can use, the NR models they run on, and how they may be combined. Every archive is pinned by SHA-256 from its publisher's release; files inside are pinned where they were verified. Values marked null are not yet verified on a Forge Lab copy and are never written by a preset.",
+  "addons": {
+    "lecram": {
+      "name": "Lecram (RenoDX DLSS5 Generic)",
+      "file": "renodx-dlss5.addon64",
+      "section": "RenoDX.DLSS5",
+      "route": "feeder",
+      "needs_native_dlss": false,
+      "coexist": {"key": "ForeignNr", "value": "observe", "default": "yield"},
+      "beside_optiscaler": {"allowed": false, "reason": "ReShade reloads Lecram while the game starts, and each reload hooks DLSS again, which stops OptiScaler's Ray Reconstruction and frame generation from starting. Use it in games without OptiScaler, with the game's own frame generation."},
+      "on_at_launch": {"key": "NeuralUplift", "value": 1},
+      "builds": {
+        "10.8": {
+          "label": "10.8.0 · latest free build",
+          "default": true,
+          "live_settings": false,
+          "archive": {
+            "url": "https://github.com/RankFTW/rhi-repo/releases/download/renodx-dlss5-10.8.0/renodx-dlss5_10.8.0.zip",
+            "size": 2635198,
+            "sha256": "faba7814fa90b6b21786c98a45732dbe80f01fa36745c46324472e14ac0f440d"
+          },
+          "members": {
+            "renodx-dlss5.addon64": {"size": 7991808, "sha256": "79871879324053d49931a9f8c1865fcb83e8146df4a56b146d7a8a14cc7e70fe"}
+          },
+          "model_setting": {"key": null, "verified": false, "note": "The in-game Model version (Default/Old/New) key is not yet identified."}
+        }
+      },
+      "settings": {
+        "intensity": "NRIntensity",
+        "style": "NRStyle",
+        "local_tone": "NRLocalTone",
+        "structure": "NRLocalStructure",
+        "character": "NRSkinStructure",
+        "character_mask": "NRAutoMask",
+        "independent_skin": "NRSkinIndependent",
+        "ui_correction": "NRUICorrection",
+        "passes": "NRPasses",
+        "resolution_scale": "NRResolutionScale",
+        "hook_point": "NRHookPoint"
+      }
+    },
+    "shortfuse": {
+      "name": "ShortFuse (RenoDX DLSS)",
+      "file": "renodx-dlss.addon64",
+      "section": "RENODX-DLSS",
+      "beside_optiscaler": {"allowed": true, "with_optiscaler_nr": true},
+      "load_early": true,
+      "percent": ["resolution_scale"],
+      "route": "reshade",
+      "needs_native_dlss": true,
+      "arch": ["x64"],
+      "builds": {
+        "26.1025.0009": {
+          "label": "SF 26.1025.0009",
+          "default": true,
+          "archive": {
+            "url": "https://github.com/RankFTW/rhi-repo/releases/download/renodx-dlss-SF-26.1025.0009/renodx-dlss_SF_26.1025.0009.zip",
+            "size": 1385007,
+            "sha256": "9851d9fb959076d94f9877d34dc7cee82ce6591ce0df9a54f9d2a92ccaaa6b9a"
+          },
+          "members": {
+            "renodx-dlss.addon64": {"size": 3661312, "sha256": "dd5ed7ba6773a6168390f3a53e757f09b563ecdf1a9f4fcdec6dd3129d93bace"}
+          }
+        }
+      },
+      "settings": {
+        "intensity": "DirectNeuralRenderingIntensity",
+        "style": "DirectNeuralRenderingStyle",
+        "local_tone": "DirectNeuralRenderingLocalToneStrength",
+        "structure": "DirectNeuralRenderingLocalStructureStrength",
+        "character": "DirectNeuralRenderingSkinStructureStrength",
+        "character_mask": "DirectNeuralRenderingAutoMask",
+        "ui_correction": "DirectNeuralRenderingUiCorrectionMode",
+        "passes": "DirectNeuralRenderingPassCount",
+        "resolution_scale": "DirectNeuralRenderingProcessingScale",
+        "hook_point": "DirectNeuralRenderingHookStage",
+        "block_hudless": "DirectNeuralRenderingBlockHudless",
+        "encoding": "DirectNeuralRenderingEncoding",
+        "diffuse_white_nits": "DirectNeuralRenderingDiffuseWhiteNits",
+        "upscaling_resources": "DirectNeuralRenderingReuseDlssUpscalingResources"
+      }
+    },
+    "gitc": {
+      "name": "GITC Uplift",
+      "file": "gitc-uplift.addon64",
+      "section": "Uplift",
+      "route": "reshade",
+      "needs_native_dlss": false,
+      "exclusive": true,
+      "license": "MIT",
+      "builds": {
+        "1.8.0": {
+          "label": "1.8.0",
+          "default": true,
+          "archive": {
+            "url": "https://github.com/ghostinthecamera/GITC-Uplift/releases/download/v1.8.0/GITC-Uplift-1.8.0.zip",
+            "size": 3835456,
+            "sha256": "ec72c7f844f831dfaf647c051983a4ee1452582d1deeef0bf6ed6e89a19170d8"
+          },
+          "members": {
+            "Addons/gitc-uplift.addon64": {"sha256": "3c939d99e22d1039bfc82222fd8dbc432db493d13ccec34efa26ef8cc39bf773"},
+            "Addons/gitc-uplift.addon32": {"sha256": "c5ca5ec8a8568e546ba8a565eb015c76c34358e5d3e44addc4e35a6e53dc9cd6"},
+            "Addons/gitc-uplift-helper64.exe": {"sha256": "fe1afc03bd70682e29b8fd46c3fe1b777609526317571314268c20e2d518e4b7"},
+            "Shaders/Uplift.fx": {"sha256": "04f7d632118072b3709a1ab5700867816f582e2a1be484e1cecd9e1b95557bf7"},
+            "Shaders/UpliftMask.fx": {"sha256": "df89b186d140f28aa27998a524421038aadceb69c8bad9cab24d33bf8d274314"},
+            "LICENSE": {"sha256": "0c6f625ad45e4fd6a1754731afc182ce24d708139bdc6459859673ecdf329b35"},
+            "THIRD_PARTY_NOTICES.md": {"sha256": "4ca96e94a418d4e222aee4b486308c0fbda368b408a02157b6fcba1ce680fdc9"}
+          },
+          "model_path": "GITC-Uplift/nvngx_dlssnr.dll"
+        }
+      },
+      "settings": {
+        "passes": null,
+        "pass_stage": "Pass{n}Stage",
+        "network": "Network"
+      }
+    }
+  },
+  "models": {
+    "old": {
+      "label": "Old DLSS5 (310.8)",
+      "builds": {
+        "310.8.SF-v2": {
+          "for": ["turing", "ampere"],
+          "archive": {
+            "url": "https://github.com/RankFTW/rhi-repo/releases/download/dlssnr-310.8.SF-v2/nvngx_dlssnr_310.8.SF-v2.zip",
+            "size": 116693212,
+            "sha256": "1da35941894994eb087e017577829e492454e9bae3a6a9397027069ceb74955c"
+          }
+        },
+        "310.8.0-RTX40": {
+          "for": ["ada"],
+          "archive": {
+            "url": "https://github.com/RankFTW/rhi-repo/releases/download/dlssnr-310.8.0-RTX40/nvngx_dlssnr_310.8.0-RTX40.zip",
+            "size": 110604522,
+            "sha256": "46124cfaef532ad5f6da07494772ea8c1b3e719f934e254385697f38d1289e3f"
+          }
+        },
+        "310.8.0": {
+          "for": ["blackwell"],
+          "archive": {
+            "url": "https://github.com/RankFTW/rhi-repo/releases/download/dlssnr-310.8.0/nvngx_dlssnr_310.8.0.zip",
+            "size": 109425288,
+            "sha256": "388c0a7912e15ec911b9c9e11a692142b11fe387ddf2b637d8c358138fffb3ac"
+          }
+        }
+      }
+    },
+    "new": {
+      "label": "New DLSS5 (310.9.16)",
+      "builds": {
+        "310.9.16": {
+          "for": ["ada", "blackwell"],
+          "note": "Not yet verified on RTX 20/30 cards.",
+          "archive": {
+            "url": "https://github.com/RankFTW/rhi-repo/releases/download/dlssnr-310.9.16/nvngx_dlssnr_310.9.16.zip",
+            "size": 192378839,
+            "sha256": "dbeb1f2790b5c621887db99b1a56ac8bd5cb35207e8c074cbb806710f7460cab"
+          },
+          "file": {"size": 276162560, "sha256": "cdfa6c1ec784867182164c7836f324f087b5c9f374d0c9fe46f54999feabf3ed", "verified": false}
+        }
+      }
+    }
+  },
+  "combos": {
+    "characters-and-world": {
+      "name": "Characters + world",
+      "source": "Community setup: ShortFuse for character detail, Lecram 10.8 for the rest",
+      "environment": {
+        "addon": "lecram", "build": "10.8", "model": "new",
+        "values": {"intensity": 1.0, "style": 0, "local_tone": 0.39, "structure": 0.40, "character": 0.10,
+                   "character_mask": 1, "independent_skin": 1, "ui_correction": 1, "passes": 1, "resolution_scale": 1.0}
+      },
+      "character": {
+        "addon": "shortfuse", "build": "26.1025.0009", "model": "new",
+        "values": {"intensity": 1.0, "style": 0, "local_tone": 0.60, "structure": 0.60, "character": 0.68,
+                   "character_mask": 1, "passes": 1, "block_hudless": 1, "diffuse_white_nits": 70}
+      },
+      "verified": true
+    },
+    "characters-with-optiscaler": {
+      "name": "Characters + OptiScaler NR",
+      "source": "OptiScaler's NR for the world with ShortFuse for character detail, for games where OptiScaler runs NR + MFG",
+      "character": {
+        "addon": "shortfuse", "build": "26.1025.0009",
+        "values": {"intensity": 1.0, "style": 0, "local_tone": 0.60, "structure": 0.60, "character": 0.68,
+                   "character_mask": 1, "passes": 1, "block_hudless": 1, "resolution_scale": 0.74}
+      },
+      "verified": true
+    }
+  }
+}

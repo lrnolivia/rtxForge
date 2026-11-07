@@ -414,6 +414,7 @@ public sealed partial class GamePage : Page
                 reshade.Add(Prefs.Row("Custom RenoDX add-on", "Choose a RenoDX .addon64 or .addon32 file for this game. Its architecture and exact files are checked before installation; automatic updates keep your custom choice.", customHdr, "\uE8B7"));
                 PageHost.Children.Add(reshade);
                 _ = FillHdrAsync(g, hdrStatus, hdrInstall, hdrRemove);
+                PageHost.Children.Add(NrAddonsGroup(g));
                 // populate_tools: NR diagnosis and ReShade / add-ons, each reviewed before it touches the game.
 
                 var graphicsTools = new PresetColumns(360, 2) { ColumnSpacing = 12, RowSpacing = 12 };

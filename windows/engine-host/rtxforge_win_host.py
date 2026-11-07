@@ -342,7 +342,8 @@ def hello(_params):
 
 def scan(params):
     import executable_selection
-    with executable_selection.choices(params.get('game_executables')):
+    import transactions
+    with executable_selection.choices(params.get('game_executables')), transactions.read_only_pass():
         return _scan(params)
 
 

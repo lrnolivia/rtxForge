@@ -64,6 +64,8 @@ def scan(service, game_folders=(), library_folders=()):
             row['metadata_appid'] = data['appid']
             row['name'] = f"{data['name']} (Build {match[2]})"
     # The next launch's first scan reuses the digests this one computed.
+    import feeder_provider
     import file_stamps
     file_stamps.save()
+    feeder_provider.save_probes()
     return sorted(result, key=lambda row: (row['name'].casefold(), key(row['game'])))

@@ -22,6 +22,13 @@ def lock():
 
 
 def machine(path):
+    """The PE machine type (x86 0x14c or x64 0x8664). Scans ask several times
+    per game; the answer is kept per executable version."""
+    import feeder_provider as f
+    return f.cached_value('pe-machine-v1', path, lambda: _machine(path), valid=lambda value: value in (0x14c, 0x8664))
+
+
+def _machine(path):
     with Path(path).open('rb') as stream:
         header = stream.read(64)
         t.need(len(header) == 64 and header[:2] == b'MZ', 'Choose a Windows game executable')

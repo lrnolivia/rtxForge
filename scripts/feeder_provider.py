@@ -5,6 +5,7 @@ adapter never runs upstream installers or manufactures OptiScaler ownership.
 """
 from __future__ import annotations
 
+import atexit
 import contextlib
 import copy
 import configparser
@@ -420,7 +421,9 @@ def graphics_apis(e, exe):
         if binary in visited:
             continue
         visited.add(binary)
-        names = {name.lower() for name in e.pe_imported_dlls(binary)}
+        # Reading the import table opens the executable, which costs up to
+        # 20 ms per file on a scan; the cached list changes only with the file.
+        names = cached_probe('pe-imports-v1', binary, lambda: {name.lower() for name in e.pe_imported_dlls(binary)})
         def probe():
             imported = names | {name.lower() for name in delay_imported_dlls(binary)}
             found = {api for api in ('d3d9', 'd3d10', 'd3d10_1', 'd3d11', 'd3d12') if api + '.dll' in imported}
@@ -447,20 +450,24 @@ def _probe_path():
     return Path(base) / 'rtxForge' / 'exe-probes.json'
 
 
-def cached_probe(kind, exe, compute):
+_PROBES_DIRTY = False
+
+
+def cached_value(kind, exe, compute, valid=lambda value: isinstance(value, list)):
     """A per-executable answer that changes only when the file does (path, size, modified time).
 
     Every library scan otherwise re-reads multi-gigabyte game executables to detect their
-    renderer; an empty RTXFORGE_PROBE_CACHE keeps the answers in memory only."""
-    global _PROBES
+    renderer; an empty RTXFORGE_PROBE_CACHE keeps the answers in memory only. New answers
+    reach the file through save_probes(), once per scan and at exit."""
+    global _PROBES, _PROBES_DIRTY
     exe = Path(exe)
     try:
         stat = exe.stat()
     except OSError:
         return compute()
-    path = _probe_path()
     if _PROBES is None:
         _PROBES = {}
+        path = _probe_path()
         if path and path.is_file():
             try:
                 loaded = json.loads(path.read_text(encoding='utf-8'))
@@ -470,19 +477,36 @@ def cached_probe(kind, exe, compute):
     key = f'{kind}|{os.path.normcase(str(exe))}'
     stamp = [stat.st_size, stat.st_mtime_ns]
     hit = _PROBES.get(key)
-    if isinstance(hit, dict) and hit.get('stamp') == stamp and isinstance(hit.get('value'), list):
-        return set(hit['value'])
-    value = set(compute())
-    _PROBES[key] = {'stamp': stamp, 'value': sorted(value)}
-    if path:
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            temp = path.with_name(path.name + '.tmp')
-            temp.write_text(json.dumps(_PROBES), encoding='utf-8')
-            os.replace(temp, path)
-        except OSError:
-            pass  # a cache miss next time, never a failed scan
+    if isinstance(hit, dict) and hit.get('stamp') == stamp and valid(hit.get('value')):
+        return hit['value']
+    value = compute()
+    _PROBES[key] = {'stamp': stamp, 'value': value}
+    _PROBES_DIRTY = True
     return value
+
+
+def cached_probe(kind, exe, compute):
+    """cached_value for a set of names."""
+    return set(cached_value(kind, exe, lambda: sorted(set(compute()))))
+
+
+def save_probes():
+    """Write new probe answers. A failure only costs a cache miss next time, never a failed scan."""
+    global _PROBES_DIRTY
+    path = _probe_path()
+    if not _PROBES_DIRTY or path is None or _PROBES is None:
+        return
+    _PROBES_DIRTY = False
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_name(path.name + f'.{os.getpid()}.tmp')
+        temp.write_text(json.dumps(_PROBES), encoding='utf-8')
+        os.replace(temp, path)
+    except (OSError, RuntimeError):  # RuntimeError: a probe landed while writing
+        _PROBES_DIRTY = True
+
+
+atexit.register(save_probes)
 
 
 def mentioned_apis(exe, limit=2 * 1024**3):
@@ -492,10 +516,19 @@ def mentioned_apis(exe, limit=2 * 1024**3):
             if not 0 < os.fstat(file.fileno()).st_size <= limit:
                 return set()
             with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
-                return {api for api in ('d3d9', 'd3d10', 'd3d10_1', 'd3d11', 'd3d12')
-                        if re.search(rb'(?i)' + api.encode() + rb'\.dll', data)}
+                # One pass over the file, stopping once every name is seen. The
+                # character classes match any case, as (?i) does, several times faster.
+                found = set()
+                for match in _MENTIONED.finditer(data):
+                    found.add('d3d' + match[1].decode())
+                    if len(found) == 5:
+                        break
+                return found
     except (OSError, ValueError):
         return set()
+
+
+_MENTIONED = re.compile(rb'[dD]3[dD](9|10_1|10|11|12)\.[dD][lL][lL]')
 
 
 def route_note(e, row):
@@ -516,36 +549,45 @@ def route_note(e, row):
 
 def delay_imported_dlls(exe):
     """Names in a PE32+ delay-load import directory; empty when absent or unreadable."""
+    import mmap
     import struct
     try:
-        data = Path(exe).read_bytes()
-        pe = struct.unpack_from('<I', data, 0x3C)[0]
-        if data[:2] != b'MZ' or data[pe:pe + 4] != b'PE\0\0':
-            return set()
-        sections, optional = struct.unpack_from('<H', data, pe + 6)[0], struct.unpack_from('<H', data, pe + 20)[0]
-        opt = pe + 24
-        if struct.unpack_from('<H', data, opt)[0] != 0x20B or optional < 112 + 14 * 8:
-            return set()
-        rva = struct.unpack_from('<I', data, opt + 112 + 13 * 8)[0]
-        table = [struct.unpack_from('<IIII', data, opt + optional + i * 40 + 8) for i in range(sections)]
-
-        def offset(value):
-            for size, address, raw_size, raw in table:
-                if address <= value < address + max(size, raw_size):
-                    return value - address + raw
-            raise ValueError('RVA outside sections')
-
-        names, cursor = set(), offset(rva) if rva else None
-        while cursor is not None and len(names) < 256:
-            entry = data[cursor:cursor + 32]
-            if len(entry) < 32 or not any(entry):
-                break
-            start = offset(struct.unpack_from('<I', entry, 4)[0])
-            names.add(data[start:data.index(b'\0', start)].decode('ascii'))
-            cursor += 32
-        return names
+        # Mapped, not read: only the header and import pages of a large executable are touched.
+        with open(exe, 'rb') as file, mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            return _delay_imports(data, struct)
     except (OSError, ValueError, struct.error, UnicodeDecodeError):
         return set()
+
+
+def _delay_imports(data, struct):
+    pe = struct.unpack_from('<I', data, 0x3C)[0]
+    if data[:2] != b'MZ' or data[pe:pe + 4] != b'PE\0\0':
+        return set()
+    sections, optional = struct.unpack_from('<H', data, pe + 6)[0], struct.unpack_from('<H', data, pe + 20)[0]
+    opt = pe + 24
+    if struct.unpack_from('<H', data, opt)[0] != 0x20B or optional < 112 + 14 * 8:
+        return set()
+    rva = struct.unpack_from('<I', data, opt + 112 + 13 * 8)[0]
+    table = [struct.unpack_from('<IIII', data, opt + optional + i * 40 + 8) for i in range(sections)]
+
+    def offset(value):
+        for size, address, raw_size, raw in table:
+            if address <= value < address + max(size, raw_size):
+                return value - address + raw
+        raise ValueError('RVA outside sections')
+
+    names, cursor = set(), offset(rva) if rva else None
+    while cursor is not None and len(names) < 256:
+        entry = data[cursor:cursor + 32]
+        if len(entry) < 32 or not any(entry):
+            break
+        start = offset(struct.unpack_from('<I', entry, 4)[0])
+        end = data.find(b'\0', start)
+        if end < 0:
+            raise ValueError('Unterminated delay-import name')
+        names.add(data[start:end].decode('ascii'))
+        cursor += 32
+    return names
 
 
 def leftover_sr(e, directory):

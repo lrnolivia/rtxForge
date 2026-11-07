@@ -477,6 +477,27 @@ def _prepare_request(params):
             "warnings": _override_warnings(review)}
 
 
+def review_prepare(params):
+    """A whole reviewed operation, planned the way Game Mode plans it (scripts/review_plan.py).
+
+    Each game takes its own route (Adoption, Vulkan, Feeder NR or its DLSS
+    package), consecutive games on one route share a prepare call, downloads
+    come first, and games that support only NR or only MFG get opt-in offers.
+    Every step and offer is an ordinary prepared review with its own token."""
+    import review_plan
+    settings = params.get('settings') or {}
+
+    def prepare_step(rows, mode, operation, values):
+        return prepare({'rows': rows, 'mode': mode, 'operation': operation, 'settings': values, 'save_defaults': False})
+
+    def prefetch(batches):
+        ui.progress('Downloading packages/files', checked=0, total=0)
+        prefetch_install({'batches': batches, 'manage_dlss_files': settings.get('manage_dlss_files', True)})
+    result = review_plan.plan(prepare_step, lambda tokens: discard_operation({'tokens': tokens}), params.get('rows') or [],
+                              params['operation'], params['mode'], settings, prefetch)
+    return {'steps': result['steps'], 'supported': result['offers'], 'blocked': result['blocked'], 'warnings': result['warnings']}
+
+
 def prefetch_install(params):
     import install_prefetch
     hardware = service.hardware()
@@ -616,7 +637,7 @@ def steam_remove(params):
 
 running: dict[str, dict] = {}
 METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": scan, "prepare": prepare,
-           "prefetch_install": prefetch_install,
+           "prefetch_install": prefetch_install, "review_prepare": review_prepare,
            "execute": execute, "cancel": cancel, "discard_operation": discard_operation, "save_defaults": save_defaults,
            "prepare_dlss": prepare_dlss, "update_dlss": update_dlss,
            "steam_status": steam_status, "steam_review": steam_review, "steam_install": steam_install,
@@ -693,12 +714,12 @@ win_features.live_status = METHODS['companion_status']
 
 
 _download_gate = threading.RLock()
-_DOWNLOAD_METHODS = {'prefetch_install', 'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'update_stage', 'update_apply', 'storage_review', 'feeder_storage',
+_DOWNLOAD_METHODS = {'prefetch_install', 'review_prepare', 'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'update_stage', 'update_apply', 'storage_review', 'feeder_storage',
                      'nr_review'}
 # Reviews and writes take turns (writer_gate) instead of racing the background
 # overlay update or each other. Reads, scans and live in-game tuning stay free;
 # overlay_refresh_retry holds the gate itself.
-_WRITER_METHODS = {'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'update_stage', 'update_apply',
+_WRITER_METHODS = {'prepare', 'review_prepare', 'execute', 'prepare_dlss', 'update_dlss', 'update_stage', 'update_apply',
                    'feeder_storage', 'save_defaults', 'package_use', 'hdr_settings', 'hdr_settings_flush',
                    'nr_addon_settings', 'nr_addon_settings_flush', 'companion_reset', 'companion_forget', 'test_start', 'launch_offline'}
 

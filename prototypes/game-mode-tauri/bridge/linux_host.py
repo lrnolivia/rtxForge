@@ -303,7 +303,7 @@ def bind(root, send):
                    sgdb_connect=sgdb_connect, sgdb_disconnect=lambda _p: {'external': steamgrid_credentials.clear_key()},
                    sgdb_search=lambda p: [{'id': item['id'], 'name': item['name']} for item in steamgrid_client.Client().search(p['term'])],
                    sgdb_artwork=sgdb_artwork, sgdb_download=sgdb_download, media=media, feeder_storage=feeder_storage)
-    from review_routes import ReviewedRoutes
+    from review_plan import ReviewedRoutes
     routes = ReviewedRoutes(prepare, execute, cancel, discard, lambda: library_media.load_settings(service.config),
                             defaults=(settings_review, execute))
     methods.update(prepare_routes=routes.prepare, execute_routes=routes.execute, cancel_routes=routes.cancel, discard_routes=routes.discard)

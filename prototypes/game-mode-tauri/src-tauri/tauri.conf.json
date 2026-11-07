@@ -38,8 +38,7 @@
       "../bridge/read_snapshot.py": "bridge/read_snapshot.py",
       "../bridge/store_background.py": "bridge/store_background.py",
       "../bridge/engine_host.py": "bridge/engine_host.py",
-      "../bridge/linux_host.py": "bridge/linux_host.py",
-      "../bridge/review_routes.py": "bridge/review_routes.py"
+      "../bridge/linux_host.py": "bridge/linux_host.py"
     }
   }
 }

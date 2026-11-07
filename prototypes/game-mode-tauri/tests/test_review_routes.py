@@ -4,7 +4,8 @@ import tempfile
 import unittest
 import threading
 
-spec = importlib.util.spec_from_file_location('review_routes', Path(__file__).resolve().parents[1] / 'bridge/review_routes.py')
+# Game Mode reviews with the same planner as the desktop app.
+spec = importlib.util.spec_from_file_location('review_plan', Path(__file__).resolve().parents[3] / 'scripts/review_plan.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 

@@ -416,11 +416,7 @@ class Controls:
         loader = target / proxy
         expected = (record.get('files') or {}).get(proxy)
         t.need(loader.is_file() and not loader.is_symlink() and isinstance(expected, str), 'The installed loader is missing; repair this game.')
-        signature = (loader.stat().st_size, loader.stat().st_mtime_ns, expected)
-        if self.verified.get(str(loader)) != signature:
-            with loader.open('rb') as stream: digest = hashlib.file_digest(stream, 'sha256').hexdigest()
-            t.need(digest == expected, 'The game loader changed; repair before using live controls.')
-            self.verified[str(loader)] = signature
+        t.need(self._matches(loader, expected), 'The game loader changed; repair before using live controls.')
         key = hashlib.sha256(os.path.normcase(str(exe)).encode()).hexdigest()
         files = {name.casefold() for name in record.get('files', {})}
         immutable = {name.casefold(): digest for name, digest in record['files'].items()
@@ -431,6 +427,24 @@ class Controls:
         return {'row': {k: row.get(k) for k in ('game', 'exe', 'appid', 'name')}, 'root': root,
                 'exe': exe, 'target': target, 'key': key, 'recipe': recipe, 'can_mfg': mfg, 'can_nr': record.get('feature_mode') in ('nr-mfg','nr-only'), 'files': record['files'], 'nr_on_launch': record.get('nr_on_launch')}
 
+    # A file modified this recently can be rewritten again within the same
+    # timestamp tick, keeping its size and modified time, so a match is only
+    # remembered once the file is older than this.
+    RACY_NS = 2_000_000_000
+
+    def _matches(self, path, expected):
+        """True when the file's SHA-256 is expected, reading it again only when it may have changed."""
+        info = path.stat()
+        signature = (info.st_size, info.st_mtime_ns, expected)
+        if self.verified.get(str(path)) == signature:
+            return True
+        with path.open('rb') as stream: actual = hashlib.file_digest(stream, 'sha256').hexdigest()
+        if actual != expected:
+            return False
+        if time.time_ns() - info.st_mtime_ns > self.RACY_NS:
+            self.verified[str(path)] = signature
+        return True
+
     def pipelines(self, game):
         result = {}
         for label, filename in {'SR': 'nvngx_dlss.dll', 'RR': 'nvngx_dlssd.dll',
@@ -440,12 +454,7 @@ class Controls:
             matches = True
             for name, expected in owned:
                 path = t.safe(game['target'] / t.relative(name))
-                if not path.is_file(): matches = False; continue
-                signature = (path.stat().st_size, path.stat().st_mtime_ns, expected)
-                if self.verified.get(str(path)) != signature:
-                    with path.open('rb') as stream: actual = hashlib.file_digest(stream, 'sha256').hexdigest()
-                    if actual == expected: self.verified[str(path)] = signature
-                    else: matches = False
+                if not path.is_file() or not self._matches(path, expected): matches = False
             other = any((game['target'] / directory / filename).is_file() for directory in ('', 'OptiScaler'))
             state = 'managed' if owned and matches else 'changed' if owned else 'other' if other else 'absent'
             result[label] = {'state': state, 'detail': {'managed': 'rtxForge-managed DLL installed',

@@ -272,6 +272,17 @@
                 </div>
                 <div id="extra-neural" class="advanced-section" />
               </section>
+              <section id="addons-section" style="display: none">
+                <div class="section-heading">
+                  <h2><img class="glyph" src="icons/stack-light.png" /><span>NR ADD-ONS</span></h2>
+                </div>
+                <p class="hint">DLSS5 add-ons rtxForge installed in this game. Changes apply after a restart.</p>
+                <div class="inspector-links">
+                  <button id="open-addons" class="text-link">
+                    <img class="glyph" src="icons/sliders-horizontal-light.png" /><span class="button-label">Adjust add-ons</span><span class="chevron" />
+                  </button>
+                </div>
+              </section>
               <section id="effects-section" style="display: none">
                 <div class="section-heading">
                   <h2><img class="glyph" src="icons/stack-light.png" /><span>EFFECTS</span></h2>
@@ -318,6 +329,7 @@
         <div id="settings-modal-host" style="display: none"/>
         <div id="effects-inspector" style="display: none"><p id="effects-note" class="hint"/><p id="effects-result" class="hint" style="display: none"/><div id="effects-fields"/></div>
         <div id="hdr-inspector" style="display: none"><p id="hdr-popup-note" class="hint"/><div id="hdr-popup-fields"/></div>
+        <div id="addons-inspector" style="display: none"><p id="addons-note" class="hint"/><div id="addons-fields"/></div>
         <div id="pass-inspector">
           <div class="segments pass-tabs">
             <button id="pass-2" class="selected"><span class="button-label">Pass 2</span></button>

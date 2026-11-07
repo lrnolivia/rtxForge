@@ -168,6 +168,8 @@ struct Runtime {
     float rememberedMfgMultiplier{-1},rememberedMfgDynamic{0};
     void Hdr(const nlohmann::json& data) {
         if(!data.is_object())return;
+        // NR add-on settings ride inside hdr, which installed Skynizz bridges forward whole.
+        if(data.contains("nr_addons"))Addons(data["nr_addons"]);
         auto& ui=controls->hdr;
         try {
             std::vector<ForgeGlass::HdrField> fields;
@@ -188,6 +190,30 @@ struct Runtime {
                 }
             }
             ui.Set(std::move(fields),supported,installed,message);
+        }catch(const nlohmann::json::exception&){}
+    }
+    void Addons(const nlohmann::json& data) {
+        if(!data.is_object())return;
+        try {
+            std::vector<ForgeGlass::HdrField> fields;
+            const bool supported=data.value("available",false);
+            const auto message=data.value("message",std::string());if(message.size()>1000)return;
+            if(supported){
+                if(!data.contains("controls")||!data["controls"].is_array()||data["controls"].size()>64||!data.contains("values")||!data["values"].is_object())return;
+                std::set<std::string> seen,automatic;
+                if(data.contains("unreported")&&data["unreported"].is_array())for(const auto& key:data["unreported"])if(key.is_string())automatic.insert(key.get<std::string>());
+                for(const auto& f:data["controls"]){
+                    ForgeGlass::HdrField field;field.key=f.at("key").get<std::string>();
+                    if(field.key.empty()||field.key.size()>64||field.key.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")!=std::string::npos||!seen.insert(field.key).second)return;
+                    field.label=f.at("label").get<std::string>();field.section=f.at("section").get<std::string>();field.kind=f.at("kind").get<std::string>();field.unit=f.value("unit",std::string());
+                    if(field.label.size()>120||field.section.size()>120||field.unit.size()>16||(field.kind!="slider"&&field.kind!="choice"))return;
+                    field.minimum=f.at("min").get<float>();field.maximum=f.at("max").get<float>();field.step=f.at("step").get<float>();field.initial=f.at("default").get<float>();field.value=data["values"].at(field.key).get<float>();field.reset=false;field.automatic=automatic.contains(field.key);
+                    if(!std::isfinite(field.minimum)||!std::isfinite(field.maximum)||!std::isfinite(field.step)||!std::isfinite(field.initial)||!std::isfinite(field.value)||field.minimum>field.maximum||field.step<=0||field.value<field.minimum||field.value>field.maximum)return;
+                    if(field.kind=="choice") {const auto& choices=f.at("choices");if(!choices.is_array()||choices.empty()||choices.size()>32||field.minimum!=0||field.maximum!=choices.size()-1||field.value!=std::floor(field.value))return;size_t index=0;for(const auto& choice:choices){const auto label=choice.get<std::string>();if(label.size()>120)return;field.options+="<option value=\""+std::to_string(index++)+"\">"+Rml::StringUtilities::EncodeRml(label)+"</option>";}}
+                    fields.push_back(std::move(field));
+                }
+            }
+            controls->addons.Set(std::move(fields),supported,message);
         }catch(const nlohmann::json::exception&){}
     }
     static bool ReShadeLoaded() {
@@ -333,7 +359,7 @@ struct Runtime {
         c.effects.send=[](const std::string& text){return WithEffects([&](EffectRead,EffectWrite write){return write(text.c_str());});};
         c.CheckPreviewFocus();const auto afterSettings=SettingsValues();for(const auto& [key,value]:afterSettings.items())if(beforeSettings.at(key)!=value)pendingSettings[key]=value;
         if(oldShortcut!=c.shortcut||oldModifiers!=c.shortcutModifiers){const auto key=c.shortcut;int vk=0;if(key!=Rml::Input::KI_UNKNOWN)for(int candidate=1;candidate<256;++candidate)if(Key(candidate)==key){vk=candidate;break;}if(vk||key==Rml::Input::KI_UNKNOWN)pendingSettings["panel_binding"]={{"key",vk},{"modifiers",(c.shortcutModifiers&Rml::Input::KM_ALT?1:0)|(c.shortcutModifiers&Rml::Input::KM_CTRL?2:0)|(c.shortcutModifiers&Rml::Input::KM_SHIFT?4:0)}};}
-        if(helperReady)c.hdr.Flush(c.requestJson);
+        if(helperReady){c.hdr.Flush(c.requestJson);c.addons.Flush(c.requestJson);}
         if(settingInFlight&&now-settingSentAt>10){
             settingInFlight=false;badgeResult="Couldn’t confirm save";badgeUntil=now+2.5;
         }

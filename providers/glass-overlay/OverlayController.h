@@ -12,6 +12,7 @@
 #include "../../prototypes/overlay-rmlui/SessionData.h"
 #include <PrototypeControls.generated.h>
 #include "HdrControls.h"
+#include "NrAddonControls.h"
 #include "EffectControls.h"
 #include "ScreenColorPicker.h"
 #include <filesystem>
@@ -27,6 +28,7 @@ struct Controller : Rml::EventListener
 {
     Rml::ElementDocument* document{};
     HdrControls hdr;
+    NrAddonControls addons;
     EffectControls effects;
     BalancedCards balancedCards;
     ScreenColorPicker screenColorPicker;bool colorEditorOpen=false,colorPicking=false,spectrumOpen=false,posterAvailable=false;MaterialColor::Color spectrumHsv{};
@@ -184,6 +186,7 @@ struct Controller : Rml::EventListener
         effects.document=document;effects.Set(nlohmann::json{{"generation",0},{"fields",nlohmann::json::array()}});
         hdr.document=document;
         hdr.Set({},false,false,"Install a supported RenoDX HDR package to configure it here.");
+        addons.document=document;addons.Set({},false,"");
         for(const auto& control:ExtraControls)if(!values.contains(control.key))values[control.key]=control.initial;defaults=values;
         const auto install=[&](const char* container,const char* page,const std::string& prefix) {
             std::vector<std::string> groups;for(const auto& c:ExtraControls)if(std::string(c.page)==page && std::find(groups.begin(),groups.end(),c.section)==groups.end())groups.push_back(c.section);
@@ -264,7 +267,7 @@ struct Controller : Rml::EventListener
     void Settings(bool show) {
         EndNrPreview();const bool leaving=settingsOpen&&!show;if(show&&!settingsOpen)beforeSettingsNavigation=activeNavigation;
         auto* screen=Element("settings-screen");if(!settingsHome)settingsHome=screen->GetParentNode();
-        settingsOpen=show;const bool modal=BarSettings();if(modal)for(const auto* id:{"pass-inspector","look-inspector","extra-processing","extra-frame-popup","popup-metadata","hdr-inspector","effects-inspector"})Visible(id,false);auto* destination=modal?Element("settings-modal-host"):settingsHome;
+        settingsOpen=show;const bool modal=BarSettings();if(modal)for(const auto* id:{"pass-inspector","look-inspector","extra-processing","extra-frame-popup","popup-metadata","hdr-inspector","effects-inspector","addons-inspector"})Visible(id,false);auto* destination=modal?Element("settings-modal-host"):settingsHome;
         if(screen->GetParentNode()!=destination)destination->AppendChild(screen->GetParentNode()->RemoveChild(screen));
         document->SetClass("settings-page",show);document->SetClass("bar-settings",modal);Visible("settings-modal-host",modal);
         Visible("settings-screen",show);Visible("overview",!show||modal);Visible("inspector",modal);inspectorAnchored=false;Element("inspector")->SetClass("anchored",false);
@@ -697,9 +700,9 @@ struct Controller : Rml::EventListener
         inspectorPanel=panel;Element("inspector")->SetProperty("margin-left","0px");Element("inspector")->SetProperty("margin-top","0px");
         Element("inspector")->SetScrollTop(0);
         Element("inspector")->SetClass("opening",true);
-        Visible("inspector",true);Visible("pass-inspector",panel=="passes");Visible("look-inspector",panel=="look");Visible("extra-processing",panel=="processing");Visible("extra-frame-popup",panel=="frame");Visible("popup-metadata",panel=="overview");Visible("hdr-inspector",panel=="hdr");Visible("effects-inspector",panel=="effects");Element("inspector")->SetClass("session-inspector",panel=="overview");
-        const auto icon=panel=="effects"?"stack":panel=="hdr"?"sun":panel=="overview"?"gauge":panel=="passes"?"stack":panel=="look"?"sliders-horizontal":panel=="frame"?"film-strip":"cpu";
-        const auto title=panel=="effects"?"EFFECTS":panel=="hdr"?"HDR":panel=="overview"?"SESSION":panel=="processing"?"NEURAL RENDERING":panel=="passes"?"PASS TUNING":panel=="look"?"LOOK &amp; DETAIL":panel=="frame"?"FRAME GENERATION":"PROCESSING";
+        Visible("inspector",true);Visible("pass-inspector",panel=="passes");Visible("look-inspector",panel=="look");Visible("extra-processing",panel=="processing");Visible("extra-frame-popup",panel=="frame");Visible("popup-metadata",panel=="overview");Visible("hdr-inspector",panel=="hdr");Visible("effects-inspector",panel=="effects");Visible("addons-inspector",panel=="addons");Element("inspector")->SetClass("session-inspector",panel=="overview");
+        const auto icon=panel=="effects"||panel=="addons"?"stack":panel=="hdr"?"sun":panel=="overview"?"gauge":panel=="passes"?"stack":panel=="look"?"sliders-horizontal":panel=="frame"?"film-strip":"cpu";
+        const auto title=panel=="effects"?"EFFECTS":panel=="addons"?"NR ADD-ONS":panel=="hdr"?"HDR":panel=="overview"?"SESSION":panel=="processing"?"NEURAL RENDERING":panel=="passes"?"PASS TUNING":panel=="look"?"LOOK &amp; DETAIL":panel=="frame"?"FRAME GENERATION":"PROCESSING";
         Element("inspector-title")->SetInnerRML(std::string("<img class=\"glyph\" src=\"icons/")+icon+"-light.png\"/><span>"+title+"</span>");
         if(layout=="centered")Visible("overview",false);
         Reflow();Raise("inspector");Enter("inspector");inspectorAnchored=layout=="bar";Element("inspector")->SetClass("anchored",inspectorAnchored);
@@ -708,7 +711,7 @@ struct Controller : Rml::EventListener
             const float dp=document->GetContext()->GetDensityIndependentPixelRatio();
             popup->SetProperty("left",std::to_string(std::clamp(sidePanelSide=="right"?at.x-size.x-20*dp:at.x+mainSize.x+20*dp,12*dp,std::max(12*dp,view.x-size.x-12*dp)))+"px");popup->SetProperty("top",std::to_string(std::max(TopInset(),at.y))+"px");
         }
-        if(inspectorAnchored) {inspectorSource=panel=="effects"?"open-effects":panel=="hdr"?"open-hdr":panel=="overview"?"open-session":panel=="passes"?"open-passes":panel=="frame"?"open-frame-options":panel=="processing"?"open-processing":"open-look";PlaceAnchoredInspector();}
+        if(inspectorAnchored) {inspectorSource=panel=="effects"?"open-effects":panel=="addons"?"open-addons":panel=="hdr"?"open-hdr":panel=="overview"?"open-session":panel=="passes"?"open-passes":panel=="frame"?"open-frame-options":panel=="processing"?"open-processing":"open-look";PlaceAnchoredInspector();}
         if(RestorePosition("inspector")){inspectorAnchored=false;Element("inspector")->SetClass("anchored",false);}
     }
     void PlaceAnchoredInspector() {
@@ -791,7 +794,7 @@ struct Controller : Rml::EventListener
         if(button)target=button;
         while(target && target->GetId().empty())target=target->GetParentNode();
         if(!target)return;const auto id=target->GetId();
-        if(effects.Event(id,event)||hdr.Event(id,event))return;
+        if(effects.Event(id,event)||hdr.Event(id,event)||addons.Event(id,event))return;
         if(event.GetType()=="mouseover") {
             if(inside("open-layout")||inside("layout-picker")){QuickLayouts(true);return;}
             auto* tip=event.GetTargetElement();while(tip&&!tip->HasAttribute("title"))tip=tip->GetParentNode();const auto title=tip?tip->GetAttribute<Rml::String>("title",""):"";if(!title.empty()) {const auto at=tip->GetAbsoluteOffset(Rml::BoxArea::Border);Element("tooltip")->SetInnerRML(Rml::StringUtilities::EncodeRml(title));Element("tooltip")->SetProperty("left",std::to_string(at.x-60)+"px");Element("tooltip")->SetProperty("top",std::to_string(at.y+38)+"px");Visible("tooltip",true);}
@@ -886,6 +889,7 @@ struct Controller : Rml::EventListener
             else if(id=="bar-top"||id=="bar-bottom")BarEdge(id.substr(4));
             else if(id.rfind("layout-",0)==0)Layout(id.substr(7));
             else if(id=="nav-overview"||id=="nav-frame"||id=="nav-neural"||id=="nav-hdr"||id=="nav-effects"||id=="nav-look"||id=="nav-passes") {Settings(false);Page(id);}
+            else if(id=="open-addons")Open("addons");
             else if(id=="open-effects"){if(layout=="centered"){Settings(false);Page("nav-effects");}else Open("effects");}
             else if(id=="open-hdr"){if(layout=="centered"){Settings(false);Page("nav-hdr");}else Open("hdr");}
             else if(id=="welcome-close")Visible("welcome",false);

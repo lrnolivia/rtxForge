@@ -699,7 +699,7 @@ _DOWNLOAD_METHODS = {'prefetch_install', 'prepare', 'execute', 'prepare_dlss', '
 # overlay_refresh_retry holds the gate itself.
 _WRITER_METHODS = {'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'update_stage', 'update_apply',
                    'feeder_storage', 'save_defaults', 'package_use', 'hdr_settings', 'hdr_settings_flush',
-                   'companion_reset', 'companion_forget', 'test_start', 'launch_offline'}
+                   'nr_addon_settings', 'nr_addon_settings_flush', 'companion_reset', 'companion_forget', 'test_start', 'launch_offline'}
 
 
 def _writer(method):

@@ -119,6 +119,28 @@ class ReShadeAcknowledgment(unittest.TestCase):
         self.assertIn('"EFFECTS"', source('providers/glass-overlay/OverlayController.h'))
 
 
+class NrAddonPanel(unittest.TestCase):
+    def test_addon_settings_have_a_section_an_inspector_and_a_save_route(self):
+        rml = source('prototypes/overlay-rmlui/overlay.rml')
+        section = rml[rml.index('<section id="addons-section"'):]
+        self.assertIn('id="open-addons"', section[:section.index('</section>')])
+        self.assertIn('id="addons-inspector"', rml)
+        self.assertIn('nr-addons-save', source('providers/glass-overlay/NrAddonControls.h'))
+        self.assertIn('"NR ADD-ONS"', source('providers/glass-overlay/OverlayController.h'))
+        self.assertIn('c.addons.Flush(c.requestJson)', source('windows/overlay-rmlui/GlassRuntime.cpp'))
+
+    def test_addon_settings_ride_inside_hdr_for_installed_bridges(self):
+        # The Skynizz bridge rebuilds panel replies from fixed keys and forwards hdr whole.
+        self.assertIn('{"hdr",ForgePanelChannel::hdr}', source('providers/glass-overlay/ForgeGlassPanel.h'))
+        self.assertIn('data.contains("nr_addons")', source('windows/overlay-rmlui/GlassRuntime.cpp'))
+        coordinator = source('windows/RtxForge.Windows/Services/NativePanelCoordinator.cs')
+        self.assertIn('case "nr-addons-save":', coordinator)
+        self.assertIn('result["nr_addons"]', coordinator)
+        linux = source('scripts/linux_overlay_host.py')
+        self.assertIn("op=='nr-addons-save'", linux)
+        self.assertIn("response['hdr']['nr_addons']", linux)
+
+
 class RenoDXLiveInterface(unittest.TestCase):
     def test_export_bounds_match_the_helper(self):
         live = source('providers/renodx-dlss5/rtxforge_live.hpp')

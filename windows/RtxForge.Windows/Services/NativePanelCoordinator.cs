@@ -62,7 +62,7 @@ internal sealed class NativePanelCoordinator : IDisposable
         try
         {
             if (DateTime.UtcNow >= nextHdrFlush)
-            { nextHdrFlush = DateTime.UtcNow.AddSeconds(3); await engine.FlushHdrSettingsAsync(); }
+            { nextHdrFlush = DateTime.UtcNow.AddSeconds(3); await engine.FlushHdrSettingsAsync(); await engine.FlushNrAddonSettingsAsync(); }
             var active = await engine.ActiveCompanionAsync(targets, MainWindow.ForegroundProcessId(), pid);
             pollProblem = null;
             var foundPid = active["pid"]?.GetValue<int>() ?? 0;
@@ -159,7 +159,7 @@ internal sealed class NativePanelCoordinator : IDisposable
                 preferences["game_title"] = game!.Name;
                 preferences["game_accent"] = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
                 var hello = new JsonObject { ["op"] = action, ["settings"] = preferences, ["status"] = state };
-                hello["hdr"] = await engine.HdrSettingsAsync(game!);
+                hello["hdr"] = await HdrWithAddonsAsync();
                 if (state["can_save"]?.GetValue<bool>() == true)
                 {
                     var library = await engine.CompanionAsync("preset_list", game!, pid: pid);
@@ -167,8 +167,15 @@ internal sealed class NativePanelCoordinator : IDisposable
                 }
                 return hello;
             case "hdr-save":
-                return new JsonObject { ["op"] = action, ["hdr"] = await engine.HdrSettingsAsync(game!, message["changes"] as JsonObject
-                    ?? throw new InvalidOperationException("Choose an HDR setting.")), ["settings"] = SettingsSnapshot(), ["message"] = "HDR preferences saved. Close and restart the game to apply." };
+                var hdrSaved = await engine.HdrSettingsAsync(game!, message["changes"] as JsonObject
+                    ?? throw new InvalidOperationException("Choose an HDR setting."));
+                hdrSaved["nr_addons"] = await engine.NrAddonSettingsAsync(game!);
+                return new JsonObject { ["op"] = action, ["hdr"] = hdrSaved, ["settings"] = SettingsSnapshot(), ["message"] = "HDR preferences saved. Close and restart the game to apply." };
+            case "nr-addons-save":
+                var addonsSaved = await engine.NrAddonSettingsAsync(game!, message["changes"] as JsonObject
+                    ?? throw new InvalidOperationException("Choose an NR add-on setting."));
+                var withHdr = await engine.HdrSettingsAsync(game!); withHdr["nr_addons"] = addonsSaved;
+                return new JsonObject { ["op"] = action, ["hdr"] = withHdr, ["settings"] = SettingsSnapshot(), ["message"] = "NR add-on settings saved. Close and restart the game to apply." };
             case "preset-save":
             case "preset-delete":
             case "preset-list":
@@ -211,6 +218,14 @@ internal sealed class NativePanelCoordinator : IDisposable
                 throw new InvalidOperationException("Review library-wide changes in Desktop or Game Mode settings.");
             default: throw new InvalidOperationException("Unsupported panel request.");
         }
+    }
+    // NR add-on settings ride inside the hdr reply: installed Skynizz bridges
+    // rebuild the panel reply from fixed keys and forward that object whole.
+    async Task<JsonObject> HdrWithAddonsAsync()
+    {
+        var result = await engine.HdrSettingsAsync(game!);
+        result["nr_addons"] = await engine.NrAddonSettingsAsync(game!);
+        return result;
     }
     void SetPreference(JsonObject message)
     {

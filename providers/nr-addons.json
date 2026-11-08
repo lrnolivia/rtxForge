@@ -167,7 +167,7 @@
   "combos": {
     "characters-and-world": {
       "name": "Characters + world",
-      "source": "Community setup: ShortFuse for character detail, Lecram 10.8 for the rest",
+      "source": "Community setup: ShortFuse for character detail, the world from Lecram 10.8, or from Skynizz where it runs NR + MFG",
       "environment": {
         "addon": "lecram", "build": "10.8", "model": "new",
         "values": {"intensity": 1.0, "style": 0, "local_tone": 0.39, "structure": 0.40, "character": 0.10,
@@ -178,15 +178,13 @@
         "values": {"intensity": 1.0, "style": 0, "local_tone": 0.60, "structure": 0.60, "character": 0.68,
                    "character_mask": 1, "passes": 1, "block_hudless": 1, "diffuse_white_nits": 70}
       },
-      "verified": true
-    },
-    "characters-with-optiscaler": {
-      "name": "Characters + OptiScaler NR",
-      "source": "OptiScaler's NR for the world with ShortFuse for character detail, for games where OptiScaler runs NR + MFG",
-      "character": {
-        "addon": "shortfuse", "build": "26.1025.0009",
-        "values": {"intensity": 1.0, "style": 0, "local_tone": 0.60, "structure": 0.60, "character": 0.68,
-                   "character_mask": 1, "passes": 1, "block_hudless": 1, "resolution_scale": 0.74}
+      "beside_runtime_nr": {
+        "note": "Beside Skynizz's NR + MFG the second NR pass runs close to a 12 GB card's video memory, so ShortFuse runs at 74% and shares Skynizz's model.",
+        "character": {
+          "addon": "shortfuse", "build": "26.1025.0009",
+          "values": {"intensity": 1.0, "style": 0, "local_tone": 0.60, "structure": 0.60, "character": 0.68,
+                     "character_mask": 1, "passes": 1, "block_hudless": 1, "resolution_scale": 0.74}
+        }
       },
       "verified": true
     }

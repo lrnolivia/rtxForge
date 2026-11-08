@@ -26,10 +26,14 @@ assert ok['ok'] and not ok['feeder'] and ok['verified'] and not ok['optiscaler_n
 opti=dict(row,installed=True,runtime_provider='skynizz',feature_mode='nr-mfg')
 lecram=M['nr_check']({'row':opti,'setup':{'environment':combo['environment']}})
 assert not lecram['ok'] and 'OptiScaler is installed' in lecram['reason'],lecram
-sf=catalog['combos']['characters-with-optiscaler']
-beside=M['nr_check']({'row':opti,'setup':{'character':sf['character']}})
-assert beside['ok'] and beside['optiscaler_nr'] and beside['model'] is None,beside
-assert M['nr_status']({'row':opti})['default']=={'character':{'addon':'shortfuse'}}
+here=M['nr_catalog']({'row':opti})
+assert here['runtime_nr']=={'id':'optiscaler','name':'Skynizz'},here['runtime_nr']
+sf=here['combos']['characters-and-world']
+assert sf['environment']=={'addon':'optiscaler'} and sf['character']['values']['resolution_scale']==0.74,sf
+beside=M['nr_check']({'row':opti,'setup':{'environment':sf['environment'],'character':sf['character']}})
+assert beside['ok'] and beside['optiscaler_nr'] and beside['model'] is None and beside['world']=='Skynizz',beside
+status=M['nr_status']({'row':opti})
+assert status['default']=={'environment':{'addon':'optiscaler'},'character':{'addon':'shortfuse'}} and status['runtime_nr']['name']=='Skynizz',status
 no=M['nr_check']({'row':dict(row,native_dlss=False),'setup':{'environment':combo['environment'],'character':combo['character']}})
 assert not no['ok'] and 'own DLSS' in no['reason'],no
 gitc=M['nr_check']({'row':row,'setup':{'environment':{'addon':'gitc'},'character':{'addon':'lecram'}}})
@@ -45,7 +49,7 @@ except Exception as error:assert 'Built-in' in str(error),error
 else:raise AssertionError('a built-in combo was deleted')
 left=M['nr_combo_delete']({'id':saved['id']})
 assert saved['id'] not in left['combos']
-assert M['nr_status']({'row':row})=={'installed':False,'default':{'environment':{'addon':'lecram'}}}
+assert M['nr_status']({'row':row})=={'installed':False,'default':{'environment':{'addon':'lecram'}},'runtime_nr':None}
 print('NR add-on host methods passed')
 '''
 

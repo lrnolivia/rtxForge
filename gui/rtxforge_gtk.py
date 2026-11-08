@@ -6756,22 +6756,25 @@ class Window(Adw.ApplicationWindow):
         """DLSS5 NR add-ons: Environment and Character each take the add-on, pinned build and
         Old/New model the user picks; combos fill both slots and every change is checked first."""
         import nr_addons,nr_install
-        group=Adw.PreferencesGroup(title='DLSS5 NR add-ons',description="Choose an add-on for the environment and one for character detail, each with the Old or New DLSS5 model. Where OptiScaler runs its own NR, that NR is the environment. rtxForge downloads the pinned files and checks this game before anything is installed.")
+        group=Adw.PreferencesGroup(title='DLSS5 NR add-ons',description="Choose the world (Environment) and an add-on for character detail, each with the Old or New DLSS5 model. Where Skynizz runs NR, Skynizz is the world. rtxForge downloads the pinned files and checks this game before anything is installed.")
         body.append(group)
         status=row('NR add-ons','Checking…');group.add(status)
         if self.options.demo:status.set_subtitle('NR add-ons are checked in the installed app.');return
         def load():
-            try:result=(nr_addons.catalog_view(self.service.config),nr_install.status(game))
+            try:result=(nr_addons.catalog_view(self.service.config,game),nr_install.status(game))
             except Exception as error:result=error
             GLib.idle_add(show,result)
         def show(result):
             if isinstance(result,Exception):status.set_subtitle(str(result));return
             catalog,current=result
             addons=catalog['addons'];models=catalog['models']
-            name=lambda key:next((a['name'] for a in addons if a['id']==key),key or '')
+            # Where Skynizz runs NR, it is the world: the Environment slot's only choice.
+            runtime=catalog.get('runtime_nr') or current.get('runtime_nr')
+            world=(runtime or {}).get('name') or nr_addons.runtime_name(game)
+            name=lambda key:world if key==nr_addons.RUNTIME else next((a['name'] for a in addons if a['id']==key),key or '')
             if current.get('installed'):
                 setup=current.get('setup') or {}
-                text=' · '.join(f"{slot.capitalize()}: {name(setup[slot]['addon'])} ({setup[slot].get('model','new')})" for slot in nr_addons.SLOTS if setup.get(slot))
+                text=' · '.join(f"{slot.capitalize()}: {name(setup[slot]['addon'])}"+('' if setup[slot]['addon']==nr_addons.RUNTIME else f" ({setup[slot].get('model','new')})") for slot in nr_addons.SLOTS if setup.get(slot))
                 changed=len(current.get('changed') or [])
                 status.set_subtitle('Installed · '+text+(f' · {changed} file(s) changed since install' if changed else ''))
                 remove=row('Remove NR add-ons',"Puts back the game's files and the ReShade settings rtxForge changed. Your own edits are kept.")
@@ -6782,17 +6785,22 @@ class Window(Adw.ApplicationWindow):
             combo_row=safe_combo_row(title='Combo',subtitle='Fill both slots from a saved or built-in combo.',model=Gtk.StringList.new(['Custom']+[value.get('name',key) for key,value in combos]),selected=0)
             group.add(combo_row)
             slots={}
-            # Both slots can be empty: where OptiScaler runs its own NR, that NR is the environment.
-            for slot,optional,title in (('environment',True,'Environment'),('character',True,'Character detail')):
-                names=(['None'] if optional else [])+[a['name'] for a in addons]
+            world_choice=[{'id':nr_addons.RUNTIME,'name':world,'builds':[]}]
+            for slot,optional,title,choices in (('environment',not runtime,'Environment',world_choice if runtime else addons),
+                                                ('character',True,'Character detail',addons)):
+                names=(['None'] if optional else [])+[a['name'] for a in choices]
                 addon=safe_combo_row(title=title,model=Gtk.StringList.new(names),selected=0)
+                addon.set_sensitive(optional or len(choices)>1)
                 build=safe_combo_row(title=title+' build',model=Gtk.StringList.new([]),selected=0)
                 model=safe_combo_row(title=title+' model',model=Gtk.StringList.new([m['label'] for m in models]),selected=max(0,next((i for i,m in enumerate(models) if m['id']=='new'),0)))
                 for widget in (addon,build,model):group.add(widget)
-                slots[slot]={'optional':optional,'addon':addon,'build':build,'model':model,'builds':[],'values':None,'values_for':None}
+                slots[slot]={'optional':optional,'choices':choices,'addon':addon,'build':build,'model':model,'builds':[],'values':None,'values_for':None}
             def chosen(slot):
                 s=slots[slot];index=s['addon'].get_selected()-(1 if s['optional'] else 0)
-                return addons[index] if 0<=index<len(addons) else None
+                return s['choices'][index] if 0<=index<len(s['choices']) else None
+            def position(slot,key):
+                s=slots[slot];found=next((i for i,a in enumerate(s['choices']) if a['id']==key),None)
+                return 0 if found is None else found+(1 if s['optional'] else 0)
             def fill_builds(slot,select=None):
                 s=slots[slot];builds=(chosen(slot) or {}).get('builds',[])
                 s['builds']=builds;s['build'].set_model(Gtk.StringList.new([b['label'] for b in builds]))
@@ -6804,6 +6812,7 @@ class Window(Adw.ApplicationWindow):
                 for slot,s in slots.items():
                     addon=chosen(slot)
                     if not addon:continue
+                    if addon['id']==nr_addons.RUNTIME:result[slot]={'addon':addon['id']};continue  # Skynizz brings its own model
                     index=s['build'].get_selected()
                     spec={'addon':addon['id'],'build':s['builds'][index]['id'] if index<len(s['builds']) else None,'model':models[s['model'].get_selected()]['id']}
                     if s['values'] is not None and s['values_for']==addon['id']:spec['values']=dict(s['values'])
@@ -6820,7 +6829,7 @@ class Window(Adw.ApplicationWindow):
                 result=nr_addons.check(game,setup())
                 if result['ok']:
                     text='Works in this game.' if result['verified'] else 'Works in this game · this pairing is not verified on a test copy yet.'
-                    if result.get('optiscaler_nr'):text="OptiScaler's NR covers the environment. "+text
+                    if result.get('optiscaler_nr'):text=f"{world} covers the environment. "+text
                     if result['skipped']:text+=" Some settings aren't verified for this add-on and are left out."
                 else:text=result['reason']
                 verdict.set_subtitle(text);install.set_sensitive(result['ok'] and not self.busy)
@@ -6833,11 +6842,11 @@ class Window(Adw.ApplicationWindow):
             def combo_chosen(*_):
                 index=combo_row.get_selected()
                 if index<=0:return
+                # The combo as it applies to this game: beside Skynizz, Skynizz is its world.
                 combo=combos[index-1][1];state['filling']=True
                 for slot,s in slots.items():
                     spec=combo.get(slot) or {}
-                    position=next((i for i,a in enumerate(addons) if a['id']==spec.get('addon')),None)
-                    s['addon'].set_selected(0 if position is None else position+(1 if s['optional'] else 0))
+                    s['addon'].set_selected(position(slot,spec.get('addon')))
                     fill_builds(slot,spec.get('build'))
                     s['model'].set_selected(next((i for i,m in enumerate(models) if m['id']==spec.get('model','new')),0))
                     s['values']=spec.get('values');s['values_for']=spec.get('addon')
@@ -6846,8 +6855,7 @@ class Window(Adw.ApplicationWindow):
             state['filling']=True
             start=current.get('default') or {}
             for slot,s in slots.items():
-                position=next((i for i,a in enumerate(addons) if a['id']==(start.get(slot) or {}).get('addon')),None)
-                s['addon'].set_selected(0 if position is None else position+1)
+                s['addon'].set_selected(position(slot,(start.get(slot) or {}).get('addon')))
                 fill_builds(slot)
             state['filling']=False;check()
         threading.Thread(target=load,daemon=True).start()

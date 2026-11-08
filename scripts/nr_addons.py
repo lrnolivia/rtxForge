@@ -11,8 +11,9 @@ It refuses what cannot work instead of guessing:
 - Lecram stands down beside another NR add-on unless ForeignNr=observe is set,
   so a pairing sets it.
 - Lecram never runs where OptiScaler is installed (see the catalog's reason).
-- Where OptiScaler runs its own NR, that NR is the Environment: the slot stays
-  empty and only an add-on marked with_optiscaler_nr may take Character.
+- Where OptiScaler runs its own NR (Skynizz), that NR is the Environment: the
+  slot shows it as the world choice, and only an add-on marked
+  with_optiscaler_nr may take Character.
 - A setting whose key or value encoding is not verified is never written.
 """
 from __future__ import annotations
@@ -40,6 +41,10 @@ VERIFIED_PAIRS: set[frozenset] = {frozenset({('lecram', '10.8'), ('shortfuse', '
 # multi-frame generation (The Witcher 3, RTX 4070, 2026-11-06); a single add-on counts as verified.
 OPTISCALER_NR = ('nr-mfg', 'nr-only')
 OTHER_RUNTIMES = (None, 'feeder', 'vulkan-native')
+# The Environment choice that means "the NR OptiScaler already runs in this game".
+RUNTIME = 'optiscaler'
+# How that world is named: by the package that brings it, like the add-ons.
+RUNTIME_NAMES = {'skynizz': 'Skynizz', 'y4my': 'y4my', 'dlss-unlocked': 'DLSS-Unlocked'}
 
 
 def optiscaler_mode(game):
@@ -48,6 +53,18 @@ def optiscaler_mode(game):
         return game['optiscaler_mode']
     if game.get('installed') and game.get('runtime_provider') not in OTHER_RUNTIMES:
         return game.get('feature_mode') or 'unknown'
+    return None
+
+
+def runtime_name(game):
+    """The name of the package whose NR is (or would be) this game's world: Skynizz unless another one is installed."""
+    return RUNTIME_NAMES.get(game.get('runtime_provider'), 'Skynizz')
+
+
+def runtime_nr(game):
+    """The Environment choice OptiScaler's own NR fills in this game, or None where it doesn't run NR."""
+    if optiscaler_mode(game) in OPTISCALER_NR:
+        return {'id': RUNTIME, 'name': runtime_name(game)}
     return None
 
 _catalog = None
@@ -135,18 +152,22 @@ def plan(game, setup):
     mode = optiscaler_mode(game)
     t.need(mode != 'unknown', "rtxForge can't tell whether OptiScaler's NR is on in this game. Repair OptiScaler here first.")
     optiscaler_nr = mode in OPTISCALER_NR
+    world = runtime_name(game)
+    environment = setup.get('environment')
     if optiscaler_nr:
-        if setup.get('environment'):
-            _slot(setup['environment'], 'environment', game)  # an add-on that can't run here says why first
-        t.need(not setup.get('environment'), "OptiScaler's NR already covers the environment in this game. "
-               'Leave Environment empty and choose a Character add-on.')
-        t.need(setup.get('character'), "OptiScaler's NR covers the environment in this game. Choose a Character add-on.")
+        if environment and environment.get('addon') != RUNTIME:
+            _slot(environment, 'environment', game)  # an add-on that can't run here says why first
+            raise t.Refusal(f'{world} already covers the environment in this game. '
+                            f'Keep {world} as Environment and choose a Character add-on.')
+        t.need(setup.get('character'), f'{world} covers the environment in this game. Choose a Character add-on.')
         slots = [_slot(setup['character'], 'character', game)]
         addon = addons[slots[0]['addon']]
         t.need((addon.get('beside_optiscaler') or {}).get('with_optiscaler_nr'),
-               f"{addon['name']} can't run beside OptiScaler's NR. Switch OptiScaler to MFG Only to use it.")
+               f"{addon['name']} can't run beside {world}'s NR. Switch {world} to MFG Only to use it.")
     else:
-        t.need(setup.get('environment'), 'Choose an add-on for Environment.')
+        t.need(not environment or environment.get('addon') != RUNTIME,
+               f"{world} doesn't run NR in this game. Choose an add-on for Environment.")
+        t.need(environment, 'Choose an add-on for Environment.')
         slots = [_slot(setup['environment'], 'environment', game)]
         if setup.get('character'):
             slots.append(_slot(setup['character'], 'character', game))
@@ -190,6 +211,7 @@ def plan(game, setup):
     return {'slots': slots, 'install': install, 'ini': ini, 'feeder': feeder,
             # OptiScaler's NR brings its own model, which the add-on shares.
             'model': None if optiscaler_nr else slots[0]['model'], 'optiscaler_nr': optiscaler_nr,
+            'world': world if optiscaler_nr else slots[0]['name'].split(' (')[0],
             'verified': len(ids) == 1 and len(slots) == 1 or pair in VERIFIED_PAIRS,
             'skipped': sorted({name for s in slots for name in s['skipped']}),
             # Add-ons ReShade must load while it starts (ReShade.ini [ADDON] LoadFromDllMain).
@@ -228,9 +250,11 @@ def save_combo(config, name, combo):
     t.need(0 < len(name) <= 60, 'Name the combo (up to 60 characters).')
     t.need(isinstance(combo, dict), 'Choose the add-ons for the combo.')
     combo = {slot: combo[slot] for slot in SLOTS if combo.get(slot)}
+    if (combo.get('environment') or {}).get('addon') == RUNTIME:
+        combo.pop('environment')  # the game's own world: saved as no Environment add-on
     t.need(combo, 'Choose the add-ons for the combo.')
     # Validate the add-ons, builds, models and values without a particular game. A combo without
-    # Environment is for games where OptiScaler's NR covers it.
+    # an Environment add-on is for games where Skynizz's NR covers it.
     plan({'native_dlss': True, 'arch': 'x64', 'optiscaler_mode': None if combo.get('environment') else 'nr-mfg'}, combo)
     key = 'user-' + t.sha(name.casefold().encode())[:12]
     saved = saved_combos(config)
@@ -247,22 +271,44 @@ def delete_combo(config, key):
     _store(config, saved)
 
 
-def catalog_view(config):
-    """The catalog as the apps show it: add-ons with their builds, models and combos."""
+def combo_setup(game, combo):
+    """What a combo means in one game. Its Environment is the world: where Skynizz runs NR, Skynizz
+    is the world instead of the combo's add-on, and the combo's beside_runtime_nr settings apply."""
+    setup = {slot: copy.deepcopy(combo[slot]) for slot in SLOTS if combo.get(slot)}
+    world = runtime_nr(game)
+    if world:
+        beside = combo.get('beside_runtime_nr') or {}
+        if beside.get('character'):
+            setup['character'] = copy.deepcopy(beside['character'])
+        setup['environment'] = {'addon': world['id']}
+    elif (setup.get('environment') or {}).get('addon') == RUNTIME:
+        setup.pop('environment')
+    return setup
+
+
+def catalog_view(config, game=None):
+    """The catalog as the apps show it: add-ons with their builds, models and combos. For a game,
+    each combo is what it means there, and runtime_nr names the world Skynizz already provides."""
     cat = catalog()
+    found = combos(config)
+    if game is not None:
+        found = {key: dict(combo_setup(game, combo), name=combo.get('name', key), builtin=combo['builtin'])
+                 for key, combo in found.items()}
     return {'addons': [{'id': key, 'name': a['name'], 'needs_native_dlss': a.get('needs_native_dlss', False),
                         'exclusive': a.get('exclusive', False),
                         'builds': [{'id': b, 'label': v['label'], 'default': bool(v.get('default'))} for b, v in a['builds'].items()]}
                        for key, a in cat['addons'].items()],
             'models': [{'id': key, 'label': m['label']} for key, m in cat['models'].items()],
-            'combos': combos(config)}
+            'combos': found,
+            'runtime_nr': runtime_nr(game) if game is not None else None}
 
 
 def default_setup(game):
-    """The setup a game's picker starts on: Lecram for the environment, or ShortFuse for
-    characters where OptiScaler's NR covers the environment."""
-    if optiscaler_mode(game) in OPTISCALER_NR:
-        return {'character': {'addon': 'shortfuse'}}
+    """The setup a game's picker starts on: Lecram for the environment, or Skynizz for the
+    environment with ShortFuse for characters where Skynizz's NR covers it."""
+    world = runtime_nr(game)
+    if world:
+        return {'environment': {'addon': world['id']}, 'character': {'addon': 'shortfuse'}}
     return {'environment': {'addon': 'lecram'}}
 
 
@@ -271,14 +317,14 @@ def check(game, setup):
     try:
         p = plan(game, setup)
         return {'ok': True, 'verified': p['verified'], 'feeder': p['feeder'], 'skipped': p['skipped'],
-                'install': p['install'], 'model': p['model'], 'optiscaler_nr': p['optiscaler_nr']}
+                'install': p['install'], 'model': p['model'], 'optiscaler_nr': p['optiscaler_nr'], 'world': p['world']}
     except t.Refusal as error:
         return {'ok': False, 'reason': str(error)}
 
 
 def apply_combo(game, combo):
     """A saved combo applied to one game: its plan, or the reason this game can't use it."""
-    setup = {slot: combo[slot] for slot in SLOTS if combo.get(slot)}
+    setup = combo_setup(game, combo)
     try:
         return {'ok': True, 'plan': plan(game, setup)}
     except t.Refusal as error:

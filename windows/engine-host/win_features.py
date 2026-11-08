@@ -896,7 +896,8 @@ def _run_hdr(plan):
 
 
 def nr_catalog(params):
-    return nr_addons.catalog_view(_config())
+    """The add-on catalog; for a row, its combos as they apply there and the world Skynizz provides."""
+    return nr_addons.catalog_view(_config(), (params or {}).get('row'))
 
 
 def nr_check(params):

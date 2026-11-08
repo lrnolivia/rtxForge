@@ -7,8 +7,10 @@ namespace RtxForge.Windows.Services;
 /// the Old/New model, and saved combos. Installs and removals come back as an EngineReview.</summary>
 public sealed partial class EngineForgeService
 {
-    public async Task<JsonObject> NrCatalogAsync() =>
-        await CallAsync("nr_catalog") as JsonObject ?? throw new InvalidOperationException("NR add-ons are unavailable.");
+    /// <summary>The catalog; for a game, its combos as they apply there and the world Skynizz provides (runtime_nr).</summary>
+    public async Task<JsonObject> NrCatalogAsync(Game? game = null) =>
+        await CallAsync("nr_catalog", game is null ? null : new JsonObject { ["row"] = Row(game) }) as JsonObject
+            ?? throw new InvalidOperationException("NR add-ons are unavailable.");
 
     public async Task<JsonObject> NrCheckAsync(Game game, JsonObject setup) =>
         await CallAsync("nr_check", new JsonObject { ["row"] = Row(game), ["setup"] = setup.DeepClone() }) as JsonObject

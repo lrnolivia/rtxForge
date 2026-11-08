@@ -60,14 +60,29 @@ class MixedRoutesTest(unittest.TestCase):
             self.addCleanup(item.stop)
 
     def test_each_game_takes_its_own_route_in_one_review(self):
-        review = self.service.prepare(ROWS, 'nr-mfg', 'install')
-        self.assertEqual(sorted(self.calls), [('engine', 'dlss-unlocked', ['Bright'], 'nr-mfg'),
-                                              ('engine', 'skynizz', ['Alan'], 'nr-mfg'),
-                                              ('feeder', 'skynizz', ['Fable'], 'nr-only'),
-                                              ('vulkan', 'vulkan-native', ['Valley'], 'nr-mfg')])
+        review = self.service.prepare(ROWS, 'nr-only', 'install')
+        self.assertEqual(sorted(self.calls), [('engine', 'dlss-unlocked', ['Bright'], 'nr-only'),
+                                              ('engine', 'skynizz', ['Alan', 'Valley'], 'nr-only'),
+                                              ('feeder', 'skynizz', ['Fable'], 'nr-only')])
         self.assertEqual(review['kind'], 'engine')
         self.assertEqual(sorted(r['name'] for r in review['rows']), ['Alan', 'Bright', 'Fable', 'Valley'])
-        self.assertEqual(len(review['companions']), 3)
+        self.assertEqual(len(review['companions']), 2)
+
+    def test_feeder_games_in_an_nr_mfg_install_are_an_opt_in_offer(self):
+        review = self.service.prepare_supported(ROWS, 'nr-mfg', 'install')
+        self.assertEqual(sorted(call for call in self.calls if call[0] != 'feeder'),
+                         [('engine', 'dlss-unlocked', ['Bright'], 'nr-mfg'), ('engine', 'skynizz', ['Alan'], 'nr-mfg'),
+                          ('vulkan', 'vulkan-native', ['Valley'], 'nr-mfg')])
+        self.assertEqual(sorted(r['name'] for r in review['rows']), ['Alan', 'Bright', 'Valley'])
+        self.assertEqual([(o['reason_code'], o['games'], o['mfg']) for o in review['supported']],
+                         [('feeder-nr-only', ['/games/Fable'], False)])
+        self.service.execute(review)
+        self.assertNotIn('feeder', [kind for kind, _ in self.ran], 'the offer runs only when chosen')
+
+    def test_one_other_route_beside_feeder_is_one_ordinary_review(self):
+        review = self.service.prepare([ROWS[0], ROWS[2]], 'nr-mfg', 'install')
+        self.assertEqual(self.calls, [('engine', 'skynizz', ['Alan'], 'nr-mfg')])
+        self.assertNotIn('companions', review)
 
     def test_one_route_is_one_ordinary_review(self):
         review = self.service.prepare(ROWS[:1] + [game('Cedar')], 'nr-mfg', 'install')
@@ -76,14 +91,14 @@ class MixedRoutesTest(unittest.TestCase):
 
     def test_each_part_checks_only_its_own_games_and_a_drifted_selection_still_refuses(self):
         scope = {'kind': 'filtered', 'games': [r['game'] for r in ROWS]}
-        self.assertEqual(len(self.service.prepare(ROWS, 'nr-mfg', 'install', scope=scope)['rows']), 4)
+        self.assertEqual(len(self.service.prepare(ROWS, 'nr-only', 'install', scope=scope)['rows']), 4)
         with self.assertRaisesRegex(Exception, 'no longer match'):
-            self.service.prepare(ROWS, 'nr-mfg', 'install', scope=dict(scope, games=scope['games'][:3]))
+            self.service.prepare(ROWS, 'nr-only', 'install', scope=dict(scope, games=scope['games'][:3]))
 
     def test_every_part_runs_and_cancelling_stops_the_rest(self):
         review = self.service.prepare(ROWS, 'nr-mfg', 'install')
         self.service.execute(review)
-        self.assertEqual(sorted(kind for kind, _ in self.ran), ['engine', 'engine', 'feeder', 'vulkan'])
+        self.assertEqual(sorted(kind for kind, _ in self.ran), ['engine', 'engine', 'vulkan'])
         self.ran.clear()
         review = self.service.prepare(ROWS, 'nr-mfg', 'install')
         review['cancel_event'] = threading.Event()
@@ -92,7 +107,7 @@ class MixedRoutesTest(unittest.TestCase):
         self.assertEqual(len(self.ran), 1, 'only the part already running finishes')
 
     def test_a_game_on_another_route_is_not_offered_again(self):
-        review = self.service.prepare_supported(ROWS, 'nr-mfg', 'install')
+        review = self.service.prepare_supported(ROWS, 'nr-only', 'install')
         self.assertEqual(review['supported'], [])
 
 

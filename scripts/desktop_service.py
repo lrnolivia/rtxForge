@@ -274,7 +274,10 @@ class DesktopService:
 
         Returns None when every game shares one route. Otherwise the first part with
         games leads (the DLSS package part when there is one) and the other parts run
-        after it as its companions; each part checks only its own games."""
+        after it as its companions; each part checks only its own games.
+
+        Feeder games in a mixed NR + MFG install are left out, as on Windows and in
+        Game Mode: Feeder brings NR only, so prepare_supported offers them separately."""
         import review_plan
 
         def route(row):
@@ -286,6 +289,8 @@ class DesktopService:
             groups.setdefault(route(row), []).append(row)
         if len(groups) < 2:
             return None
+        if operation == 'install' and mode == 'nr-mfg':
+            groups.pop('feeder', None)
         parts = []
         for name, group in groups.items():
             _, provider = review_plan.step(name, operation, settings)
@@ -294,11 +299,12 @@ class DesktopService:
                                       save_defaults=save_defaults and not parts, scope=part_scope, _provider=provider))
         ready = [part for part in parts if part.get('rows')]
         lead = next((part for part in ready if part.get('kind') == 'engine'), ready[0] if ready else parts[0])
-        lead['companions'] = list(lead.get('companions') or []) + [part for part in parts if part is not lead]
-        for part in lead['companions']:
-            if any(part is other for other in parts):
-                lead['rows'] = list(lead.get('rows', [])) + part.get('rows', [])
-                lead['blocked'] = list(lead.get('blocked', [])) + part.get('blocked', [])
+        others = [part for part in parts if part is not lead]
+        if others:
+            lead['companions'] = list(lead.get('companions') or []) + others
+        for part in others:
+            lead['rows'] = list(lead.get('rows', [])) + part.get('rows', [])
+            lead['blocked'] = list(lead.get('blocked', [])) + part.get('blocked', [])
         return lead
 
     def prepare_adapt(self,rows,mode,settings):

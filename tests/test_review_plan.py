@@ -43,6 +43,12 @@ class RouteTest(unittest.TestCase):
         self.assertEqual(plan.step('adopt', 'install', SETTINGS), ('adopt', 'skynizz'))
         self.assertEqual(plan.step('vulkan-native', 'repair', SETTINGS), ('repair', 'vulkan-native'))
 
+    def test_applying_presets_never_reinstalls_a_package(self):
+        # DLSS packages re-apply presets with the engine's preset reset; Feeder saves its ReShade.ini.
+        self.assertEqual(plan.step('skynizz', 'apply', SETTINGS), ('reset', 'skynizz'))
+        self.assertEqual(plan.step('feeder', 'apply', SETTINGS), ('apply', 'skynizz'))
+        self.assertEqual(plan.step('skynizz', 'reset', SETTINGS), ('reset', 'skynizz'))
+
 
 class BatchTest(unittest.TestCase):
     def test_consecutive_games_on_one_route_share_a_batch_in_name_order(self):

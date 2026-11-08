@@ -40,6 +40,15 @@ assert calls==[('reset','nr-mfg','skynizz',['A'])] and downloads==[],(calls,down
 calls.clear()
 host.review_prepare({'rows':rows[1:],'operation':'apply','mode':'nr-mfg','settings':settings})
 assert calls==[('apply','nr-mfg','skynizz',['A'])],calls
+# The background-activity line follows the request and clears when it ends.
+import activity
+lines,replies=[],[]
+host.activity_line=activity.Tracker(lines.append,show_after=0)
+host.send=replies.append
+host.handle({'id':7,'method':'review_prepare','params':{'rows':rows,'operation':'repair','mode':'nr-mfg','settings':settings}})
+texts=[line['text'] for line in lines]
+assert texts[0]=='Checking games for the review' and 'Downloading packages/files' in texts and texts[-1]=='',texts
+assert replies[-1]['id']==7 and 'result' in replies[-1],replies[-1]
 print('PASS: review_prepare plans routes and runs each as the requested engine operation')
 '''
 

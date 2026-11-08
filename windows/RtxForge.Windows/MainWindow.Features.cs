@@ -22,10 +22,24 @@ public sealed partial class MainWindow
     {
         InitializeBackgroundValidation();
         if (Service is not EngineForgeService engine) return;
+        void Activity(string text) => DispatcherQueue.TryEnqueue(() => ShowActivity(text));
+        engine.ActivityChanged += Activity;
+        Closed += (_, _) => engine.ActivityChanged -= Activity;
+        ShowActivity(engine.Activity);
         void Changed(System.Text.Json.Nodes.JsonObject result) => DispatcherQueue.TryEnqueue(() => ShowOverlayRefresh(result));
         engine.OverlayRefreshChanged += Changed;
         Closed += (_, _) => engine.OverlayRefreshChanged -= Changed;
         if (engine.OverlayRefreshResult is { } result) Changed(result);
+    }
+
+    /// <summary>The background-activity line: shown while work runs, hidden when idle.</summary>
+    void ShowActivity(string text)
+    {
+        var busy = !string.IsNullOrWhiteSpace(text);
+        ActivityText.Text = busy ? text : "";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ActivityHost, busy ? text : "");
+        ActivityRing.IsActive = busy;
+        ActivityHost.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void ShowOverlayRefresh(System.Text.Json.Nodes.JsonObject result)

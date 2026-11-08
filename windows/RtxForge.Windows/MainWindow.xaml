@@ -141,6 +141,16 @@
             <Grid>
                 <Frame x:Name="ContentFrame" Navigated="OnFrameNavigated" />
 
+                <!-- One line for background work, shared wording with Linux and Game Mode (scripts/activity.py) -->
+                <Border x:Name="ActivityHost" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,0,0,16"
+                        MaxWidth="480" Padding="12,6,14,6" Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"
+                        CornerRadius="{ThemeResource OverlayCornerRadius}" IsHitTestVisible="False">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ProgressRing x:Name="ActivityRing" IsActive="False" Width="14" Height="14" />
+                        <TextBlock x:Name="ActivityText" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Border>
+
                 <!-- Adw.Toast: InfoBar on an opaque surface so it reads over any content -->
                 <Border x:Name="ToastHost" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,24"
                         MaxWidth="560" Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"

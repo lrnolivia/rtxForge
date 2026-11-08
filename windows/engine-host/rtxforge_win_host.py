@@ -695,6 +695,7 @@ def refresh_overlays(_params=None):
     import overlay_refresh
     import overlay_packages
     import global_controls
+    activity_line.begin('overlay-refresh', 'overlay_refresh_retry')
     try:
         result = overlay_refresh.run(ROOT, STATE,
             lambda: overlay_packages.prepare(engine_bridge.module(service.config), STATE),
@@ -703,6 +704,8 @@ def refresh_overlays(_params=None):
         # Existing game files are kept on validation failures; the next attempt
         # replans from fresh ownership and process checks.
         result = {'status': 'pending', 'error': str(error)}
+    finally:
+        activity_line.end('overlay-refresh')
     if result.get('status') in ('complete', 'pending', 'current'):
         send({'event': 'overlay-refresh', 'result': result})
     return result
@@ -735,6 +738,8 @@ def _writer(method):
 
 
 import writer_gate  # noqa: E402
+import activity  # noqa: E402
+activity_line = activity.Tracker(send)
 # The app shows the background overlay update while it runs; its result follows.
 writer_gate.on_change(lambda label: label == 'the overlay update'
                       and send({'event': 'overlay-refresh', 'result': {'status': 'running'}}))
@@ -742,13 +747,18 @@ writer_gate.on_change(lambda label: label == 'the overlay update'
 
 def handle(request: dict) -> None:
     rid = request.get("id")
+    # One line in every app says what is running in the background (scripts/activity.py).
+    work = ('request', rid if rid is not None else id(request))
+    activity_line.begin(work, request.get("method"))
 
     def report(event: dict) -> None:
         if event.get("kind") == "progress":
             send({"event": "progress", "id": rid, **{k: v for k, v in event.items() if k != "kind"}})
+            activity_line.progress(work, event.get("label"), event.get("checked"), event.get("total"))
         elif event.get("kind") == "log" and str(event.get("text", "")).strip().startswith("Downloading"):
             # Package downloads can take a while; surface them as a phase.
             send({"event": "progress", "id": rid, "label": str(event["text"]).strip()})
+            activity_line.progress(work, str(event["text"]).strip())
 
     try:
         if os.environ.get('RTXFORGE_READ_ONLY') == '1' and request['method'] not in {'hello', 'hardware', 'scan', 'settings', 'overview_inspect', 'dlss_inventory', 'overlay_status'}:
@@ -777,6 +787,7 @@ def handle(request: dict) -> None:
         message = desktop_service.friendly(str(exc)).replace(" from Desktop Mode", "")  # SteamOS wording
         send({"id": rid, "error": message or type(exc).__name__})
     finally:
+        activity_line.end(work)
         if request.get("method") == "execute":
             running.pop((request.get("params") or {}).get("token", ""), None)
 

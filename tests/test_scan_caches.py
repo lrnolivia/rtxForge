@@ -116,6 +116,21 @@ class MentionedApisTest(unittest.TestCase):
                 self.assertEqual(feeder.mentioned_apis(exe, chunk=8), expected, offset)
 
 
+class RenderersTest(unittest.TestCase):
+    def test_renderer_fallback_matches_the_old_case_insensitive_search(self):
+        import re
+        import compat_list
+        samples = [b'\0packed VULKAN-1.DLL and OpenGL32.dll, d3d9.Dll', b'D3D12.DLL d3d11.dll', b'dxgi.dll only',
+                   b'x' * 5 + b'Vulkan-1.Dll' + b'y' * 3 + b'opengl32.DLL']
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.dict(os.environ, {'RTXFORGE_PROBE_CACHE': ''}), mock.patch.object(feeder, '_PROBES', None):
+            for index, data in enumerate(samples):
+                exe = Path(folder) / f'packed{index}.exe'
+                exe.write_bytes(data)
+                old = {api for api, dll in compat_list.RENDERERS.items() if re.search(rb'(?i)' + re.escape(dll.encode()), data)}
+                self.assertEqual(compat_list.renderers(exe), old, data)
+
+
 class PrefetchTest(unittest.TestCase):
     def test_prefetch_fills_the_cache_the_later_digests_read(self):
         import file_stamps

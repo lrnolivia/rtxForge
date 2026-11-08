@@ -63,7 +63,26 @@ def assess(e, row):
     return candidates
 
 
+def _prefetch_renderers(e, rows):
+    """Read the renderers of packed executables side by side; assess() then reads the cached answers.
+
+    Changes no answer: each probe is the one assess() makes, and failures are left to it."""
+    exes = list(dict.fromkeys(Path(row['game']) / row['exe'] for row in rows
+                              if row.get('exe') and not row.get('executable_error')))
+    if len(exes) < 2:
+        return
+    def probe(exe):
+        try:
+            feeder.graphics_apis(e, exe)
+        except Exception:  # assess() makes the same call and reports it
+            pass
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(min(8, len(exes)), thread_name_prefix='renderers') as pool:
+        list(pool.map(probe, exes))
+
+
 def decorate(e, rows):
+    _prefetch_renderers(e, rows)
     for row in rows:
         try:
             candidates = assess(e, row)

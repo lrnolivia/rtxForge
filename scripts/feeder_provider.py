@@ -512,6 +512,11 @@ atexit.register(save_probes)
 
 
 def mentioned_apis(exe, limit=2 * 1024**3, chunk=32 * 1024**2):
+    return mentioned(exe, _MENTIONED, limit, chunk)
+
+
+def mentioned(exe, names, limit=2 * 1024**3, chunk=32 * 1024**2):
+    """The keys of (key, lowercase DLL name) pairs whose name the file contains in any case."""
     import mmap
     try:
         with open(exe, 'rb') as file:
@@ -519,13 +524,13 @@ def mentioned_apis(exe, limit=2 * 1024**3, chunk=32 * 1024**2):
                 return set()
             with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
                 # Any-case DLL names, chunk by chunk, stopping once every name is
-                # seen: a lowercased chunk and five literal searches are 2-3x
-                # faster than a case-insensitive pattern over packed executables.
+                # seen: a lowercased chunk and literal searches are 2-3x faster
+                # than a case-insensitive pattern over packed executables.
                 # Chunks overlap by one name, so a name across a boundary is found.
-                found, start, overlap = set(), 0, max(len(name) for _, name in _MENTIONED) - 1
-                while start < len(data) and len(found) < len(_MENTIONED):
+                found, start, overlap = set(), 0, max(len(name) for _, name in names) - 1
+                while start < len(data) and len(found) < len(names):
                     block = data[start:start + chunk + overlap].lower()
-                    found.update(api for api, name in _MENTIONED if api not in found and name in block)
+                    found.update(key for key, name in names if key not in found and name in block)
                     start += chunk
                 return found
     except (OSError, ValueError):

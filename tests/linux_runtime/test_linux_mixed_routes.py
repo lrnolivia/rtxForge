@@ -34,12 +34,16 @@ class MixedRoutesTest(unittest.TestCase):
             return {'kind': kind, 'rows': [{'name': r['name']} for r in rows], 'blocked': [],
                     'plans': [{'row': r} for r in rows], 'names': [r['name'] for r in rows]}
 
+        self.operations = []
+
         def engine_prepare(config, rows, mode, operation, settings):
             self.calls.append(('engine', settings['runtime_provider'], [r['name'] for r in rows], mode))
+            self.operations.append(('engine', operation))
             return review('engine', rows, settings)
 
         def feeder_prepare(config, rows, mode, operation, settings, e):
             self.calls.append(('feeder', settings['runtime_provider'], [r['name'] for r in rows], mode))
+            self.operations.append(('feeder', operation))
             return review('feeder', rows, settings)
 
         def vulkan_prepare(config, rows, mode, operation, settings, e):
@@ -105,6 +109,17 @@ class MixedRoutesTest(unittest.TestCase):
         review['cancel_event'].set()
         self.service.execute(review)
         self.assertEqual(len(self.ran), 1, 'only the part already running finishes')
+
+    def test_presets_reach_feeder_games_through_their_reshade_ini(self):
+        installed = [dict(ROWS[0], installed=True, runtime_provider='skynizz'),
+                     dict(ROWS[2], installed=True, runtime_provider='feeder')]
+        # Desktop Apply Presets: a preset reset with values; Feeder takes it as 'apply'.
+        self.service.prepare(installed, 'nr-mfg', 'reset', visual_settings={'nr_strength': 2})
+        self.assertEqual(sorted(self.operations), [('engine', 'reset'), ('feeder', 'apply')])
+        # Game Mode's planner sends 'apply' to a Feeder game directly.
+        self.operations.clear()
+        self.service.prepare(installed[1:], 'nr-mfg', 'apply', visual_settings={'nr_strength': 2})
+        self.assertEqual(self.operations, [('feeder', 'apply')])
 
     def test_a_game_on_another_route_is_not_offered_again(self):
         review = self.service.prepare_supported(ROWS, 'nr-only', 'install')

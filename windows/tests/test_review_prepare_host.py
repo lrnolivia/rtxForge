@@ -24,22 +24,19 @@ host.prefetch_install=lambda params:downloads.append([batch['settings']['runtime
 rows=[{'name':'B','game':'/games/B','exe':'B.exe','runtime_provider':'feeder','installed':True},
       {'name':'A','game':'/games/A','exe':'A.exe','installed':True,'runtime_provider':'skynizz'}]
 settings={'runtime_provider':'skynizz','manage_dlss_files':True}
-desktop={'apply':'reset'}
-# Desktop Repair is the engine's file repair, as in Game Mode; routes, batches and downloads are the planner's.
-result=host.review_prepare({'rows':rows,'operation':'repair','mode':'nr-mfg','settings':settings,'engine_operations':desktop})
+# Repair is the engine's file repair, in Desktop and Game Mode; routes, batches and downloads are the planner's.
+result=host.review_prepare({'rows':rows,'operation':'repair','mode':'nr-mfg','settings':settings})
 assert calls==[('repair','nr-mfg','skynizz',['A']),('repair','nr-mfg','skynizz',['B'])],calls
 assert downloads==[['skynizz','feeder']],downloads
 assert [step['route'] for step in result['steps']]==['skynizz','feeder'],result
 assert [step['operation'] for step in result['steps']]==['repair','repair'],result
 assert result['supported']==[] and result['blocked']==[] and discarded==[],result
-# Desktop Apply re-applies presets as a reset, with no downloads.
+# Applying presets: a DLSS package game takes the preset reset, a Feeder game saves its
+# ReShade.ini ('apply'); nothing is reinstalled or downloaded.
 calls.clear();downloads.clear()
-host.review_prepare({'rows':rows[1:],'operation':'apply','mode':'nr-mfg','settings':settings,'engine_operations':desktop})
-assert calls==[('reset','nr-mfg','skynizz',['A'])] and downloads==[],(calls,downloads)
-# Without a mapping (Game Mode) the planned operation is the engine's.
-calls.clear()
-host.review_prepare({'rows':rows[1:],'operation':'apply','mode':'nr-mfg','settings':settings})
-assert calls==[('apply','nr-mfg','skynizz',['A'])],calls
+result=host.review_prepare({'rows':rows,'operation':'apply','mode':'nr-mfg','settings':settings})
+assert calls==[('reset','nr-mfg','skynizz',['A']),('apply','nr-mfg','skynizz',['B'])] and downloads==[],(calls,downloads)
+assert [step['operation'] for step in result['steps']]==['reset','apply'],result
 # The background-activity line follows the request and clears when it ends.
 import activity
 lines,replies=[],[]

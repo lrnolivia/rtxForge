@@ -261,8 +261,12 @@ class DesktopService:
         # regardless of the package currently selected for new installations.
         if feeder or (not installed_repair and rows and all(row.get('runtime_provider') == 'feeder'
                                   or row.get('install_provider') == 'feeder' and row.get('feeder_available') is True for row in rows)
-                      and operation in ('install', 'uninstall', 'repair', 'reset')):
+                      and operation in ('install', 'uninstall', 'repair', 'reset', 'apply')):
             import feeder_provider
+            # Presets reach a Feeder game through its ReShade.ini ('apply'), as on Windows and
+            # in Game Mode; Feeder has no preset reset of its own.
+            if operation == 'reset' and visual_settings is not None:
+                operation = 'apply'
             return feeder_provider.prepare(self.config, rows, 'nr-only' if not feeder and mode != 'mfg-only' else mode, operation,
                                            settings, engine_bridge.module(self.config))
         review=engine_bridge.prepare(self.config,rows,mode,operation,settings)

@@ -86,7 +86,13 @@ def step(route_name, operation, settings):
     """(operation, runtime_provider) a route prepares with. Feeder and Adoption keep the
     selected package setting: the engine routes a selection of only Feeder games itself."""
     provider = (settings.get('runtime_provider') or 'y4my') if route_name in ('feeder', 'adopt') else route_name
-    return ('adopt' if route_name == 'adopt' else operation), provider
+    if route_name == 'adopt':
+        return 'adopt', provider
+    # Applying presets: Feeder saves them to the game's ReShade.ini ('apply'); the
+    # DLSS packages re-apply them with the engine's preset reset ('reset'), never a reinstall.
+    if operation == 'apply' and route_name != 'feeder':
+        return 'reset', provider
+    return operation, provider
 
 
 def batches(rows, operation, mode, settings):

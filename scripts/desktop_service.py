@@ -208,7 +208,7 @@ class DesktopService:
             if row['game'] not in seen:rows.append(row);seen.add(row['game'])
         return sorted(rows,key=lambda r:r['name'].casefold())
 
-    def prepare(self,rows,mode,operation,adopt=False,visual_settings=None,save_defaults=False,scope=None):
+    def prepare(self,rows,mode,operation,adopt=False,visual_settings=None,save_defaults=False,scope=None,_provider=None):
         import ui
         # Every route (engine, Feeder, Adoption) acts only on the reviewed games:
         # an empty or stale selection refuses instead of widening to the library.
@@ -241,6 +241,15 @@ class DesktopService:
                         'reason': 'The installed package or feature profile could not be verified.'}]}
             settings['runtime_provider'] = provider
             mode = installed_mode
+        # A selection over several routes is one review prepared route by route,
+        # with the rules every rtxForge app uses (scripts/review_plan.py).
+        if (_provider is None and not installed_repair and not defaults_only and len(rows) > 1
+                and operation in ('install', 'repair', 'uninstall', 'reset')):
+            routed = self._prepare_routes(rows, mode, operation, adopt, visual_settings, save_defaults, scope, settings)
+            if routed is not None:
+                return routed
+        if _provider is not None:
+            settings['runtime_provider'] = _provider
         # Confirmed Vulkan games use the Vulkan package automatically, as Feeder games use Feeder NR.
         # It always brings frame generation, so NR Only keeps the DLSS package's own route.
         if settings.get('runtime_provider')=='vulkan-native' or (not installed_repair and rows and all(row.get('runtime_provider')=='vulkan-native'
@@ -259,6 +268,38 @@ class DesktopService:
         review=engine_bridge.prepare(self.config,rows,mode,operation,settings)
         if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier','feature_controls') if k in settings}
         return review
+
+    def _prepare_routes(self, rows, mode, operation, adopt, visual_settings, save_defaults, scope, settings):
+        """Each game on its own route (Vulkan, Feeder NR, its DLSS package), as one review.
+
+        Returns None when every game shares one route. Otherwise the first part with
+        games leads (the DLSS package part when there is one) and the other parts run
+        after it as its companions; each part checks only its own games."""
+        import review_plan
+
+        def route(row):
+            name = review_plan.route(row, operation, mode, settings)
+            # Adopting another tool's setup is its own reviewed choice here (Adopt / Adopt and Reinstall).
+            return review_plan.package_for(row, operation, settings) if name == 'adopt' else name
+        groups = {}
+        for row in sorted(rows, key=lambda r: str(r.get('name', '')).casefold()):
+            groups.setdefault(route(row), []).append(row)
+        if len(groups) < 2:
+            return None
+        parts = []
+        for name, group in groups.items():
+            _, provider = review_plan.step(name, operation, settings)
+            part_scope = dict(scope, games=[row['game'] for row in group]) if isinstance(scope, dict) else scope
+            parts.append(self.prepare(group, mode, operation, adopt, visual_settings=visual_settings,
+                                      save_defaults=save_defaults and not parts, scope=part_scope, _provider=provider))
+        ready = [part for part in parts if part.get('rows')]
+        lead = next((part for part in ready if part.get('kind') == 'engine'), ready[0] if ready else parts[0])
+        lead['companions'] = list(lead.get('companions') or []) + [part for part in parts if part is not lead]
+        for part in lead['companions']:
+            if any(part is other for other in parts):
+                lead['rows'] = list(lead.get('rows', [])) + part.get('rows', [])
+                lead['blocked'] = list(lead.get('blocked', [])) + part.get('blocked', [])
+        return lead
 
     def prepare_adapt(self,rows,mode,settings):
         """Adapt to Linux: every game keeps the route Windows installed it with, whatever is selected here.
@@ -295,7 +336,11 @@ class DesktopService:
         review=self.prepare(rows,mode,operation,adopt,visual_settings=visual_settings,scope=scope)
         review['supported']=[]
         settings=dict(library_media.load_settings(self.config),**(visual_settings or {}))
-        planned=lambda result:{(p.get('row') or {}).get('game') for p in result.get('plans',[])}-{None}
+        def planned(result):
+            # Games another route of the same review already handles are planned too.
+            games={(p.get('row') or {}).get('game') for p in result.get('plans',[])}-{None}
+            for companion in result.get('companions') or []:games|=planned(companion)
+            return games
         ready={review_plan.identity(game) for game in planned(review)}
         blocked={b.get('name'):b.get('reason','') for b in review.get('blocked',[])}
         groups=review_plan.offer_groups(operation,mode,settings.get('runtime_provider'),rows,ready,blocked)
@@ -414,6 +459,18 @@ class DesktopService:
 
     def _execute(self,review):
         # The desktop must pass the exact in-memory review shown to the user.
+        result=self._execute_one(review)
+        for companion in review.get('companions') or []:
+            # The other routes of the same review (another package, Feeder NR, Vulkan),
+            # or the Feeder games of an Adapt to Linux.
+            cancel=review.get('cancel_event')
+            if cancel is not None and cancel.is_set():break
+            if companion.get('rows'):
+                if cancel is not None and companion.get('cancel_event') is None:companion['cancel_event']=cancel
+                result=self._execute(companion) or result
+        return result
+
+    def _execute_one(self,review):
         kind=review['kind']
         if kind=='vulkan-native':
             import vulkan_app
@@ -427,11 +484,6 @@ class DesktopService:
         if kind=='engine':
             result=engine_bridge.execute(review)
             if review.get('save_defaults'):self.save_visual_defaults(review['save_defaults'])
-            for companion in review.get('companions') or []:
-                # Adapt to Linux: the Feeder games of the same review.
-                cancel=review.get('cancel_event')
-                if cancel is not None and cancel.is_set():break
-                if companion.get('rows'):result=self.execute(companion) or result
             return result
         if kind=='batch':return str(app.apply_batch(self.config,review['plans']))
         if kind=='cleanup':return str(cleanup.apply(self.config,review['items']))

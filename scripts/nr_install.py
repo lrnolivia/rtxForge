@@ -8,9 +8,9 @@ the same reviewed-transaction path as RenoDX HDR:
 - A receipt in the game's .rtxforge folder lists every file this owns and the
   previous value of every ReShade.ini key it set, so restore puts back exactly
   what was there and keeps everything ReShade or the user changed since.
-- Where OptiScaler runs its own NR, that NR is the Environment and its model is
-  shared: only a Character add-on that works beside it is installed, without a
-  model. An NR model owned by another tool is never overwritten.
+- Where OptiScaler runs its own NR (Skynizz), that NR is the Environment and its
+  model is shared: only a Character add-on that works beside it is installed,
+  without a model. An NR model owned by another tool is never overwritten.
 Games without their own DLSS use Feeder NR for Lecram; this module refuses them.
 """
 from __future__ import annotations
@@ -37,7 +37,7 @@ SHADER_DIR = 'reshade-shaders/Shaders'
 SEARCH_PATHS = '.\\reshade-shaders\\Shaders\\**'
 NOTICE = ('Each NR add-on adds a full neural-rendering pass. Expect a large GPU cost, '
           'more so with frame generation on.')
-MEMORY_NOTE = ("With OptiScaler's NR and multi-frame generation, a second NR pass runs close to the GPU's "
+MEMORY_NOTE = ("With Skynizz's NR and multi-frame generation, a second NR pass runs close to the GPU's "
                'video-memory limit on 12 GB cards. Switching windows can stall the game; lower Character '
                'detail resolution if it does.')
 LOAD_EARLY = ('ADDON', 'LoadFromDllMain')
@@ -66,11 +66,15 @@ def _read_receipt(root, path):
 def status(row):
     try:
         root = t.safe(row['game']); path = _receipt(row)
+        world = nr_addons.runtime_nr(row)
         if not path.exists():
-            return {'installed': False, 'default': nr_addons.default_setup(row)}
+            return {'installed': False, 'default': nr_addons.default_setup(row), 'runtime_nr': world}
         record = _read_receipt(root, path)
         changed = [n for n, h in record['files'].items() if not (root / n).is_file() or t.digest(t.safe(root / n)) != h]
-        return {'installed': True, 'setup': record['setup'], 'changed': changed}
+        setup = dict(record['setup'])
+        if record['route'] == 'optiscaler' and not setup.get('environment') and world:
+            setup['environment'] = {'addon': nr_addons.RUNTIME}  # installed before Skynizz was shown as the world
+        return {'installed': True, 'setup': setup, 'changed': changed, 'runtime_nr': world}
     except (t.Refusal, OSError, ValueError) as error:
         return {'installed': False, 'error': str(error)}
 

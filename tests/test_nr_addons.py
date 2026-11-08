@@ -43,28 +43,50 @@ class NrAddonTests(unittest.TestCase):
         self.assertTrue(gitc['verified'], 'a single add-on needs no pairing check')
         self.assertEqual(gitc['load_early'], [])
 
-    def test_optiscalers_nr_is_the_environment_and_shortfuse_the_character(self):
+    def test_skynizz_is_the_world_and_shortfuse_the_character(self):
         game = dict(DLSS_GAME, installed=True, runtime_provider='skynizz', feature_mode='nr-mfg')
-        combo = nr.builtin_combos()['characters-with-optiscaler']
+        self.assertEqual(nr.runtime_nr(game), {'id': 'optiscaler', 'name': 'Skynizz'})
+        # One combo: beside Skynizz, Skynizz is its world and ShortFuse runs at 74% on Skynizz's model.
+        combo = nr.builtin_combos()['characters-and-world']
+        self.assertEqual(list(nr.builtin_combos()), ['characters-and-world'])
+        setup = nr.combo_setup(game, combo)
+        self.assertEqual(setup['environment'], {'addon': 'optiscaler'})
         plan = nr.apply_combo(game, combo)['plan']
         self.assertEqual(plan['install'], [{'addon': 'shortfuse', 'build': '26.1025.0009'}])
-        self.assertIsNone(plan['model'], "OptiScaler's NR brings the model")
+        self.assertIsNone(plan['model'], "Skynizz's NR brings the model")
         self.assertTrue(plan['optiscaler_nr'])
+        self.assertEqual(plan['world'], 'Skynizz')
+        self.assertTrue(plan['verified'])
         self.assertEqual(plan['ini']['RENODX-DLSS']['DirectNeuralRenderingProcessingScale'], 74, 'a whole percent')
+        self.assertNotIn('DirectNeuralRenderingDiffuseWhiteNits', plan['ini']['RENODX-DLSS'])
+        # A setup without an Environment (saved before Skynizz was shown) still means Skynizz's world.
+        self.assertEqual(nr.plan(game, {'character': {'addon': 'shortfuse'}})['install'],
+                         nr.plan(game, {'environment': {'addon': 'optiscaler'}, 'character': {'addon': 'shortfuse'}})['install'])
         for setup, reason in (({'environment': {'addon': 'lecram'}}, 'where OptiScaler is installed'),
-                              ({'environment': {'addon': 'shortfuse'}}, 'Leave Environment empty'),
-                              ({'character': {'addon': 'gitc'}}, "can't run beside OptiScaler's NR"),
-                              ({}, 'Choose a Character add-on')):
+                              ({'environment': {'addon': 'shortfuse'}}, 'Keep Skynizz as Environment'),
+                              ({'environment': {'addon': 'optiscaler'}, 'character': {'addon': 'gitc'}}, "can't run beside Skynizz's NR"),
+                              ({'environment': {'addon': 'optiscaler'}}, 'Choose a Character add-on')):
             with self.subTest(setup=setup), self.assertRaisesRegex(t.Refusal, reason):
                 nr.plan(game, setup)
-        for mode in ('mfg-only', 'nr-mfg'):
-            with self.subTest(mode=mode):
-                result = nr.apply_combo(dict(game, feature_mode=mode), nr.builtin_combos()['characters-and-world'])
-                self.assertIn('Lecram', result['reason'])
+        # Elsewhere the same combo keeps Lecram as its world.
+        lecram = nr.apply_combo(dict(game, feature_mode='mfg-only'), combo)
+        self.assertIn('Lecram', lecram['reason'], 'Lecram still never runs where OptiScaler is installed')
+        self.assertEqual([i['addon'] for i in nr.apply_combo(DLSS_GAME, combo)['plan']['install']], ['lecram', 'shortfuse'])
+        with self.assertRaisesRegex(t.Refusal, "Skynizz doesn't run NR in this game"):
+            nr.plan(DLSS_GAME, {'environment': {'addon': 'optiscaler'}})
         self.assertTrue(nr.check(dict(game, feature_mode='mfg-only'), {'environment': {'addon': 'shortfuse'}})['ok'])
         self.assertFalse(nr.check(dict(game, feature_mode=None), {'character': {'addon': 'shortfuse'}})['ok'])
-        self.assertEqual(nr.default_setup(game), {'character': {'addon': 'shortfuse'}})
+        self.assertEqual(nr.default_setup(game), {'environment': {'addon': 'optiscaler'}, 'character': {'addon': 'shortfuse'}})
         self.assertEqual(nr.default_setup(dict(game, runtime_provider='feeder')), {'environment': {'addon': 'lecram'}})
+        # The catalog for a game gives each combo as it applies there, and names the world.
+        from unittest import mock
+        with mock.patch.object(nr, 'saved_combos', lambda _config: {}):
+            view = nr.catalog_view({}, game)
+            self.assertEqual(view['runtime_nr']['name'], 'Skynizz')
+            self.assertEqual(view['combos']['characters-and-world']['environment'], {'addon': 'optiscaler'})
+            self.assertEqual(view['combos']['characters-and-world']['name'], 'Characters + world')
+            self.assertIsNone(nr.catalog_view({}, DLSS_GAME)['runtime_nr'])
+            self.assertEqual(nr.catalog_view({}, DLSS_GAME)['combos']['characters-and-world']['environment']['addon'], 'lecram')
 
     def test_shortfuse_needs_the_games_own_dlss(self):
         combo = nr.builtin_combos()['characters-and-world']
@@ -127,8 +149,10 @@ class NrAddonTests(unittest.TestCase):
             self.assertTrue(nr.apply_combo(DLSS_GAME, saved[key])['ok'])
             self.assertFalse(nr.apply_combo(PLAIN_GAME, saved[key])['ok'])
             self.assertEqual([a['id'] for a in nr.catalog_view({})['addons']], ['lecram', 'shortfuse', 'gitc'])
-            # A combo without Environment is for games where OptiScaler's NR covers it.
+            # A combo without an Environment add-on is for games where Skynizz's NR covers it.
             self.assertTrue(nr.save_combo({}, 'Characters only', {'character': {'addon': 'shortfuse'}}))
+            beside = nr.save_combo({}, 'Beside Skynizz', {'environment': {'addon': 'optiscaler'}, 'character': {'addon': 'shortfuse'}})
+            self.assertNotIn('environment', nr.saved_combos({})[beside], 'the game\'s own world is not stored as an add-on')
             for bad in ({'character': {'addon': 'lecram'}}, {'environment': {'addon': 'gitc'}, 'character': {'addon': 'lecram'}}, {}):
                 with self.subTest(bad=bad), self.assertRaises(t.Refusal):
                     nr.save_combo({}, 'Bad', bad)

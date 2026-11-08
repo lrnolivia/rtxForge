@@ -7,17 +7,18 @@ using RtxForge.Windows.Models;
 namespace RtxForge.Windows.Views;
 
 /// <summary>Tools › DLSS5 NR add-ons: Environment and Character each take the add-on the user picks
-/// (Lecram, ShortFuse or GITC Uplift), a pinned build and the Old or New model. Combos fill both
-/// slots; every change is checked against this game before Install is offered.</summary>
+/// (Lecram, ShortFuse or GITC Uplift), a pinned build and the Old or New model. Where Skynizz runs
+/// NR, Skynizz is the Environment. Combos fill both slots; every change is checked against this
+/// game before Install is offered.</summary>
 public sealed partial class GamePage
 {
-    sealed record NrSlot(ComboBox Addon, ComboBox Build, ComboBox Model);
+    sealed record NrSlot(ComboBox Addon, ComboBox Build, ComboBox Model, List<JsonObject> Choices, bool Optional);
 
     UIElement NrAddonsGroup(Game g)
     {
         var group = new PreferencesGroup("DLSS5 NR add-ons",
-            "Choose an add-on for the environment and one for character detail, each with the Old or New DLSS5 model. "
-            + "Where OptiScaler runs its own NR, that NR is the environment. rtxForge downloads the pinned files and checks this game before anything is installed.");
+            "Choose the world (Environment) and an add-on for character detail, each with the Old or New DLSS5 model. "
+            + "Where Skynizz runs NR, Skynizz is the world. rtxForge downloads the pinned files and checks this game before anything is installed.");
         var status = group.Add(Prefs.Row("NR add-ons", "Checking…", null, ""));
         _ = FillNrAddonsAsync(g, group, status);
         return group;
@@ -28,21 +29,30 @@ public sealed partial class GamePage
         JsonObject catalog, current;
         try
         {
-            catalog = await shell.Service.NrCatalogAsync();
+            catalog = await shell.Service.NrCatalogAsync(g);
             current = await shell.Service.NrStatusAsync(g);
         }
         catch (InvalidOperationException error) { SetSubtitle(status, error.Message); return; }
         if (g != game || section != "Tools") return;
 
         var addons = (catalog["addons"] as JsonArray ?? []).OfType<JsonObject>().ToList();
-        string Name(string? id) => addons.FirstOrDefault(a => (string?)a["id"] == id)?["name"]?.ToString() ?? id ?? "";
+        // Where Skynizz runs NR, it is the world: the Environment slot's only choice.
+        var runtime = (catalog["runtime_nr"] ?? current["runtime_nr"]) as JsonObject;
+        const string RuntimeId = "optiscaler";
+        var world = (string?)runtime?["name"] ?? "Skynizz";
+        string Name(string? id) => id == RuntimeId ? world
+            : addons.FirstOrDefault(a => (string?)a["id"] == id)?["name"]?.ToString() ?? id ?? "";
 
         if (current["installed"]?.GetValue<bool>() == true)
         {
             var setup = current["setup"] as JsonObject;
             var text = string.Join(" · ", new[] { "environment", "character" }
                 .Where(slot => setup?[slot] is JsonObject)
-                .Select(slot => $"{char.ToUpper(slot[0])}{slot[1..]}: {Name((string?)setup![slot]!["addon"])} ({setup[slot]!["model"]})"));
+                .Select(slot =>
+                {
+                    var id = (string?)setup![slot]!["addon"];
+                    return $"{char.ToUpper(slot[0])}{slot[1..]}: {Name(id)}" + (id == RuntimeId ? "" : $" ({setup[slot]!["model"]})");
+                }));
             var changed = (current["changed"] as JsonArray ?? []).Count;
             SetSubtitle(status, "Installed · " + text + (changed > 0 ? $" · {changed} file(s) changed since install" : ""));
             var remove = Prefs.ActionButton("Remove", async (_, _) => { await shell.ChangeNrAsync(g, null, remove: true); Build("Tools"); });
@@ -57,37 +67,45 @@ public sealed partial class GamePage
             ["Custom", .. combos.Select(c => (string?)c.Combo!["name"] ?? c.Id)], 0, "");
         group.Add(comboRow);
 
-        NrSlot MakeSlot(string title, bool optional, string glyph)
+        NrSlot MakeSlot(string title, List<JsonObject> choices, bool optional, string glyph)
         {
-            var (row, addon) = Prefs.ComboRow(title, null, [.. (optional ? new[] { "None" } : []), .. addons.Select(a => (string?)a["name"] ?? "")], 0, glyph);
+            var (row, addon) = Prefs.ComboRow(title, null, [.. (optional ? new[] { "None" } : []), .. choices.Select(a => (string?)a["name"] ?? "")], 0, glyph);
+            addon.IsEnabled = optional || choices.Count > 1;
             var build = new ComboBox { MinWidth = 180 };
             var model = new ComboBox { MinWidth = 180, ItemsSource = models.Select(m => (string?)m["label"] ?? "").ToList(), SelectedIndex = Math.Max(0, models.FindIndex(m => (string?)m["id"] == "new")) };
             var extra = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
             extra.Children.Add(build); extra.Children.Add(model);
             group.Add(row);
             group.Add(Prefs.Row(title + " build and model", null, extra));
-            return new NrSlot(addon, build, model);
+            return new NrSlot(addon, build, model, choices, optional);
         }
-        var environment = MakeSlot("Environment", optional: true,"");
-        var character = MakeSlot("Character detail", optional: true,"");
+        var environment = runtime is null
+            ? MakeSlot("Environment", addons, optional: true, "")
+            : MakeSlot("Environment", [new JsonObject { ["id"] = RuntimeId, ["name"] = world, ["builds"] = new JsonArray() }], optional: false, "");
+        var character = MakeSlot("Character detail", addons, optional: true, "");
 
-        // Both slots can be empty: where OptiScaler runs its own NR, that NR is the environment.
-        JsonObject? AddonAt(NrSlot slot, bool optional)
+        JsonObject? AddonAt(NrSlot slot)
         {
-            var index = slot.Addon.SelectedIndex - (optional ? 1 : 0);
-            return index >= 0 && index < addons.Count ? addons[index] : null;
+            var index = slot.Addon.SelectedIndex - (slot.Optional ? 1 : 0);
+            return index >= 0 && index < slot.Choices.Count ? slot.Choices[index] : null;
         }
-        void FillBuilds(NrSlot slot, bool optional, string? selectBuild = null)
+        int IndexOf(NrSlot slot, string? id)
         {
-            var builds = (AddonAt(slot, optional)?["builds"] as JsonArray ?? []).OfType<JsonObject>().ToList();
+            var index = slot.Choices.FindIndex(a => (string?)a["id"] == id);
+            return index < 0 ? 0 : index + (slot.Optional ? 1 : 0);
+        }
+        void FillBuilds(NrSlot slot, string? selectBuild = null)
+        {
+            var builds = (AddonAt(slot)?["builds"] as JsonArray ?? []).OfType<JsonObject>().ToList();
             slot.Build.ItemsSource = builds.Select(b => (string?)b["label"] ?? "").ToList();
             slot.Build.SelectedIndex = Math.Max(0, builds.FindIndex(b => selectBuild is not null ? (string?)b["id"] == selectBuild : b["default"]?.GetValue<bool>() == true));
             slot.Build.IsEnabled = slot.Model.IsEnabled = builds.Count > 0;
         }
-        JsonObject? Spec(NrSlot slot, bool optional, JsonObject? values)
+        JsonObject? Spec(NrSlot slot, JsonObject? values)
         {
-            var addon = AddonAt(slot, optional);
+            var addon = AddonAt(slot);
             if (addon is null) return null;
+            if ((string?)addon["id"] == RuntimeId) return new JsonObject { ["addon"] = RuntimeId };  // Skynizz brings its own model
             var builds = (addon["builds"] as JsonArray ?? []).OfType<JsonObject>().ToList();
             var spec = new JsonObject
             {
@@ -105,8 +123,8 @@ public sealed partial class GamePage
         JsonObject Setup()
         {
             var setup = new JsonObject();
-            if (Spec(environment, true, (string?)AddonAt(environment, true)?["id"] == envValuesFor ? envValues : null) is { } env) setup["environment"] = env;
-            if (Spec(character, true, (string?)AddonAt(character, true)?["id"] == charValuesFor ? charValues : null) is { } c) setup["character"] = c;
+            if (Spec(environment, (string?)AddonAt(environment)?["id"] == envValuesFor ? envValues : null) is { } env) setup["environment"] = env;
+            if (Spec(character, (string?)AddonAt(character)?["id"] == charValuesFor ? charValues : null) is { } c) setup["character"] = c;
             return setup;
         }
 
@@ -129,7 +147,7 @@ public sealed partial class GamePage
                 if (ticket != checking || g != game) return;
                 var ok = result["ok"]?.GetValue<bool>() == true;
                 var text = ok
-                    ? (result["optiscaler_nr"]?.GetValue<bool>() == true ? "OptiScaler's NR covers the environment. " : "")
+                    ? (result["optiscaler_nr"]?.GetValue<bool>() == true ? $"{world} covers the environment. " : "")
                       + (result["verified"]?.GetValue<bool>() == true ? "Works in this game." : "Works in this game · this pairing is not verified on a test copy yet.")
                       + ((result["skipped"] as JsonArray ?? []).Count > 0 ? " Some settings aren't verified for this add-on and are left out." : "")
                     : (string?)result["reason"] ?? "Not available for this game.";
@@ -141,8 +159,8 @@ public sealed partial class GamePage
 
         var filling = false;
         void Changed() { if (!filling) { comboBox.SelectedIndex = 0; _ = CheckAsync(); } }
-        environment.Addon.SelectionChanged += (_, _) => { FillBuilds(environment, true); Changed(); };
-        character.Addon.SelectionChanged += (_, _) => { FillBuilds(character, true); Changed(); };
+        environment.Addon.SelectionChanged += (_, _) => { FillBuilds(environment); Changed(); };
+        character.Addon.SelectionChanged += (_, _) => { FillBuilds(character); Changed(); };
         foreach (var box in new[] { environment.Build, environment.Model, character.Build, character.Model })
             box.SelectionChanged += (_, _) => Changed();
         comboBox.SelectionChanged += (_, _) =>
@@ -150,28 +168,27 @@ public sealed partial class GamePage
             if (comboBox.SelectedIndex <= 0) return;
             var combo = combos[comboBox.SelectedIndex - 1].Combo!;
             filling = true;
-            void Apply(NrSlot slot, bool optional, JsonObject? spec, Action<JsonObject?, string?> keep)
+            // The combo as it applies to this game: beside Skynizz, Skynizz is its world.
+            void Apply(NrSlot slot, JsonObject? spec, Action<JsonObject?, string?> keep)
             {
                 var id = (string?)spec?["addon"];
-                var index = addons.FindIndex(a => (string?)a["id"] == id);
-                slot.Addon.SelectedIndex = id is null ? 0 : index + (optional ? 1 : 0);
-                FillBuilds(slot, optional, (string?)spec?["build"]);
+                slot.Addon.SelectedIndex = IndexOf(slot, id);
+                FillBuilds(slot, (string?)spec?["build"]);
                 slot.Model.SelectedIndex = Math.Max(0, models.FindIndex(m => (string?)m["id"] == ((string?)spec?["model"] ?? "new")));
                 keep(spec?["values"] as JsonObject, id);
             }
-            Apply(environment, true, combo["environment"] as JsonObject, (v, id) => { envValues = v; envValuesFor = id; });
-            Apply(character, true, combo["character"] as JsonObject, (v, id) => { charValues = v; charValuesFor = id; });
+            Apply(environment, combo["environment"] as JsonObject, (v, id) => { envValues = v; envValuesFor = id; });
+            Apply(character, combo["character"] as JsonObject, (v, id) => { charValues = v; charValuesFor = id; });
             filling = false;
             _ = CheckAsync();
         };
         filling = true;
-        // Starts on Lecram for the environment, or ShortFuse for characters beside OptiScaler's NR.
+        // Starts on Lecram for the environment, or Skynizz with ShortFuse for characters where Skynizz runs NR.
         var start = current["default"] as JsonObject;
         foreach (var (slot, key) in new[] { (environment, "environment"), (character, "character") })
         {
-            var index = addons.FindIndex(a => (string?)a["id"] == (string?)start?[key]?["addon"]);
-            slot.Addon.SelectedIndex = index < 0 ? 0 : index + 1;
-            FillBuilds(slot, true);
+            slot.Addon.SelectedIndex = IndexOf(slot, (string?)start?[key]?["addon"]);
+            FillBuilds(slot);
         }
         filling = false;
         SetSubtitle(status, "Not installed in this game.");

@@ -120,11 +120,13 @@ class NrInstallTests(unittest.TestCase):
         (self.game / 'nvngx_dlssnr.dll').write_bytes(pe(b'OptiScaler NR model'))
         (self.game / 'ReShade.ini').write_text('[ADDON]\nLoadFromDllMain=other.addon64\n', encoding='utf-8')
         before = self.files()
-        with self.assertRaisesRegex(t.Refusal, 'Leave Environment empty'):
+        with self.assertRaisesRegex(t.Refusal, 'Keep Skynizz as Environment'):
             nr_install.prepare({}, self.row, {'environment': {'addon': 'shortfuse'}})
-        review = nr_install.prepare({}, self.row, {'character': {'addon': 'shortfuse', 'values': {'resolution_scale': 0.74}}})
+        review = nr_install.prepare({}, self.row, {'environment': {'addon': 'optiscaler'},
+                                                   'character': {'addon': 'shortfuse', 'values': {'resolution_scale': 0.74}}})
         self.assertTrue(any('video-memory' in note for note in review['notes']))
         nr_install.apply({}, review)
+        self.assertEqual(nr_install.status(self.row)['setup']['environment'], {'addon': 'optiscaler'}, 'Skynizz is the world')
         self.assertEqual((self.game / 'nvngx_dlssnr.dll').read_bytes(), pe(b'OptiScaler NR model'), 'OptiScaler keeps its model')
         self.assertFalse((self.game / 'renodx-dlss5.addon64').exists())
         ini = t.ini((self.game / 'ReShade.ini').read_text(encoding='utf-8'))

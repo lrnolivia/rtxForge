@@ -2,8 +2,8 @@
 
 Open a game's **Tools → DLSS5 NR add-ons**. The group has two slots:
 
-- **Environment** — required, except where OptiScaler runs its own NR. There,
-  OptiScaler's NR is the environment and this slot stays **None**.
+- **Environment** — the world, required. Where Skynizz runs NR + MFG or NR
+  Only, Skynizz is the world: the slot shows **Skynizz** and nothing else.
 - **Character detail** — optional; choose **None** to run one add-on.
 
 Each slot takes the add-on, one of its pinned builds, and the **Old** or **New**
@@ -51,11 +51,11 @@ verified before use.
   or the standalone frame-generation unlocker, that stops Ray Reconstruction
   and frame generation from starting on some launches. Use Lecram with the
   game's own frame generation.
-- **With OptiScaler NR + MFG**, OptiScaler's NR is the environment and
-  **ShortFuse** adds character detail. rtxForge installs no NR model there:
-  ShortFuse uses OptiScaler's. With OptiScaler on **MFG Only**, the slots work
-  as in any other game, without Lecram.
-- **OptiScaler NR + ShortFuse runs close to a 12 GB card's video memory.**
+- **With Skynizz NR + MFG**, Skynizz is the environment and **ShortFuse** adds
+  character detail. rtxForge installs no NR model there: ShortFuse uses
+  Skynizz's. With Skynizz on **MFG Only**, the slots work as in any other game,
+  without Lecram.
+- **Skynizz + ShortFuse runs close to a 12 GB card's video memory.**
   Switching windows can stall the game. Lower Character detail's resolution
   scale if it does.
 - **Another tool's files are kept.** rtxForge refuses the install rather than
@@ -66,15 +66,18 @@ A pairing that hasn't been confirmed on a Forge Lab test copy is marked as
 
 ## Combos
 
-The **Combo** picker fills both slots at once. Two combos are built in:
+The **Combo** picker fills both slots at once. One combo is built in,
+**Characters + world**: ShortFuse for character detail, with the world from
 
-- **Characters + world:** Lecram 10.8 for the environment, ShortFuse for
-  character detail. For games without OptiScaler.
-- **Characters + OptiScaler NR:** ShortFuse for character detail at a 74%
-  resolution scale, beside OptiScaler's NR + MFG.
+- **Lecram 10.8** in games without OptiScaler, or
+- **Skynizz** where it runs NR. ShortFuse then runs at a 74% resolution scale
+  and shares Skynizz's model.
 
 Both were verified in The Witcher 3 on an RTX 4070, each with Ray
 Reconstruction and frame generation running.
+
+Every combo's world works the same way: where Skynizz runs NR, Skynizz is the
+world in place of the combo's Environment add-on.
 
 **Save combo…** stores the current slots under a name, with up to 100 saved
 combos. Every combo is available for every game. Each game checks a combo
@@ -89,7 +92,8 @@ apps share them.
 Where the rtxForge overlay runs, its **NR add-ons** section lists the settings of
 each add-on rtxForge installed, under its role: **Environment · Lecram** and
 **Character detail · ShortFuse**. Lecram never appears where OptiScaler is
-installed.
+installed. Where Skynizz is the world, its NR settings stay in the overlay's own
+Skynizz NR controls.
 
 The add-ons read these settings when the game starts, and ShortFuse writes them
 back while it runs. So, like HDR preferences, a change is saved after the game

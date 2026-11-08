@@ -362,8 +362,8 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             ["operation"] = operation,
             ["mode"] = mode,
             ["settings"] = settings,
-            // Desktop Repair and Apply re-apply each game's reviewed launch settings and presets.
-            ["engine_operations"] = new JsonObject { ["repair"] = "reset", ["apply"] = "reset" },
+            // Repair replaces changed or missing files, as in Game Mode; Desktop Apply re-applies presets as a reset.
+            ["engine_operations"] = new JsonObject { ["apply"] = "reset" },
         }, Reporter(progress), cancel);
         OperationReview Step(JsonObject entry) => Reviewed(entry["operation"]?.ToString() ?? operation,
             entry["provider"]?.ToString() ?? Settings.RuntimeProvider, entry["review"] as JsonObject, targets) with { Blocked = [], Warnings = [] };

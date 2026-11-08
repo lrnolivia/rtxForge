@@ -308,11 +308,18 @@ def bind(root, send):
                             defaults=(settings_review, execute))
     methods.update(prepare_routes=routes.prepare, execute_routes=routes.execute, cancel_routes=routes.cancel, discard_routes=routes.discard)
 
+    import activity
+    activity_line = activity.Tracker(send)
+
     def handle(request):
         rid = request.get('id')
+        # The same background-activity line as Windows (scripts/activity.py).
+        work = ('request', rid if rid is not None else id(request))
+        activity_line.begin(work, request.get('method'))
         def report(event):
             if event.get('kind') == 'progress':
                 send({'event': 'progress', 'id': rid, **{key: value for key, value in event.items() if key != 'kind'}})
+                activity_line.progress(work, event.get('label'), event.get('checked'), event.get('total'))
         try:
             if request['method'] not in methods:
                 raise ValueError('This action is Windows-specific in the current engine adapter; the Linux equivalent is not qualified yet.')
@@ -321,6 +328,8 @@ def bind(root, send):
             send({'id': rid, 'result': result})
         except Exception as error:
             send({'id': rid, 'error': desktop_service.friendly(str(error))})
+        finally:
+            activity_line.end(work)
     def shutdown():
         routes.shutdown()
         for token in list(running) + list(reviews):

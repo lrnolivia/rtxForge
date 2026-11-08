@@ -30,6 +30,9 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     public ForgeSettings Settings { get; } = ForgeSettings.Load();
     public JsonObject? OverlayRefreshResult { get; private set; }
     public event Action<JsonObject>? OverlayRefreshChanged;
+    /// <summary>What rtxForge is doing in the background (scripts/activity.py), "" when idle.</summary>
+    public string Activity { get; private set; } = "";
+    public event Action<string>? ActivityChanged;
     public string EngineRoot { get; }
     static string SnapshotPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "library-snapshot.json");
     // Each build keys its own snapshot, so an update never shows the previous build's verdicts.
@@ -144,6 +147,11 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
                     {
                         OverlayRefreshResult = (JsonObject)(message["result"]?.DeepClone() ?? new JsonObject { ["status"] = "pending", ["error"] = message["error"]?.DeepClone() });
                         OverlayRefreshChanged?.Invoke((JsonObject)OverlayRefreshResult.DeepClone());
+                    }
+                    else if (kind == "activity")
+                    {
+                        Activity = message["text"]?.ToString() ?? "";
+                        ActivityChanged?.Invoke(Activity);
                     }
                     else if (kind == "progress" && message["id"]?.GetValue<int>() is { } pid && pending.TryGetValue(pid, out var running))
                         running.Progress?.Invoke(message);

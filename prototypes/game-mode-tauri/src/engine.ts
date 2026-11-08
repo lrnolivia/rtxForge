@@ -9,6 +9,15 @@ export async function engineStatus(): Promise<EngineStatus> {
   if ('__TAURI_INTERNALS__' in window) return (await import('@tauri-apps/api/core')).invoke('engine_status');
   return (await fetch('/api/engine/status')).json();
 }
+/** The background-activity line the host sends (scripts/activity.py): text, or '' when idle. */
+export async function watchActivity(show: (text: string) => void): Promise<() => void> {
+  const take = (payload: Record<string, unknown>) => { if (payload.event === 'activity') show(String(payload.text ?? '')); };
+  if ('__TAURI_INTERNALS__' in window) return (await import('@tauri-apps/api/event')).listen<Record<string, unknown>>('engine-progress', event => take(event.payload));
+  if (typeof EventSource === 'undefined') return () => {};
+  const events = new EventSource('/api/engine/events');
+  events.onmessage = event => { try { take(JSON.parse(event.data)); } catch { /* not an engine event */ } };
+  return () => events.close();
+}
 export async function engineRequest<T = unknown>(method: string, params: Record<string, unknown> = {}, progress?: (event: Record<string, unknown>) => void): Promise<T> {
   const id = crypto.randomUUID();
   let close = () => {};

@@ -22,7 +22,7 @@ import { settingsGroups, settingsContent } from './settings-content';
 import {mergeOverlay, overlaySurface, surfaceChanges, overlayPreferenceChanges} from './overlay-settings';
 let overlayPreviewId = '';
 
-import { engineRequest, engineStatus, type EngineRow, type EngineStatus, type Review } from './engine';
+import { engineRequest, engineStatus, watchActivity, type EngineRow, type EngineStatus, type Review } from './engine';
 
 const symbols: Record<string, number> = { plus:58324, minus:58154, dots: 57854, books: 59224, package: 58256, wrench: 58836, gear: 57968, search: 58124,
   refresh: 57492, controller: 57966, arrow: 57432, check: 57730, folder: 57930, info: 58062, warning: 58592,
@@ -1384,6 +1384,12 @@ void initialize();
 void engineStatus().then(status => { backend = status;if(status.appearance){settingsCategory="appearance";view="settings";} render(); }).catch(() => { backend = { enabled: false, reason: 'The reviewed host adapter is unavailable. Refresh the local preview.' }; });
 
 window.addEventListener('rtxforge-background-ready',()=>applyAppearance());
+
+// The background-activity line, in the same words as the desktop apps (scripts/activity.py).
+void watchActivity(text=>{
+  const line=document.querySelector<HTMLElement>('#activity');if(!line)return;
+  line.querySelector('.activity-text')!.textContent=text;line.hidden=!text;
+}).then(stop=>window.addEventListener('pagehide',stop,{once:true}));
 
 if('__TAURI_INTERNALS__' in window)void import('@tauri-apps/api/event').then(async({listen})=>{
   const stop=await listen('navigate-appearance',()=>{settingsCategory='appearance';setView('settings');});

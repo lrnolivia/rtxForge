@@ -4627,6 +4627,11 @@ class Window(Adw.ApplicationWindow):
         self.operation_status=label('');self.operation_status.set_max_width_chars(54);self.operation_status.set_ellipsize(Pango.EllipsizeMode.END);operation.append(self.operation_status)
         self.operation_elapsed=label('','dim-label');operation.append(self.operation_elapsed)
         self.operation_dismiss=Gtk.Button(icon_name='window-close-symbolic');self.operation_dismiss.add_css_class('operation-dismiss');self.operation_dismiss.set_tooltip_text('Dismiss');self.operation_dismiss.set_visible(False);self.operation_dismiss.connect('clicked',lambda *_:self.hide_operation_status());operation.append(self.operation_dismiss)
+        # Background work shares the operation bubble while nothing you started is running,
+        # in the same words as Windows and Game Mode (scripts/activity.py).
+        import activity
+        self.activity_line_shown=False
+        self.activity_line=activity.Tracker(lambda message:GLib.idle_add(self.show_activity_line,message['text']))
         for key,widget in self.tuning_widgets.items():widget.connect('changed' if key=='mfg_multiplier' else 'value-changed',self.strength_changed)
         self.strength_changed()
         self.reset_all.set_tooltip_text('Discard unsaved preset changes.')
@@ -7940,7 +7945,14 @@ class Window(Adw.ApplicationWindow):
             self.operation_hide_source=0
         self.operation_spinner.stop();self.operation_revealer.set_reveal_child(False)
         return False
+    def show_activity_line(self,text):
+        """The background-activity line; an operation you started keeps the bubble."""
+        if self.busy:return False
+        if text:self.show_operation_status(text);self.activity_line_shown=True
+        elif self.activity_line_shown:self.activity_line_shown=False;self.hide_operation_status()
+        return False
     def show_operation_status(self,text,complete=False,icon='object-select-symbolic'):
+        self.activity_line_shown=False
         if self.operation_hide_source:
             try:GLib.source_remove(self.operation_hide_source)
             except Exception:pass
@@ -15724,11 +15736,14 @@ class Window(Adw.ApplicationWindow):
             elif manual:self.toast('rtxForge is up to date.')
             return False
         def work():
+            self.activity_line.begin('app-update','update_check')
             try:
                 info=app_update.check()
+                if info['available']:self.activity_line.progress('app-update','Downloading the rtxForge update')
                 path=app_update.stage(info) if info['available'] else None
                 GLib.idle_add(done,info,path,None)
             except Exception as error:GLib.idle_add(done,None,None,str(error))
+            finally:self.activity_line.end('app-update')
         threading.Thread(target=work,daemon=True,name='app-update').start()
         return True
 

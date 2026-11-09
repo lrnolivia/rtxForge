@@ -604,6 +604,10 @@ def artwork_accent(path,color=None,muted=False):
             f'.{name} button.hero-install:disabled {{ background: alpha(@window_fg_color,0.08); color: alpha(@window_fg_color,0.45); }} '
             f'.artwork-editor.{name} .artwork-preview {{ border-color: {color}; }} '
             f'.review-game.{name} .review-badge {{ color: {ui_colors.readable(color,palette["card"])}; background: {ui_colors.mix(color,palette["card"],0.10)}; }} '
+            f'row.split-render-game.{name}:hover {{ background: mix(@card_bg_color,{color},0.15); }} '
+            f'row.split-render-game.{name}.game-selected {{ background: {color}; color: {accent_dark}; }} '
+            f'row.split-render-game.{name}.game-selected label {{ color: {accent_dark}; }} '
+            f'row.split-render-game.{name} check:checked {{ background: alpha(white,0.72); color: {ui_colors.readable(color,ui_colors.mix("#ffffff",color,0.72))}; border-color: transparent; }} '
             f'columnview row.{name}.game-selected {{ background: {color}; color: {accent_dark}; }} '
             f'columnview row.{name}.game-selected label, columnview row.{name}.game-selected .library-pill-icon {{ color: {accent_dark}; }} '
             f'columnview row.{name}.game-selected .library-source-pill {{ background: {source_bg}; }} '
@@ -3766,7 +3770,7 @@ OPERATION_WORDS={
     'recovery':('Review Restoration','Restore','Restoring'),
     'cleanup':('Review Cleanup','Remove','Removing'),
     'tool':('Review Tool Installation','Install','Installing'),
-    'nr-addons':('Review NR Add-ons','Install NR add-ons','Installing NR add-ons'),
+    'nr-addons':('Review Split Render','Install Split Render','Installing Split Render'),
     'tool-restore':('Review Tool Restoration','Restore','Restoring'),
     'artwork':('Review Artwork Sync','Sync','Syncing'),
     'steam-shortcut':('Review rtxForge in Steam','Apply','Applying'),
@@ -6755,14 +6759,27 @@ class Window(Adw.ApplicationWindow):
                 done=lambda result:result['message'])
         self.start('Preparing RenoDX HDR',lambda:renodx_hdr.prepare_remove(self.service.config,game) if remove else renodx_hdr.prepare(self.service.config,game,custom_path),ready)
 
+    @staticmethod
+    def nr_model_row(models,subtitle):
+        control=row('DLSS 5 model',subtitle)
+        buttons=Gtk.Box(spacing=8,valign=Gtk.Align.CENTER)
+        choices={}
+        for model in models:
+            button=Gtk.CheckButton(label=model['label'].replace(' DLSS 5 (',' · ').rstrip(')'))
+            if choices:button.set_group(next(iter(choices.values())))
+            choices[model['id']]=button
+            buttons.append(button)
+        choices['new'].set_active(True)
+        control.add_suffix(buttons)
+        return control,choices
+
     def populate_nr_addons(self,body,game):
-        """DLSS5 NR add-ons: Environment and Character each take the add-on, pinned build and
-        Old/New model the user picks; combos fill both slots and every change is checked first."""
+        """Split Render roles, pinned builds and a shared DLSS 5 model."""
         import nr_addons,nr_install
-        group=Adw.PreferencesGroup(title='DLSS5 NR add-ons',description="Choose the world (Environment) and an add-on for character detail, each with the Old or New DLSS5 model. Where Skynizz runs NR, Skynizz is the world. rtxForge downloads the pinned files and checks this game before anything is installed.")
+        group=Adw.PreferencesGroup(title='Split Render',description="Render the environment and characters with DLSS 5 NR, with a separate character pass where supported.")
         body.append(group)
-        status=row('NR add-ons','Checking…');group.add(status)
-        if self.options.demo:status.set_subtitle('NR add-ons are checked in the installed app.');return
+        status=row('Split Render','Checking…');group.add(status)
+        if self.options.demo:status.set_subtitle('Split Render is checked in the installed app.');return
         def load():
             try:result=(nr_addons.catalog_view(self.service.config,game),nr_install.status(game))
             except Exception as error:result=error
@@ -6777,15 +6794,23 @@ class Window(Adw.ApplicationWindow):
             name=lambda key:world if key==nr_addons.RUNTIME else next((a['name'] for a in addons if a['id']==key),key or '')
             if current.get('installed'):
                 setup=current.get('setup') or {}
-                text=' · '.join(f"{slot.capitalize()}: {name(setup[slot]['addon'])}"+('' if setup[slot]['addon']==nr_addons.RUNTIME else f" ({setup[slot].get('model','new')})") for slot in nr_addons.SLOTS if setup.get(slot))
+                text=' · '.join(f"{title}: {name(setup[slot]['addon'])}" for slot,title in
+                                (('environment','Environment'),('character','Character detail')) if setup.get(slot))
+                environment=setup.get('environment') or {}
+                character=setup.get('character') or {}
+                if environment.get('addon')==nr_addons.RUNTIME:text+=f' · DLSS 5 model shared with {world}'
+                else:
+                    model=environment.get('model') or character.get('model') or 'new'
+                    text+=' · '+next((m['label'] for m in models if m['id']==model),model)
                 changed=len(current.get('changed') or [])
                 status.set_subtitle('Installed · '+text+(f' · {changed} file(s) changed since install' if changed else ''))
-                remove=row('Remove NR add-ons',"Puts back the game's files and the ReShade settings rtxForge changed. Your own edits are kept.")
-                action=button('Remove',lambda *_:self.review_nr(game,None,remove=True));action.set_valign(Gtk.Align.CENTER);remove.add_suffix(action);group.add(remove)
+                remove=row('Restore original files','Puts back the files and ReShade settings changed by Split Render.')
+                action=button('Remove Split Render',lambda *_:self.review_nr(game,None,remove=True));action.set_valign(Gtk.Align.CENTER);remove.add_suffix(action);group.add(remove)
                 return
             status.set_subtitle('Not installed in this game.')
             combos=[(key,value) for key,value in catalog['combos'].items()]
-            combo_row=safe_combo_row(title='Combo',subtitle='Fill both slots from a saved or built-in combo.',model=Gtk.StringList.new(['Custom']+[value.get('name',key) for key,value in combos]),selected=0)
+            combo_row=safe_combo_row(title='Preset',subtitle='Fill both roles from a saved or built-in preset.',
+                                     model=Gtk.StringList.new(['Choose manually']+[value.get('name',key) for key,value in combos]),selected=0)
             group.add(combo_row)
             slots={}
             world_choice=[{'id':nr_addons.RUNTIME,'name':world,'builds':[]}]
@@ -6795,9 +6820,14 @@ class Window(Adw.ApplicationWindow):
                 addon=safe_combo_row(title=title,model=Gtk.StringList.new(names),selected=0)
                 addon.set_sensitive(optional or len(choices)>1)
                 build=safe_combo_row(title=title+' build',model=Gtk.StringList.new([]),selected=0)
-                model=safe_combo_row(title=title+' model',model=Gtk.StringList.new([m['label'] for m in models]),selected=max(0,next((i for i,m in enumerate(models) if m['id']=='new'),0)))
-                for widget in (addon,build,model):group.add(widget)
-                slots[slot]={'optional':optional,'choices':choices,'addon':addon,'build':build,'model':model,'builds':[],'values':None,'values_for':None}
+                group.add(addon);group.add(build)
+                slots[slot]={'optional':optional,'choices':choices,'addon':addon,'build':build,'builds':[],'values':None,'values_for':None}
+            if runtime:
+                group.add(row('DLSS 5 model',f'The character pass shares the model installed by {world}.'))
+                model_buttons={}
+            else:
+                model_row,model_buttons=self.nr_model_row(models,'Both passes share this model.')
+                group.add(model_row)
             def chosen(slot):
                 s=slots[slot];index=s['addon'].get_selected()-(1 if s['optional'] else 0)
                 return s['choices'][index] if 0<=index<len(s['choices']) else None
@@ -6809,23 +6839,24 @@ class Window(Adw.ApplicationWindow):
                 s['builds']=builds;s['build'].set_model(Gtk.StringList.new([b['label'] for b in builds]))
                 pick=next((i for i,b in enumerate(builds) if (b['id']==select if select else b['default'])),0)
                 if builds:s['build'].set_selected(pick)
-                s['build'].set_sensitive(bool(builds));s['model'].set_sensitive(bool(builds))
+                s['build'].set_visible(bool(builds))
             def setup():
                 result={}
+                model=next((key for key,button in model_buttons.items() if button.get_active()),'new')
                 for slot,s in slots.items():
                     addon=chosen(slot)
                     if not addon:continue
                     if addon['id']==nr_addons.RUNTIME:result[slot]={'addon':addon['id']};continue  # Skynizz brings its own model
                     index=s['build'].get_selected()
-                    spec={'addon':addon['id'],'build':s['builds'][index]['id'] if index<len(s['builds']) else None,'model':models[s['model'].get_selected()]['id']}
+                    spec={'addon':addon['id'],'build':s['builds'][index]['id'] if index<len(s['builds']) else None,'model':model}
                     if s['values'] is not None and s['values_for']==addon['id']:spec['values']=dict(s['values'])
                     result[slot]=spec
                 return result
-            verdict=row('Check','Choose the add-ons for this game.');group.add(verdict)
+            verdict=row('Compatibility','Choose the passes for this game.');group.add(verdict)
             apply_row=row('Apply to this game','Review the exact files before anything changes.')
             actions=Gtk.Box(spacing=8,valign=Gtk.Align.CENTER)
-            save=button('Save combo…',lambda *_:self.save_nr_combo(game,setup()))
-            install=button('Install',lambda *_:self.review_nr(game,setup()),'suggested-action');install.set_sensitive(False)
+            save=button('Save preset…',lambda *_:self.save_nr_combo(game,setup()))
+            install=button('Review installation',lambda *_:self.review_nr(game,setup()),'suggested-action');install.set_sensitive(False)
             actions.append(save);actions.append(install);apply_row.add_suffix(actions);group.add(apply_row)
             state={'filling':False}
             def check():
@@ -6841,7 +6872,9 @@ class Window(Adw.ApplicationWindow):
                 combo_row.set_selected(0);check()
             for slot,s in slots.items():
                 s['addon'].connect('notify::selected',lambda *_,slot=slot:(fill_builds(slot),changed()))
-                s['build'].connect('notify::selected',changed);s['model'].connect('notify::selected',changed)
+                s['build'].connect('notify::selected',changed)
+            for model_button in model_buttons.values():
+                model_button.connect('toggled',lambda widget:changed() if widget.get_active() else None)
             def combo_chosen(*_):
                 index=combo_row.get_selected()
                 if index<=0:return
@@ -6851,8 +6884,10 @@ class Window(Adw.ApplicationWindow):
                     spec=combo.get(slot) or {}
                     s['addon'].set_selected(position(slot,spec.get('addon')))
                     fill_builds(slot,spec.get('build'))
-                    s['model'].set_selected(next((i for i,m in enumerate(models) if m['id']==spec.get('model','new')),0))
                     s['values']=spec.get('values');s['values_for']=spec.get('addon')
+                if model_buttons:
+                    model=(combo.get('environment') or {}).get('model') or (combo.get('character') or {}).get('model') or 'new'
+                    model_buttons.get(model,model_buttons['new']).set_active(True)
                 state['filling']=False;check()
             combo_row.connect('notify::selected',combo_chosen)
             state['filling']=True
@@ -6865,8 +6900,8 @@ class Window(Adw.ApplicationWindow):
 
     def save_nr_combo(self,game,setup):
         import nr_addons
-        dialog=Adw.AlertDialog(heading='Save combo',body='The combo is available for every game.')
-        entry=Gtk.Entry(placeholder_text='Combo name',max_length=60,activates_default=True);dialog.set_extra_child(entry)
+        dialog=Adw.AlertDialog(heading='Save preset',body='The preset is available for every game.')
+        entry=Gtk.Entry(placeholder_text='Preset name',max_length=60,activates_default=True);dialog.set_extra_child(entry)
         dialog.add_response('cancel','Cancel');dialog.add_response('save','Save')
         dialog.set_response_appearance('save',Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response('save');dialog.set_close_response('cancel')
@@ -6885,53 +6920,245 @@ class Window(Adw.ApplicationWindow):
             review={'operation':'tool-restore' if remove else 'tool','rows':[{'name':game['name'],'game':game['game'],'detail':changes}],'blocked':[]}
             self.review_write(review['operation'],review,
                 run=lambda _:nr_install.apply(self.service.config,plan),
-                details=['Remove NR add-ons' if remove else 'Install NR add-ons','Existing game files and your ReShade settings are kept; only recorded keys are restored.'],
+                details=['Remove Split Render' if remove else 'Install Split Render','Existing game files and your ReShade settings are kept; only recorded keys are restored.'],
                 note=' '.join(plan.get('notes',[])) or None,
                 done=lambda result:result['message'])
-        self.start('Preparing NR add-ons',lambda:nr_install.prepare_remove(self.service.config,game) if remove else nr_install.prepare(self.service.config,game,setup,family),ready)
+        self.start('Preparing Split Render',lambda:nr_install.prepare_remove(self.service.config,game) if remove else nr_install.prepare(self.service.config,game,setup,family),ready)
 
     def nr_install_picker(self,changed):
+        from copy import deepcopy
         import nr_addons
-        try:choices=nr_addons.install_choices(self.service.config)
+        try:catalog=nr_addons.catalog_view(self.service.config)
         except (OSError, ValueError, RuntimeError) as error:
             return row('Add-on setup',user_messages.friendly_error(str(error)))
-        picker=safe_combo_row(title='Add-on setup',subtitle='Choose a built-in or saved setup.',
-                              model=Gtk.StringList.new(['None',*[choice['label'] for choice in choices]]),selected=0)
-        def selected(widget,*_):
-            index=widget.get_selected()
-            changed(choices[index-1] if 0<index<=len(choices) else None)
-        picker.connect('notify::selected',selected)
-        return picker
+
+        group=Adw.PreferencesGroup()
+        combos=list(catalog['combos'].values())
+        names={item['id']:item['name'].split(' (',1)[0] for item in catalog['addons']}
+        presets=safe_combo_row(title='Preset',model=Gtk.StringList.new(
+            ['Choose manually','Auto · match each game',*[combo['name'] for combo in combos]]),selected=0)
+        group.add(presets)
+        roles={}
+        for slot,title in (('environment','Environment'),('character','Character detail')):
+            field=safe_combo_row(title=title,model=Gtk.StringList.new(['None',*names.values()]),selected=0)
+            group.add(field)
+            roles[slot]=field
+        details=row('Setup details')
+        details.set_visible(False)
+        group.add(details)
+
+        model_row,models=self.nr_model_row(catalog['models'],'Both passes share a model. Skynizz NR keeps its installed model.')
+        group.add(model_row)
+
+        manual_model='new'
+        syncing=False
+        def update(*_):
+            if syncing:return
+            index=presets.get_selected()
+            model=next(key for key,button in models.items() if button.get_active())
+            if index==1:
+                changed({'auto':True,'model':model})
+                return
+            if index>=2:
+                setup=deepcopy(combos[index-2])
+                for slot in roles:
+                    if setup.get(slot) and setup[slot]['addon']!='optiscaler':
+                        setup[slot]['model']=model
+                changed({'setup':setup,'adapt':True})
+                return
+            setup={}
+            for slot,field in roles.items():
+                selected=field.get_selected()
+                if selected:setup[slot]={'addon':list(names)[selected-1],'model':model}
+            changed({'setup':setup,'adapt':False} if setup else None)
+
+        def select_preset(*_):
+            nonlocal syncing
+            index=presets.get_selected()
+            for field in roles.values():field.set_visible(index==0)
+            details.set_visible(index!=0)
+            model=manual_model
+            if index==1:details.set_subtitle('Choose a compatible setup for each game. Review shows the passes each game will use.')
+            if index>=2:
+                combo=combos[index-2]
+                world=(combo.get('environment') or {})
+                character=(combo.get('character') or {})
+                model=world.get('model') or character.get('model') or 'new'
+                details.set_subtitle(f"Environment: {names.get(world.get('addon'),'Installed NR')} · "
+                                     f"Character detail: {names.get(character.get('addon'),'None')}")
+            syncing=True
+            models.get(model,models['new']).set_active(True)
+            syncing=False
+            update()
+
+        def select_model(button,model):
+            nonlocal manual_model
+            if syncing or not button.get_active():return
+            if presets.get_selected()<2:manual_model=model
+            update()
+
+        presets.connect('notify::selected',select_preset)
+        for field in roles.values():field.connect('notify::selected',update)
+        for model,button in models.items():button.connect('toggled',select_model,model)
+        return group
 
     def choose_nr_games(self):
+        import nr_install
         if self.busy or self.options.demo:return
-        dialog=Adw.AlertDialog(heading='DLSS5 NR add-ons',body='Choose an add-on setup and the games you want to review.')
+        dialog=Adw.AlertDialog(heading='Set up Split Render',body='Choose a setup to see compatible games. Review confirms what each game will use.')
+        wide=self.get_width()>=820
+        dialog.set_content_width(min(880,self.get_width()-64) if wide else 560)
         dialog.add_response('cancel','Cancel')
-        dialog.add_response('review','Review games')
+        dialog.add_response('review','Review selection')
         dialog.set_response_appearance('review',Adw.ResponseAppearance.SUGGESTED)
+        catalog=sorted(self.games,key=lambda game:game['name'].casefold())
+        config=self.service.config
+        family=(self.hardware_info or {}).get('family') or 'ada'
         choice=None
-        games=[]
+        chosen=set()
+        entries=[]
+        checking=closed=bulk=False
+        revision=0
+        failure=''
+        body=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL if wide else Gtk.Orientation.VERTICAL,spacing=24)
+        search=Gtk.SearchEntry(placeholder_text='Search games')
+        count=label('0 selected','dim-label')
+        select_all=ActionButton('Select all','edit-select-all-symbolic')
+        reset=ActionButton('Clear selection','edit-clear-symbolic')
+        reset.set_tooltip_text('Deselect all games, including games outside the current search.')
+        actions=Gtk.Box(spacing=8)
+        actions.append(select_all);actions.append(reset)
+        empty=label('','dim-label')
+        notice=label('','dim-label')
+        notice.set_visible(False)
+        listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        listing.add_css_class('boxed-list')
+        scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,propagate_natural_height=True,
+                                  max_content_height=350 if wide else 220)
+        scroll.set_child(listing)
+
         def update(*_):
-            dialog.set_response_enabled('review',choice is not None and any(check.get_active() for check,_ in games))
-        def selected(value):
-            nonlocal choice
-            choice=value
+            count.set_label(f'{len(chosen)} selected')
+            select_all.set_sensitive(any(entry.get_visible() and not check.get_active() for entry,check,_ in entries))
+            reset.set_sensitive(bool(chosen))
+            dialog.set_response_enabled('review',choice is not None and not checking and not failure and bool(chosen))
+
+        def filter_games(*_):
+            query=search.get_text().strip().casefold()
+            any_visible=False
+            for entry,_,game in entries:
+                visible=not checking and not failure and query in game['name'].casefold()
+                entry.set_visible(visible)
+                any_visible|=visible
+            select_all.set_label('Select all results' if query else 'Select all')
+            scroll.set_visible(any_visible)
+            empty.set_visible(not any_visible)
+            empty.set_label(failure or ('Checking compatible games…' if checking else
+                'There are no scanned games in your library.' if not catalog else
+                'No games support this setup.' if not entries else 'No games match your search.'))
             update()
-        body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
-        body.append(self.nr_install_picker(selected))
-        listing=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
-        for game in sorted(self.games,key=lambda game:game['name'].casefold()):
-            check=Gtk.CheckButton(label=game['name'])
-            check.connect('toggled',update)
-            listing.append(check)
-            games.append((check,game))
-        scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,propagate_natural_height=True,max_content_height=300)
-        scroll.set_child(listing);body.append(scroll)
+
+        def toggle(check,game,entry):
+            if check.get_active():chosen.add(game['game'])
+            else:chosen.discard(game['game'])
+            if check.get_active():entry.add_css_class('game-selected')
+            else:entry.remove_css_class('game-selected')
+            if not bulk:update()
+
+        def set_checks(active):
+            nonlocal bulk
+            bulk=True
+            if not active:chosen.clear()
+            for entry,check,_ in entries:
+                if not active or entry.get_visible():check.set_active(active)
+            bulk=False
+            update()
+
+        def set_rows(matches):
+            clear(listing)
+            entries.clear()
+            for index,summary in matches:
+                game=catalog[index]
+                entry=self.review_entry(game['name'],summary or game.get('source') or '',game=game)
+                entry.set_subtitle_lines(2)
+                entry.add_css_class('split-render-game')
+                check=Gtk.CheckButton(active=game['game'] in chosen,valign=Gtk.Align.CENTER)
+                if check.get_active():entry.add_css_class('game-selected')
+                check.update_property([Gtk.AccessibleProperty.LABEL],[game['name']])
+                check.connect('toggled',toggle,game,entry)
+                entry.add_suffix(check)
+                entry.set_activatable_widget(check)
+                listing.append(entry)
+                entries.append((entry,check,game))
+            filter_games()
+
+        def selected(value):
+            nonlocal choice,checking,revision,failure
+            choice=value
+            revision+=1
+            current=revision
+            failure=''
+            notice.set_visible(False)
+            checking=value is not None
+            if value is None:
+                set_rows([(index,'') for index in range(len(catalog))])
+                return
+            filter_games()
+
+            def finish(matches,error):
+                nonlocal checking,failure
+                if closed or revision!=current:return False
+                checking=False
+                failure=error
+                if not failure:
+                    before=len(chosen)
+                    chosen.intersection_update(catalog[item['index']]['game'] for item in matches)
+                    removed=before-len(chosen)
+                    if removed:
+                        notice.set_label('1 game was deselected because it cannot use this setup.' if removed==1 else
+                            f'{removed} games were deselected because they cannot use this setup.')
+                        notice.set_visible(True)
+                    set_rows([(item['index'],item['summary']) for item in matches])
+                else:filter_games()
+                return False
+
+            def work():
+                try:matches=nr_install.match_batch(config,catalog,value,family)
+                except (OSError,ValueError,RuntimeError) as error:
+                    GLib.idle_add(finish,[],f'Could not check compatibility. {user_messages.friendly_error(str(error))}')
+                else:GLib.idle_add(finish,matches,'')
+
+            def check_latest():
+                if not closed and revision==current:threading.Thread(target=work,daemon=True).start()
+                return False
+            GLib.timeout_add(160,check_latest)
+
+        def section_heading(text,icon):
+            heading=Gtk.Box(spacing=8)
+            heading.append(Gtk.Image.new_from_icon_name(icon))
+            heading.append(label(text,'heading'))
+            return heading
+
+        setup=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,valign=Gtk.Align.START)
+        if wide:setup.set_size_request(296,-1)
+        setup.append(section_heading('Setup','preferences-system-symbolic'))
+        setup.append(self.nr_install_picker(selected))
+        game_column=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,hexpand=True)
+        game_heading=section_heading('Games','input-gaming-symbolic')
+        count.set_hexpand(True);count.set_halign(Gtk.Align.END)
+        game_heading.append(count)
+        for child in (game_heading,search,actions,scroll,empty,notice):game_column.append(child)
+        body.append(setup);body.append(game_column)
+        search.connect('search-changed',filter_games)
+        select_all.connect('clicked',lambda *_:set_checks(True))
+        reset.connect('clicked',lambda *_:set_checks(False))
         dialog.set_extra_child(body)
-        update()
+        set_rows([(index,'') for index in range(len(catalog))])
         def response(_,key):
-            if key=='review' and choice is not None:
-                self.review_nr_batch([game for check,game in games if check.get_active()],choice)
+            nonlocal closed
+            closed=True
+            if key=='review' and choice is not None and not checking and not failure:
+                self.review_nr_batch([game for game in catalog if game['game'] in chosen],choice)
         dialog.connect('response',response)
         dialog.present(self)
 
@@ -6941,7 +7168,7 @@ class Window(Adw.ApplicationWindow):
         family=(self.hardware_info or {}).get('family') or 'ada'
         def prepare():
             result=nr_install.prepare_batch(config,games,choice,family)
-            return dict(result, title='Review NR Add-ons', rows=[
+            return dict(result, title='Review Split Render', rows=[
                 {'name':p['name'],'game':p['game'],'subtitle':p['selection'],'detail':nr_install.describe_changes(p)}
                 for p in result['plans']])
         def message(result):
@@ -15337,8 +15564,8 @@ class Window(Adw.ApplicationWindow):
         review['_chosen_offers']=[]
         extra=self.supported_offers(review,offers,flow) if offers else None
         if operation=='install' and (review.get('rows') or offers) and not self.options.demo:
-            group=Adw.PreferencesGroup(title='DLSS5 NR add-ons',
-                description='Optional Environment and Character detail. Review the add-on files after the main package installs.')
+            group=Adw.PreferencesGroup(title='Split Render',
+                description='Optional. Render the environment and characters with DLSS 5 NR. Review the Split Render files after the main package installs.')
             group.add(self.nr_install_picker(lambda choice:review.update(_nr_choice=choice)))
             if extra is None:extra=group
             else:extra.append(group)

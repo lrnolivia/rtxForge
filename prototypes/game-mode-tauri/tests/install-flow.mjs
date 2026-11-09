@@ -11,7 +11,7 @@ await page.route('**/api/engine',async route=>{
  const request=route.request().postDataJSON();calls.push(request);let result={};
  if(request.method==='scan_game')result=[{name:source.games[0].name,game:source.games[0].path,exe:'fixture.exe',runtime_provider:'skynizz',feature_mode:'nr-mfg',installed,nr_strength:2,feature_controls:{enabled:1,intensity:2},dynamic_mfg_available:true}];
  else if(request.method==='nr_catalog')result={install_choices:[{label:'Characters + world',setup:{character:{addon:'shortfuse'}},adapt:true}]};
- else if(request.method==='nr_review')result={token:'exact-nr-review',title:'Review NR Add-ons',action:'Install NR add-ons',rows:[{game:source.games[0].path,name:source.games[0].name,summary:'Environment: Skynizz · Character detail: ShortFuse',details:'Add renodx-dlss.addon64'}]};
+ else if(request.method==='nr_review')result={token:'exact-nr-review',title:'Review Split Render',action:'Install NR add-ons',rows:[{game:source.games[0].path,name:source.games[0].name,summary:'Environment: Skynizz · Character detail: ShortFuse',details:'Add renodx-dlss.addon64'}]};
  else if(request.method==='run'&&request.params.token==='exact-nr-review')result={message:'NR add-ons installed in 1 game.'};
  else if(['prepare_routes','prepare_dlss'].includes(request.method)){
   if(mode==='delayed')await new Promise(resolve=>prepareRelease=resolve);
@@ -50,11 +50,11 @@ try{
  mode='empty';await click('Install Features');await click('Review games');await expect(page.getByRole('heading',{name:'Nothing ready yet',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Install Features',exact:true})).toBeDisabled();await page.locator('[data-supported-token]').check();await expect(page.getByRole('heading',{name:'1 game ready',exact:true})).toBeVisible();await page.locator('#review-trust').check();await click('Install Features');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();mode='cancelled';await waitForExecution();await click('Request cancellation');await expect.poll(()=>calls.some(c=>c.method==='cancel_routes'&&c.params.token==='exact-install-review')).toBe(true);await finishExecution();await expect(page.getByText('Cancelled safely. No files were changed.',{exact:true})).toBeVisible();await screenshot('cancelled');expect(calls.filter(c=>c.method==='execute_routes').at(-1).params.supported).toEqual(['exact-nr-subset']);await click('Back to game');
  mode='ready';await click('Install Features');await click('Review games');await page.locator('#review-trust').check();await click('Install Features');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();mode='failure';await finishExecution();await expect(page.getByText('The package could not be verified. Original files were kept.',{exact:true})).toBeVisible();await screenshot('error');await click('Back to game');
  mode='ready';await click('Install Features');await click('Review games');
- await page.getByLabel('DLSS5 NR add-ons').selectOption({label:'Characters + world'});
+ await page.getByLabel('Split Render').selectOption({label:'Characters + world'});
  await page.locator('#review-trust').check();await click('Install Features');
  await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();
  expect(calls.some(c=>c.method==='nr_review')).toBe(false);
- await finishExecution();await expect(page.getByRole('heading',{name:'Review NR Add-ons',exact:true})).toBeVisible();
+ await finishExecution();await expect(page.getByRole('heading',{name:'Review Split Render',exact:true})).toBeVisible();
  await expect(page.getByText('Environment: Skynizz · Character detail: ShortFuse')).toBeVisible();
  expect(calls.find(c=>c.method==='nr_review').params.rows.map(row=>row.game)).toEqual([source.games[0].path]);
  expect(calls.some(c=>c.method==='run'&&c.params.token==='exact-nr-review')).toBe(false);

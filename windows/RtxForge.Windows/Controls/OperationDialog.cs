@@ -173,7 +173,7 @@ public sealed class OperationDialog
     string Title() => operation switch
     {
         "install" => "Review Installation",
-        "install-nr-addons" => "Review NR Add-ons",
+        "install-nr-addons" => "Review Split Render",
         "uninstall" => "Review Restoration",
         "update-dlss" => "Review DLSS Update",
         "update-overlays" => "Update Overlays",
@@ -250,7 +250,7 @@ public sealed class OperationDialog
     {
         var options = new Expander
         {
-            Header = "DLSS5 NR add-ons",
+            Header = "Split Render",
             Content = Prefs.Label("Loading setups…"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
@@ -262,14 +262,14 @@ public sealed class OperationDialog
             if (closed || stage != Stage.Review) return;
             var picker = new NrSetupPicker(catalog);
             var fields = new StackPanel { Spacing = 12 };
-            fields.Children.Add(Prefs.Label("Optional. Review the add-on files after the main package installs."));
+            fields.Children.Add(Prefs.Label("Optional. Render the environment and characters with DLSS 5 NR. Review the Split Render files after the main package installs."));
             fields.Children.Add(picker.Root);
             options.Content = fields;
-            options.Header = "DLSS5 NR add-ons · None";
+            options.Header = "Split Render · None";
             picker.Changed += () =>
             {
                 nrChoice = picker.Choice;
-                options.Header = "DLSS5 NR add-ons · " + picker.Summary;
+                options.Header = "Split Render · " + picker.Summary;
             };
         }
         catch (InvalidOperationException)
@@ -293,7 +293,7 @@ public sealed class OperationDialog
     string ActionVerb() => operation switch
     {
         "install" => "Install",
-        "install-nr-addons" => "Install NR add-ons",
+        "install-nr-addons" => "Install Split Render",
         "uninstall" => "Restore",
         "update-dlss" => "Update",
         "update-overlays" => "Update Overlays",
@@ -471,7 +471,7 @@ public sealed class OperationDialog
     string ProgressVerb() => operation switch
     {
         "install" => "Installing",
-        "install-nr-addons" => "Installing NR add-ons",
+        "install-nr-addons" => "Installing Split Render",
         "uninstall" => "Restoring",
         "update-dlss" => "Updating",
         "update-overlays" => "Updating",

@@ -84,7 +84,7 @@ def _context(config, row):
     exe = t.safe(root / t.relative(row['exe']))
     t.need(exe.is_file(), 'Choose an installed game.')
     receipt = nr_install._receipt(row)
-    t.need(receipt.is_file(), 'Install DLSS5 NR add-ons in rtxForge to adjust them here.')
+    t.need(receipt.is_file(), 'Install Split Render in rtxForge to adjust it here.')
     record = nr_install._read_receipt(root, receipt)
     ini = t.safe(exe.parent / 'ReShade.ini')
     t.need(ini.is_file() and ini.stat().st_size <= 2 * 1024**2, 'The ReShade configuration is unavailable.')

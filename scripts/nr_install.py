@@ -127,7 +127,7 @@ def _model_build(model, gpu):
     raise t.Refusal(f'{models[model]["label"]} has no pinned build for this GPU yet.')
 
 
-def _payload(config, plan, gpu):
+def _payload(config, plan, model):
     """Every file the setup installs, relative to the game's executable folder."""
     catalog = nr_addons.catalog()
     files = {}
@@ -144,13 +144,13 @@ def _payload(config, plan, gpu):
                 files[f'rtxForge-NR-Licenses/{item["addon"]}-{path.name}'] = blob
             else:
                 files[path.name] = blob
-    if plan['model'] is None:
-        return files, None  # OptiScaler's NR brings the model
-    build_id, build = _model_build(plan['model'], gpu)
+    if model is None:
+        return files  # OptiScaler's NR brings the model
+    _, build = model
     model = _model(_fetch(config, build['archive'], Path(build['archive']['url']).name), build.get('file', {}))
     gitc = any(i['addon'] == 'gitc' for i in plan['install'])
     files['GITC-Uplift/' + MODEL if gitc else MODEL] = model
-    return files, build_id
+    return files
 
 
 def _value(value):
@@ -159,10 +159,8 @@ def _value(value):
     return str(value)
 
 
-def prepare(config, row, setup, gpu='ada', *, adapt=False):
-    root, exe, _, e = hdr._eligible(config, row)
-    receipt = _receipt(row)
-    t.need(not receipt.exists(), 'An NR add-on setup is already installed. Remove it before choosing another.')
+def _target(row, exe, e):
+    t.need(not _receipt(row).exists(), 'A Split Render setup is already installed. Remove it before choosing another.')
     arch = hdr.architecture(exe)
     route, host, optiscaler_ini = hdr._route(e, exe, arch)
     # The game folder, not the library row, says whether OptiScaler is here and runs its own NR.
@@ -173,11 +171,44 @@ def prepare(config, row, setup, gpu='ada', *, adapt=False):
     game = dict(row, arch=arch, optiscaler_mode=mode)
     if provider:
         game['runtime_provider'] = provider
+    return game, route, host, optiscaler_ini
+
+
+def _resolved(game, setup, gpu, *, adapt=False):
     if adapt:
         setup = nr_addons.combo_setup(game, setup)
     plan = nr_addons.install_plan(game, setup)
+    model = _model_build(plan['model'], gpu) if plan['model'] is not None else None
+    return setup, plan, model
+
+
+def _choose(game, choice, gpu):
+    if choice.get('auto') is not True:
+        return _resolved(game, choice['setup'], gpu, adapt=choice['adapt'])
+    if nr_addons.runtime_nr(game):
+        return _resolved(game, nr_addons.builtin_combos()['characters-and-world'], gpu, adapt=True)
+    # Start with a single pass. Where Lecram cannot run, try the next standalone provider.
+    reasons = []
+    for addon in ('lecram', 'shortfuse', 'gitc'):
+        try:
+            return _resolved(game, {'environment': {'addon': addon, 'model': choice['model']}}, gpu)
+        except t.Refusal as error:
+            reasons.append(str(error))
+    raise t.Refusal(reasons[0])
+
+
+def prepare(config, row, setup, gpu='ada', *, adapt=False):
+    return _prepare_choice(config, row, {'setup': setup, 'adapt': adapt}, gpu)
+
+
+def _prepare_choice(config, row, choice, gpu):
+    root, exe, _, e = hdr._eligible(config, row)
+    game, route, host, optiscaler_ini = _target(row, exe, e)
+    receipt = _receipt(row)
+    setup, plan, model = _choose(game, choice, gpu)
     directory = exe.parent
-    files, model_build = _payload(config, plan, gpu)
+    files = _payload(config, plan, model)
+    model_build = model[0] if model else None
     writes, checks, owned = {}, {str(exe): t.digest(exe)}, {}
     for rel, data in files.items():
         path = t.safe(directory / t.relative(rel))
@@ -191,7 +222,7 @@ def prepare(config, row, setup, gpu='ada', *, adapt=False):
               'files': owned, 'ini': {}, 'plugin': None, 'settings_created': None}
     if route in ('reshade', 'optiscaler'):
         # Plain games load ReShade as a proxy; OptiScaler loads ReShade64.dll when LoadReShade is on.
-        data = _reshade_host(config, arch)
+        data = _reshade_host(config, game['arch'])
         path = t.safe(directory / host)
         if path.exists():
             t.need(route == 'optiscaler' and t.digest(path) == t.sha(data), 'Another graphics tool uses ' + host + '. Its files have been kept.')
@@ -250,17 +281,42 @@ def selection(plan, model_build):
     return ' · '.join(parts)
 
 
+def _validate_choice(choice):
+    t.need(isinstance(choice, dict), 'Choose a Split Render setup.')
+    if choice.get('auto') is True:
+        t.need(choice.get('model') in nr_addons.MODELS, 'Choose the Old or New DLSS 5 model.')
+    else:
+        t.need(isinstance(choice.get('setup'), dict) and type(choice.get('adapt')) is bool,
+               'Choose a Split Render setup.')
+
+
+def match_batch(config, rows, choice, gpu='ada'):
+    """Preview compatible library rows without downloads. Review rechecks live safety and file ownership."""
+    _validate_choice(choice)
+    e = engine_bridge.module(config)
+    matches = []
+    for index, row in enumerate(rows):
+        try:
+            t.need(row.get('exe') and not row.get('anti_cheat'), 'This title cannot use Split Render.')
+            _, exe, _ = hdr._location(row)
+            game, _, _, _ = _target(row, exe, e)
+            _, plan, model = _choose(game, choice, gpu)
+        except (t.Refusal, OSError, ValueError, configparser.Error):
+            continue
+        matches.append({'index': index, 'summary': selection(plan, model[0] if model else None)})
+    return matches
+
+
 def prepare_batch(config, rows, choice, gpu='ada'):
     """Freeze one reviewed transaction per game, with no implicit writes to excluded games."""
-    t.need(isinstance(choice, dict) and isinstance(choice.get('setup'), dict)
-           and type(choice.get('adapt')) is bool, 'Choose an NR add-on setup.')
+    _validate_choice(choice)
     plans, blocked, roots = [], [], set()
     for row in rows:
         try:
             t.need(row.get('exe'), 'The selected game executable is unavailable.')
             root = t.safe(row['game'])
-            t.need(root not in roots, 'This folder already has an NR add-on setup in this review.')
-            plan = prepare(config, row, choice['setup'], gpu, adapt=choice['adapt'])
+            t.need(root not in roots, 'This folder already has a Split Render setup in this review.')
+            plan = _prepare_choice(config, row, choice, gpu)
         except (t.Refusal, OSError, ValueError, configparser.Error) as error:
             blocked.append({'game': row['game'], 'name': row['name'], 'reason': str(error)})
         else:
@@ -286,7 +342,7 @@ def apply_batch(config, review, progress=None):
             errors.append(f'{plan["name"]}: {error}')
         else:
             count += 1
-    return {'message': f'NR add-ons installed in {count} game' + ('s.' if count != 1 else '.'), 'errors': errors}
+    return {'message': f'Split Render installed in {count} game' + ('s.' if count != 1 else '.'), 'errors': errors}
 
 
 def _names(value):
@@ -317,7 +373,7 @@ def _other_consumers(directory, record, root):
 def prepare_remove(config, row):
     root, exe, _, e = hdr._eligible(config, row)
     receipt = _receipt(row)
-    t.need(receipt.is_file(), 'No NR add-on setup was found for this game.')
+    t.need(receipt.is_file(), 'No Split Render setup was found for this game.')
     record = _read_receipt(root, receipt)
     directory = exe.parent
     consumers = _other_consumers(directory, record, root)
@@ -384,7 +440,7 @@ def apply(config, review):
         t.check_plan(review)
         for path, digest in review['checks'].items():
             t.need(t.safe(path).is_relative_to(root) and Path(path).is_file() and t.digest(path) == digest,
-                   'Files changed since review; review the NR add-on change again.')
+                   'Files changed since review. Review the Split Render change again.')
         prefix = review.get('prefix')
         if prefix:
             import proton_prefix
@@ -399,4 +455,4 @@ def apply(config, review):
                 t.rollback_transaction(state, True)  # the game files go back; the prefix was not changed
                 raise
     return {'status': result['status'], 'recovery': str(state),
-            'message': 'NR add-ons removed.' if review['action'] == 'remove' else 'NR add-ons installed.'}
+            'message': 'Split Render removed.' if review['action'] == 'remove' else 'Split Render installed.'}

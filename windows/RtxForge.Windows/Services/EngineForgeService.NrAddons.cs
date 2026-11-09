@@ -10,11 +10,11 @@ public sealed partial class EngineForgeService
     /// <summary>The catalog; for a game, its combos as they apply there and the world Skynizz provides (runtime_nr).</summary>
     public async Task<JsonObject> NrCatalogAsync(Game? game = null) =>
         await CallAsync("nr_catalog", game is null ? null : new JsonObject { ["row"] = Row(game) }) as JsonObject
-            ?? throw new InvalidOperationException("NR add-ons are unavailable.");
+            ?? throw new InvalidOperationException("Split Render is unavailable.");
 
     public async Task<JsonObject> NrCheckAsync(Game game, JsonObject setup) =>
         await CallAsync("nr_check", new JsonObject { ["row"] = Row(game), ["setup"] = setup.DeepClone() }) as JsonObject
-            ?? throw new InvalidOperationException("The NR add-on check is unavailable.");
+            ?? throw new InvalidOperationException("The Split Render check is unavailable.");
 
     public async Task<JsonObject> NrStatusAsync(Game game) =>
         await CallAsync("nr_status", new JsonObject { ["row"] = Row(game) }) as JsonObject ?? new JsonObject { ["installed"] = false };
@@ -25,6 +25,14 @@ public sealed partial class EngineForgeService
     public async Task<EngineReview> ReviewNrBatchAsync(IReadOnlyList<Game> games, JsonObject choice, IProgress<PrepareProgress> progress) =>
         ToReview(await CallAsync("nr_review", new JsonObject { ["rows"] = Rows(games), ["choice"] = choice.DeepClone() },
             message => progress.Report(Phase(message))));
+
+    internal async Task<Dictionary<string, string>> MatchNrGamesAsync(Game[] games, JsonObject choice)
+    {
+        var matches = await CallAsync("nr_match", new JsonObject { ["rows"] = Rows(games), ["choice"] = choice.DeepClone() })
+            as JsonArray ?? throw new InvalidOperationException("Split Render compatibility could not be checked.");
+        return matches.OfType<JsonObject>().ToDictionary(match => games[match["index"]!.GetValue<int>()].Id,
+            match => match["summary"]!.GetValue<string>());
+    }
 
     public async Task<JsonObject> SaveNrComboAsync(string name, JsonObject combo) =>
         await CallAsync("nr_combo_save", new JsonObject { ["name"] = name, ["combo"] = combo.DeepClone() }) as JsonObject

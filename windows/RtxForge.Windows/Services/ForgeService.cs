@@ -324,10 +324,10 @@ public sealed class PreviewForgeService : IForgeService
     public Task<EngineReview> ReviewExtraRestoreAsync(ExtraRecord record) => Disabled<EngineReview>("Restoring tools");
     public Task<HdrStatus> HdrStatusAsync(Game game) => Task.FromResult(new HdrStatus(false, false, false, "HDR support is checked in the installed app.", ""));
     public Task<EngineReview> ReviewHdrAsync(Game game, bool remove = false, string? customPath = null) => Disabled<EngineReview>("Changing HDR");
-    public Task<System.Text.Json.Nodes.JsonObject> NrCatalogAsync(Game? game = null) => Disabled<System.Text.Json.Nodes.JsonObject>("NR add-ons");
-    public Task<System.Text.Json.Nodes.JsonObject> NrCheckAsync(Game game, System.Text.Json.Nodes.JsonObject setup) => Disabled<System.Text.Json.Nodes.JsonObject>("NR add-ons");
+    public Task<System.Text.Json.Nodes.JsonObject> NrCatalogAsync(Game? game = null) => Disabled<System.Text.Json.Nodes.JsonObject>("Split Render");
+    public Task<System.Text.Json.Nodes.JsonObject> NrCheckAsync(Game game, System.Text.Json.Nodes.JsonObject setup) => Disabled<System.Text.Json.Nodes.JsonObject>("Split Render");
     public Task<System.Text.Json.Nodes.JsonObject> NrStatusAsync(Game game) => Task.FromResult(new System.Text.Json.Nodes.JsonObject { ["installed"] = false });
-    public Task<EngineReview> ReviewNrAsync(Game game, System.Text.Json.Nodes.JsonObject? setup, bool remove = false) => Disabled<EngineReview>("Changing NR add-ons");
+    public Task<EngineReview> ReviewNrAsync(Game game, System.Text.Json.Nodes.JsonObject? setup, bool remove = false) => Disabled<EngineReview>("Changing Split Render");
     public Task<System.Text.Json.Nodes.JsonObject> SaveNrComboAsync(string name, System.Text.Json.Nodes.JsonObject combo) => Disabled<System.Text.Json.Nodes.JsonObject>("Saving combos");
     public Task<System.Text.Json.Nodes.JsonObject> DeleteNrComboAsync(string id) => Disabled<System.Text.Json.Nodes.JsonObject>("Deleting combos");
     public Task<DlssInventory> DlssInventoryAsync(Game game) =>

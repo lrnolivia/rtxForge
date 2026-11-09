@@ -11,7 +11,7 @@ internal sealed class NrSetupPicker
     readonly ComboBox preset = Field("Preset");
     readonly ComboBox environment = Field("Environment");
     readonly ComboBox character = Field("Character detail");
-    readonly RadioButtons model = new() { Header = "DLSS5 model", MaxColumns = 2 };
+    readonly RadioButtons model = new() { Header = "DLSS 5 model", MaxColumns = 2 };
     readonly StackPanel manual = new() { Spacing = 12 };
     readonly TextBlock presetDetails = Prefs.Label("", "ForgeCaptionDimTextStyle");
     readonly JsonObject[] addons;
@@ -27,12 +27,12 @@ internal sealed class NrSetupPicker
         models = (catalog["models"] as JsonArray ?? []).OfType<JsonObject>().ToArray();
         combos = (catalog["combos"] as JsonObject ?? []).Select(item => item.Value).OfType<JsonObject>().ToArray();
 
-        preset.ItemsSource = new[] { "Choose manually" }.Concat(combos.Select(c => c["name"]?.ToString() ?? "Saved setup"));
+        preset.ItemsSource = new[] { "Choose manually", "Auto · match each game" }
+            .Concat(combos.Select(c => c["name"]?.ToString() ?? "Saved setup"));
         var addonNames = new[] { "None" }.Concat(addons.Select(a => AddonName(a["id"]?.ToString()))).ToArray();
         environment.ItemsSource = addonNames;
         character.ItemsSource = addonNames;
-        model.ItemsSource = models.Select(m => (m["label"]?.ToString() ?? "")
-            .Replace(" DLSS5 (", " · ", StringComparison.Ordinal).TrimEnd(')')).ToArray();
+        model.ItemsSource = models.Select(ModelLabel).ToArray();
         preset.SelectedIndex = environment.SelectedIndex = character.SelectedIndex = 0;
         manualModel = FindModel("new");
         model.SelectedIndex = manualModel;
@@ -64,6 +64,9 @@ internal sealed class NrSetupPicker
     internal JsonObject? Choice { get; private set; }
     internal string Summary { get; private set; } = "None";
 
+    internal static string ModelLabel(JsonObject model) => (model["label"]?.ToString() ?? "")
+        .Replace(" DLSS 5 (", " · ", StringComparison.Ordinal).TrimEnd(')');
+
     static ComboBox Field(string title) => new()
     {
         Header = title, HorizontalAlignment = HorizontalAlignment.Stretch, MaxDropDownHeight = 240,
@@ -75,7 +78,8 @@ internal sealed class NrSetupPicker
         return name?.Split(" (", 2)[0] ?? id ?? "None";
     }
 
-    JsonObject? ActivePreset => preset.SelectedIndex > 0 ? combos[preset.SelectedIndex - 1] : null;
+    bool IsAuto => preset.SelectedIndex == 1;
+    JsonObject? ActivePreset => preset.SelectedIndex >= 2 ? combos[preset.SelectedIndex - 2] : null;
 
     int FindModel(string id)
     {
@@ -109,9 +113,15 @@ internal sealed class NrSetupPicker
     {
         var combo = ActivePreset;
         var modelId = model.SelectedIndex >= 0 ? models[model.SelectedIndex]["id"]?.ToString() : null;
-        manual.Visibility = combo is null ? Visibility.Visible : Visibility.Collapsed;
-        presetDetails.Visibility = combo is null ? Visibility.Collapsed : Visibility.Visible;
-        if (combo is not null)
+        manual.Visibility = combo is null && !IsAuto ? Visibility.Visible : Visibility.Collapsed;
+        presetDetails.Visibility = combo is not null || IsAuto ? Visibility.Visible : Visibility.Collapsed;
+        if (IsAuto)
+        {
+            presetDetails.Text = "Choose a compatible setup for each game. Review shows which passes each game will use.";
+            Choice = modelId is not null ? new JsonObject { ["auto"] = true, ["model"] = modelId } : null;
+            Summary = "Auto";
+        }
+        else if (combo is not null)
         {
             var world = DescribeSlot(combo["environment"], "Installed NR");
             var detail = DescribeSlot(combo["character"], "None");

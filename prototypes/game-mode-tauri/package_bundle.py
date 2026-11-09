@@ -19,6 +19,7 @@ APP = Path(__file__).resolve().parent
 REPO = APP.parents[1]
 LINUX_PYTHON = 'https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10%2B20261026-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz'
 LINUX_PYTHON_SHA = '4d3c16c59ed0802a3d1d34d8bce504b15ceeaff39d62dadecc6a9fa803412aed'
+LINUX_PYTHON_ASSET = 'https://api.github.com/repos/astral-sh/python-build-standalone/releases/assets/678581609'
 
 
 def digest(path):
@@ -26,24 +27,35 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def download_linux_python(archive):
-    if archive.is_file() and digest(archive) == LINUX_PYTHON_SHA:
+def download_verified_asset(public_url, api_url, expected_sha, target):
+    if target.is_file() and digest(target) == expected_sha:
         return
-    with tempfile.TemporaryDirectory(dir=archive.parent) as directory:
-        candidate = Path(directory) / archive.name
+    token = os.environ.get('GH_TOKEN')
+    with tempfile.TemporaryDirectory(dir=target.parent) as directory:
+        candidate = Path(directory) / target.name
         for attempt in range(3):
+            use_api = bool(token) and attempt != 1
+            request = urllib.request.Request(api_url + f'?fresh={time.time_ns()}' if use_api else public_url,
+                                             headers={'Accept': 'application/octet-stream'})
+            if use_api:
+                request.add_unredirected_header('Authorization', f'Bearer {token}')
             try:
-                with urllib.request.urlopen(LINUX_PYTHON, timeout=90) as source, candidate.open('wb') as target:
-                    shutil.copyfileobj(source, target)
+                with urllib.request.urlopen(request, timeout=90) as source:
+                    if use_api and source.headers.get_content_type() == 'application/json':
+                        raise URLError('GitHub returned asset metadata instead of the download')
+                    with candidate.open('wb') as stream:
+                        shutil.copyfileobj(source, stream)
                 break
             except (URLError, TimeoutError, ConnectionError, IncompleteRead) as error:
-                if attempt == 2 or isinstance(error, HTTPError) and error.code not in (429, 500, 502, 503, 504):
+                retryable = not isinstance(error, HTTPError) or error.code in (429, 500, 502, 503, 504)
+                api_denied = use_api and isinstance(error, HTTPError) and error.code in (401, 403, 404)
+                if attempt == 2 or not (retryable or api_denied):
                     raise
-                print(f'Private Python download failed ({error}); retrying.', flush=True)
+                print(f'{target.name} download failed ({error}); retrying.', flush=True)
                 time.sleep(2 ** (attempt + 1))
-        if digest(candidate) != LINUX_PYTHON_SHA:
-            raise ValueError('Private Python archive hash mismatch.')
-        candidate.replace(archive)
+        if digest(candidate) != expected_sha:
+            raise ValueError(f'{target.name} download hash mismatch.')
+        candidate.replace(target)
 
 
 def revision():
@@ -92,7 +104,7 @@ def smoke(folder):
     python = folder / ('python/python.exe' if os.name == 'nt' else 'python/bin/python3')
     env = dict(os.environ, RTXFORGE_ROOT=str(folder / 'engine'), RTXFORGE_ENGINE_BRIDGE='1',
                RTXFORGE_APP_EXE=str(folder / ('rtxforge-game-mode.exe' if os.name == 'nt' else 'rtxforge-game-mode')))
-    for key in ('PYTHONPATH', 'RTXFORGE_PREVIEW_READ_ONLY', 'RTXFORGE_PYTHON', 'RTXFORGE_READ_ONLY'):
+    for key in ('PYTHONPATH', 'RTXFORGE_PREVIEW_READ_ONLY', 'RTXFORGE_PYTHON', 'RTXFORGE_READ_ONLY', 'GH_TOKEN'):
         env.pop(key, None)
     child = subprocess.Popen([str(python), '-u', '-B', str(folder / 'bridge/engine_host.py')],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -133,7 +145,7 @@ def bundle(output, screening):
     shutil.copytree(screening, output / 'screening', dirs_exist_ok=True)
     if os.name != 'nt':
         archive = output.parent / 'python-linux-x64.tar.gz'
-        download_linux_python(archive)
+        download_verified_asset(LINUX_PYTHON, LINUX_PYTHON_ASSET, LINUX_PYTHON_SHA, archive)
         with tarfile.open(archive) as source: source.extractall(output, filter='data')
         for relative in ('engine', 'scripts', 'providers', 'windows/engine-host', 'gui/icons', 'packaging/steam-artwork'):
             shutil.copytree(REPO / relative, output / 'engine' / relative, dirs_exist_ok=True,

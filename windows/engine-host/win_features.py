@@ -897,7 +897,11 @@ def _run_hdr(plan):
 
 def nr_catalog(params):
     """The add-on catalog; for a row, its combos as they apply there and the world Skynizz provides."""
-    return nr_addons.catalog_view(_config(), (params or {}).get('row'))
+    row = (params or {}).get('row')
+    catalog = nr_addons.catalog_view(_config(), row)
+    if row is None:
+        catalog['install_choices'] = nr_addons.install_choices(_config())
+    return catalog
 
 
 def nr_check(params):
@@ -910,6 +914,16 @@ def nr_status(params):
 
 
 def nr_review(params):
+    if 'rows' in params:
+        import hardware
+        plan = nr_install.prepare_batch(_config(), params['rows'], params['choice'],
+                                        hardware.detect().get('family') or 'ada')
+        return _review('nr-addons-batch', 'Review NR add-on installation',
+                       [_item(p['name'], p['selection'], 'Install', p['game'], nr_install.describe_changes(p))
+                        for p in plan['plans']],
+                       blocked=[_item(p['name'], p['reason'], 'Skipped', p['game']) for p in plan['blocked']],
+                       action='Install NR add-ons', payload=plan,
+                       summary='Each game has its own compatibility and file review.')
     remove = params.get('remove', False)
     t.need(type(remove) is bool, 'Choose an NR add-on action.')
     if remove:
@@ -930,6 +944,11 @@ def nr_review(params):
 
 def _run_nr(plan):
     return nr_install.apply(_config(), plan)
+
+
+def _run_nr_batch(plan):
+    return nr_install.apply_batch(_config(), plan, lambda name, index, total:
+                                  ui.progress('Installing NR add-ons', game=name, current=index, total=total))
 
 
 def nr_combo_save(params):
@@ -1131,7 +1150,7 @@ def update_apply(params):
 
 
 RUNNERS = {"art-sync": _run_art_sync, "dlss-restore": _run_dlss_restore, "report": _run_report, "service": _run_service,
-           'renodx-hdr': _run_hdr, 'nr-addons': _run_nr,
+           'renodx-hdr': _run_hdr, 'nr-addons': _run_nr, 'nr-addons-batch': _run_nr_batch,
            "extra": _run_extra, "extra-restore": _run_extra_restore, "update": _run_update, 'global-controls': _run_global_controls, 'overlay-ui': _run_global_controls, 'overlay-packages': _run_global_controls,
            'storage-cleanup': _run_storage}
 

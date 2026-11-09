@@ -80,6 +80,8 @@ let appearanceReady=false,appearanceStored="",appearanceTimer:ReturnType<typeof 
 let appearanceWrites:Promise<void>=Promise.resolve();
 let disposeViewportArtwork=()=>{};
 let pendingInstall:{params:Record<string,unknown>;settings:Record<string,unknown>;rows:EngineRow[]}|null=null;
+type NrChoice = { label: string; setup: Record<string, unknown>; adapt: boolean };
+let nrChoices: NrChoice[] = [];
 let libraryFilter = 'all', libraryChecking = false, libraryMode: string | undefined;
 
 function announce(message: string) {
@@ -175,6 +177,8 @@ function setView(next: View, focus = true) {
     }
   }
   if (next === 'settings' && backend.enabled && !sharedPreferences) void loadPreferences();
+  if (next === 'packages' && backend.enabled) void loadNrChoices().then(() => { if (view === 'packages') render(); })
+    .catch(problem => announce(problem.message));
   if(next==='details'&&backend.enabled){const game=selectedGame();if(game)void getEngineRows(game).then(rows=>{if(view==='details'&&selectedId===game.id){render();if(detailsSection==='overview'&&rows[0])void loadOverviewExtras(game,rows[0]);}}).catch(problem=>announce(problem.message));}
 }
 async function loadPreferences() {
@@ -666,7 +670,9 @@ function operationView() {
   if (!operation) return heading('Operations', 'No operation is active.');
   const state = operation, review = state.review;
   if(state.method==='overlay_status'&&state.stage==='done')return heading('Overlay Status','Installed versions and recorded update times.')+overlayStatusView(state.result as OverlayStatus);
-  if(state.kind)return operationFlow(state,snapshot?.games||[],icon,startupSettingsView(),supportedReviews(review));
+  if(state.kind)return operationFlow(state,snapshot?.games||[],icon,startupSettingsView(),supportedReviews(review),
+    state.kind === 'install' && review && (review.rows?.length || review.supported?.length)
+      ? nrChoicePicker('Review the add-on files after the main package installs.') : '');
   const entries = review?.rows || review?.items || [];
   return heading(e(state.title), state.stage === 'checking' ? 'Checking the exact selection with the shared engine…' : state.stage === 'running' ? 'The existing engine is applying the reviewed changes.' : state.stage === 'review' ? 'Your files change only after you confirm this exact review.' : '') +
     `<section class="operation-workspace glass-section">${state.stage === 'checking' || state.stage === 'running' ? `<div class="operation-progress">${icon('refresh')}<h2>${state.stage === 'checking' ? 'Preparing review' : 'Working'}</h2><p role="status">${e(state.progress?.label || state.progress?.phase || 'Waiting for the engine to report progress…')}</p>${typeof state.progress?.fraction === 'number' ? `<progress max="1" value="${state.progress.fraction}" aria-label="Engine progress"></progress>` : ''}<p class="subtle">${e(state.progress?.game || '')}</p></div>` : ''}
@@ -696,11 +702,12 @@ function reportForm(result: unknown) {
 }
 async function withOperation(title: string, method: string, params: Record<string, unknown>, execute = 'run') {
   const origin = view === 'operation' ? operation?.origin || 'details' : view;
-  const kind=method==='prepare_routes'?String(params.operation||'apply'):method==='prepare_dlss'?'update-dlss':undefined;
+  const kind=method==='prepare_routes'?String(params.operation||'apply'):method==='prepare_dlss'?'update-dlss':method==='nr_review'?'install-nr-addons':undefined;
   const targets=kind?(snapshot?.games||[]).filter(game=>((params.rows||[]) as EngineRow[]).some(row=>pathKey(row.game)===pathKey(game.path))):undefined;
   const state = { stage: 'checking' as const, title, execute, origin, method,kind,targets, changedKeys: Object.keys((params.changes || {}) as object) };
   operation = state; setView('operation');
   try {
+    if (kind === 'install') await loadNrChoices().catch(() => { nrChoices = []; });
     const result = await engineRequest<Review>(method, params, progress => { if (operation) { operation.progress = progress; render(); } });
     if (!operation || operation !== state || operation.dismissed) {
       if (result?.token) await engineRequest(execute === 'execute_routes' ? 'discard_routes' : execute === 'run' ? 'discard' : 'discard_operation', execute === 'run' ? { token: result.token } : { tokens: [result.token] });
@@ -710,6 +717,34 @@ async function withOperation(title: string, method: string, params: Record<strin
     else { operation.stage = 'done'; operation.result = result; }
   } catch (problem) { if (operation === state && !operation.dismissed) { operation.stage = 'error'; operation.error = problem instanceof Error ? problem.message : 'The engine could not complete the request.'; } else return; }
   render(); document.querySelector<HTMLElement>('#page-title')?.focus();
+}
+async function loadNrChoices() {
+  const catalog = await engineRequest<{ install_choices: NrChoice[] }>('nr_catalog');
+  nrChoices = catalog.install_choices ?? [];
+}
+function nrChoicePicker(help: string) {
+  return `<label class="field" for="nr-add-on-setup"><span><strong>DLSS5 NR add-ons</strong><small>${e(help)}</small></span><select id="nr-add-on-setup" ${nrChoices.length ? '' : 'disabled'}><option value="">None</option>${nrChoices.map((choice,index) => `<option value="${index}">${e(choice.label)}</option>`).join('')}</select></label>`;
+}
+function selectedNrChoice() {
+  const value = app.querySelector<HTMLSelectElement>('#nr-add-on-setup')?.value;
+  return value ? nrChoices[Number(value)] : undefined;
+}
+function nrPackageCard() {
+  return `<section class="glass-section"><h2>DLSS5 NR add-ons</h2><p>Choose Environment and Character detail for compatible games. Use Lecram, ShortFuse, GITC Uplift or a saved combo.</p>${backend.enabled ? `<details><summary>Choose games</summary>${nrChoicePicker('Choose an add-on setup to review for the selected games.')}` +
+    (snapshot?.games || []).map(game => `<label class="trust-choice"><input type="checkbox" data-nr-target="${e(game.id)}"/>${e(game.name)}</label>`).join('') +
+    '<button class="primary" data-action="review-nr-addons">Review games</button></details>' : ''}</section>`;
+}
+async function reviewNrPackage() {
+  const choice = selectedNrChoice();
+  const selected = new Set([...app.querySelectorAll<HTMLInputElement>('[data-nr-target]:checked')].map(node => node.dataset.nrTarget));
+  if (!choice || !selected.size) { announce('Choose an add-on setup and at least one game.'); return; }
+  const rows: EngineRow[] = [];
+  for (const game of snapshot?.games || []) {
+    if (!selected.has(game.id)) continue;
+    const row = (await getEngineRows(game)).find(row => pathKey(row.game) === pathKey(game.path));
+    rows.push(row ?? {name:game.name, game:game.path});
+  }
+  if (view === 'packages') await withOperation('Review NR Add-ons', 'nr_review', {rows, choice});
 }
 async function getEngineRows(target?: Game) {
   if (!backend.enabled) throw new Error(backend.reason);
@@ -898,7 +933,7 @@ function render() {
   const modal = view==='operation' && !!operation?.kind;
   const surface = modal ? operation?.origin || 'library' : view;
   document.documentElement.dataset.surface = surface;
-  const pageContent = surface === 'library' ? library() : surface === 'presets' ? presets() : surface === 'details' ? details() : surface === 'packages' ? packages() : surface === 'extras' ? extras() : surface === 'operation' ? operationView() : settings();
+  const pageContent = surface === 'library' ? library() : surface === 'presets' ? presets() : surface === 'details' ? details() : surface === 'packages' ? packages() + nrPackageCard() : surface === 'extras' ? extras() : surface === 'operation' ? operationView() : settings();
   const content = modal ? pageContent.replace('id="page-title"','id="background-page-title"') : pageContent;
   const overlay = modal ? `<div class="operation-backdrop"><section class="operation-modal glass-section" role="dialog" aria-modal="true" aria-labelledby="page-title">${operationView()}</section></div>` : '';
   app.innerHTML = `<div class="shell" ${modal?'inert aria-hidden="true"':''}><header class="app-header" data-tauri-drag-region><div class="brand"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></div><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><div id="input-hints">${hints()}</div></footer></div>${overlay}`;
@@ -1156,6 +1191,7 @@ function action(name: string) {
   if (name === 'reset-appearance') { appearance = { ...appearanceDefaults }; applyAppearance(); render(); app.querySelector<HTMLElement>('[data-action="reset-appearance"]')?.focus(); announce('Appearance reset to Clear.'); }
   if (name === 'scan-engine') void getEngineRows().then(() => { render(); announce('Compatibility check completed.'); }).catch(problem => announce(problem.message));
   if(name==='startup-review'&&pendingInstall){void withOperation('Review Installation','prepare_routes',pendingInstall.params,'execute_routes');return;}
+  if (name === 'review-nr-addons') void reviewNrPackage().catch(problem => announce(problem.message));
   if (name === 'operation-back') { const origin = operation?.origin || 'details'; operation = null; pendingInstall=null; setView(origin); }
   if (name === 'discard-review') void discardReview();
   if (name === 'cancel-operation' && operation?.review){const state=operation;state.cancelRequested=true;render();void engineRequest(state.execute==='execute_routes'?'cancel_routes':'cancel',{token:state.review!.token}).then(()=>announce('Cancellation requested. The engine will stop at a safe boundary.')).catch(problem=>{state.cancelRequested=false;render();announce(String(problem));});}
@@ -1234,6 +1270,11 @@ async function confirmOperation() {
   const state = operation; if (!state?.review || state.stage !== 'review') return;
   if (state.review.trust && !app.querySelector<HTMLInputElement>('#review-trust')?.checked) return;
   const supported = [...app.querySelectorAll<HTMLInputElement>('[data-supported-token]:checked')].map(field => field.dataset.supportedToken!);
+  const choice = state.kind === 'install' ? selectedNrChoice() : undefined;
+  const reviewedRoots = new Set([...(state.review.rows || []),
+    ...(state.review.supported || []).filter(offer => supported.includes(offer.token)).flatMap(offer => offer.rows)]
+    .filter(row => row.game).map(row => pathKey(String(row.game))));
+  const addonRows = choice ? pendingInstall?.rows.filter(row => reviewedRoots.has(pathKey(row.game))) || [] : [];
   state.stage = 'running'; render();
   try {
     state.result = await engineRequest(state.execute, { token: state.review.token, trusted: true, offline_acknowledged: Boolean(state.review.trust), supported }, progress => {
@@ -1243,6 +1284,10 @@ async function confirmOperation() {
       else if (label) label.textContent = String(progress.label || progress.phase || 'Working…');
     });
     state.stage = 'done'; engineRows = [];if(state.execute==='steam_install')steamAdded=true;else if(state.execute==='steam_remove')steamAdded=false;
+    if (choice && addonRows.length && !(state.result as Record<string,unknown>)?.cancelled) {
+      await withOperation('Review NR Add-ons', 'nr_review', {rows: addonRows, choice});
+      return;
+    }
     if(state.origin === 'presets' && !(state.result as Record<string,unknown>)?.cancelled) { drafts.delete(presetId); presetSelection=false; batchSelection.clear(); }
     if (['settings_review', 'executable_review', 'package_use'].includes(state.method || '') || state.origin === 'presets') {
       try {

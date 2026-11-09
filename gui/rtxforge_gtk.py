@@ -3766,6 +3766,7 @@ OPERATION_WORDS={
     'recovery':('Review Restoration','Restore','Restoring'),
     'cleanup':('Review Cleanup','Remove','Removing'),
     'tool':('Review Tool Installation','Install','Installing'),
+    'nr-addons':('Review NR Add-ons','Install NR add-ons','Installing NR add-ons'),
     'tool-restore':('Review Tool Restoration','Restore','Restoring'),
     'artwork':('Review Artwork Sync','Sync','Syncing'),
     'steam-shortcut':('Review rtxForge in Steam','Apply','Applying'),
@@ -3983,7 +3984,9 @@ class OperationFlow:
         if self.accent:self.dialog.remove_css_class(self.accent)
         if getattr(self.owner,'operation_flow',None) is self:self.owner.operation_flow=None
         if self.owner.dialog is self.dialog:self.owner.dialog=None
-        if self.stage=='done' and getattr(self,'rescan',False):self.owner.scan()
+        follow_up=getattr(self,'follow_up',None)
+        if self.stage=='done' and follow_up:GLib.idle_add(follow_up)
+        elif getattr(self,'rescan_on_close',False) or (self.stage=='done' and getattr(self,'rescan',False)):self.owner.scan()
 
     def cancel(self):
         owner=self.owner
@@ -4066,7 +4069,7 @@ class OperationFlow:
                     # Rows that are not per-game changes (artwork roles) state their own status.
                     listing.append(owner.review_entry(item['name'],detail,game,item['badge']))
                 else:
-                    listing.append(owner.review_entry(item['name'],'Ready to '+self.verb.lower(),game,'Ready',detail or None))
+                    listing.append(owner.review_entry(item['name'],item.get('subtitle') or 'Ready to '+self.verb.lower(),game,'Ready',detail or None))
             body.append(self._rows_scroll(listing))
         blocked=review.get('blocked',[])
         if blocked:
@@ -6828,7 +6831,7 @@ class Window(Adw.ApplicationWindow):
             def check():
                 result=nr_addons.check(game,setup())
                 if result['ok']:
-                    text='Works in this game.' if result['verified'] else 'Works in this game · this pairing is not verified on a test copy yet.'
+                    text='Available to review.' if result['verified'] else 'Available to review · this pairing is not verified on a test copy yet.'
                     if result.get('optiscaler_nr'):text=f"{world} covers the environment. "+text
                     if result['skipped']:text+=" Some settings aren't verified for this add-on and are left out."
                 else:text=result['reason']
@@ -6886,6 +6889,66 @@ class Window(Adw.ApplicationWindow):
                 note=' '.join(plan.get('notes',[])) or None,
                 done=lambda result:result['message'])
         self.start('Preparing NR add-ons',lambda:nr_install.prepare_remove(self.service.config,game) if remove else nr_install.prepare(self.service.config,game,setup,family),ready)
+
+    def nr_install_picker(self,changed):
+        import nr_addons
+        try:choices=nr_addons.install_choices(self.service.config)
+        except (OSError, ValueError, RuntimeError) as error:
+            return row('Add-on setup',user_messages.friendly_error(str(error)))
+        picker=safe_combo_row(title='Add-on setup',subtitle='Choose a built-in or saved setup.',
+                              model=Gtk.StringList.new(['None',*[choice['label'] for choice in choices]]),selected=0)
+        def selected(widget,*_):
+            index=widget.get_selected()
+            changed(choices[index-1] if 0<index<=len(choices) else None)
+        picker.connect('notify::selected',selected)
+        return picker
+
+    def choose_nr_games(self):
+        if self.busy or self.options.demo:return
+        dialog=Adw.AlertDialog(heading='DLSS5 NR add-ons',body='Choose an add-on setup and the games you want to review.')
+        dialog.add_response('cancel','Cancel')
+        dialog.add_response('review','Review games')
+        dialog.set_response_appearance('review',Adw.ResponseAppearance.SUGGESTED)
+        choice=None
+        games=[]
+        def update(*_):
+            dialog.set_response_enabled('review',choice is not None and any(check.get_active() for check,_ in games))
+        def selected(value):
+            nonlocal choice
+            choice=value
+            update()
+        body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
+        body.append(self.nr_install_picker(selected))
+        listing=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
+        for game in sorted(self.games,key=lambda game:game['name'].casefold()):
+            check=Gtk.CheckButton(label=game['name'])
+            check.connect('toggled',update)
+            listing.append(check)
+            games.append((check,game))
+        scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,propagate_natural_height=True,max_content_height=300)
+        scroll.set_child(listing);body.append(scroll)
+        dialog.set_extra_child(body)
+        update()
+        def response(_,key):
+            if key=='review' and choice is not None:
+                self.review_nr_batch([game for check,game in games if check.get_active()],choice)
+        dialog.connect('response',response)
+        dialog.present(self)
+
+    def review_nr_batch(self,games,choice,*,rescan_on_close=False):
+        import nr_install
+        config=self.service.config
+        family=(self.hardware_info or {}).get('family') or 'ada'
+        def prepare():
+            result=nr_install.prepare_batch(config,games,choice,family)
+            return dict(result, title='Review NR Add-ons', rows=[
+                {'name':p['name'],'game':p['game'],'subtitle':p['selection'],'detail':nr_install.describe_changes(p)}
+                for p in result['plans']])
+        def message(result):
+            return '\n'.join([result['message'],*result['errors']])
+        flow=self.review_write('nr-addons',prepare=prepare,run=lambda review:nr_install.apply_batch(config,review),
+                               details=['Each game has its own compatibility and file review.'],done=message)
+        if flow:flow.rescan_on_close=rescan_on_close
 
     def review_extra_restore(self,record):
         import extra_tools
@@ -15273,6 +15336,12 @@ class Window(Adw.ApplicationWindow):
         offers=review.get('supported') or []
         review['_chosen_offers']=[]
         extra=self.supported_offers(review,offers,flow) if offers else None
+        if operation=='install' and (review.get('rows') or offers) and not self.options.demo:
+            group=Adw.PreferencesGroup(title='DLSS5 NR add-ons',
+                description='Optional Environment and Character detail. Review the add-on files after the main package installs.')
+            group.add(self.nr_install_picker(lambda choice:review.update(_nr_choice=choice)))
+            if extra is None:extra=group
+            else:extra.append(group)
         flow.show_review(review,self.execute,self.review_details(review),enabled=not self.options.demo,extra=extra)
 
     def supported_offers(self,review,offers,flow):
@@ -15354,6 +15423,16 @@ class Window(Adw.ApplicationWindow):
         if self.review and self.review.get('save_defaults'):self.defaults_applied(self.review['save_defaults'])
         count=len(self.review.get('rows',[])) if self.review else 0
         self.log.append('Saved report: '+str(path))
+        if self.review and self.review.get('_nr_choice'):
+            ready=list(self.review.get('rows',[]))
+            for offer in self.review.get('_chosen_offers',[]):
+                ready.extend(offer['review'].get('rows',[]))
+            roots={item.get('game') for item in ready}
+            games=[game for game in self.operation_games if game.get('game') in roots]
+            flow=self.operation_flow
+            if games and flow and not flow.closed:
+                choice=self.review['_nr_choice']
+                flow.follow_up=lambda:self.review_nr_batch(games,choice,rescan_on_close=True)
         self.finish_progress(True,f'{count} game'+('s' if count!=1 else '')+' updated.')
 
     def show_activity(self,*_):

@@ -303,6 +303,21 @@ def catalog_view(config, game=None):
             'runtime_nr': runtime_nr(game) if game is not None else None}
 
 
+def install_choices(config):
+    """Choices shared by the package install reviews. Saved combos carry custom builds and tuning."""
+    cat = catalog()
+    choices = [{'label': combo['name'], 'setup': combo, 'adapt': True}
+               for combo in combos(config).values()]
+    for slot, title in (('environment', 'Environment'), ('character', 'Character detail')):
+        for key, addon in cat['addons'].items():
+            if slot == 'character' and not (addon.get('beside_optiscaler') or {}).get('with_optiscaler_nr'):
+                continue  # A single Character add-on requires the runtime to provide the world.
+            for model, spec in cat['models'].items():
+                choices.append({'label': f'{title} · {addon["name"]} · {spec["label"]}',
+                                'setup': {slot: {'addon': key, 'model': model}}, 'adapt': False})
+    return choices
+
+
 def default_setup(game):
     """The setup a game's picker starts on: Lecram for the environment, or Skynizz for the
     environment with ShortFuse for characters where Skynizz's NR covers it."""
@@ -312,10 +327,18 @@ def default_setup(game):
     return {'environment': {'addon': 'lecram'}}
 
 
+def install_plan(game, setup):
+    """The standalone add-on operation cannot install the Feeder stack."""
+    result = plan(game, setup)
+    t.need(not result['feeder'],
+           'This game has no DLSS of its own, so Lecram runs through Feeder NR. Choose Feeder NR for it.')
+    return result
+
+
 def check(game, setup):
     """Whether this setup works in this game, without changing anything."""
     try:
-        p = plan(game, setup)
+        p = install_plan(game, setup)
         return {'ok': True, 'verified': p['verified'], 'feeder': p['feeder'], 'skipped': p['skipped'],
                 'install': p['install'], 'model': p['model'], 'optiscaler_nr': p['optiscaler_nr'], 'world': p['world']}
     except t.Refusal as error:
@@ -326,6 +349,6 @@ def apply_combo(game, combo):
     """A saved combo applied to one game: its plan, or the reason this game can't use it."""
     setup = combo_setup(game, combo)
     try:
-        return {'ok': True, 'plan': plan(game, setup)}
+        return {'ok': True, 'plan': install_plan(game, setup)}
     except t.Refusal as error:
         return {'ok': False, 'reason': str(error)}

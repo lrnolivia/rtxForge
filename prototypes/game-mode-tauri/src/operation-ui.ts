@@ -24,7 +24,7 @@ export function operationStep(state:FlowState,games:Game[],icon:Icon) {
  const label=state.cancelRequested?'Waiting for the engine to stop safely…':String(p.label||p.phase||(state.stage==='checking'?'Checking the selected games and required packages…':'Waiting for the engine to report progress…'));
  return `<div class="operation-step" ${color?`style="--step-accent:${e(color)}"`:''}><div class="flow-poster">${art?`<img src="${e(art)}" alt=""/>`:icon('package')}</div><div class="operation-step-copy"><p class="flow-counter">${e(counter)}</p><h2>${e(game?.name||name||'Your selected games')}</h2><p role="status" class="flow-phase">${e(label)}</p><progress max="1" ${fraction!==null?`value="${fraction}"`:''} aria-label="${caption} progress"></progress>${fraction!==null?`<span class="flow-percentage">${Math.round(fraction*100)}%</span>`:''}</div></div>`;
 }
-export function operationFlow(state:FlowState,games:Game[],icon:Icon,startup='',supported='') {
+export function operationFlow(state:FlowState,games:Game[],icon:Icon,startup='',supported='',afterReview='') {
  const review=state.review,rows=review?.rows||review?.items||[],blocked=review?.blocked||[],warnings=review?.warnings||[];
  const steps=['Startup settings','Review games','Install'];
  const current=state.stage==='startup'?0:state.stage==='review'||state.stage==='checking'?1:2;
@@ -35,10 +35,11 @@ export function operationFlow(state:FlowState,games:Game[],icon:Icon,startup='',
   footer='<button class="quiet" data-action="discard-review">Cancel</button><button class="primary" data-action="startup-review">Review games</button>';
  }else if(state.stage==='checking'||state.stage==='running'){
   body=operationStep(state,games,icon);
-  footer=state.stage==='checking'?'<button class="quiet" data-action="discard-review">Cancel</button>':`<button class="quiet" data-action="cancel-operation" ${state.cancelRequested?'disabled':''}>${state.cancelRequested?'Cancellation requested':'Request cancellation'}</button>`;
+  footer=state.stage==='checking'?'<button class="quiet" data-action="discard-review">Cancel</button>':state.kind==='install-nr-addons'?'':`<button class="quiet" data-action="cancel-operation" ${state.cancelRequested?'disabled':''}>${state.cancelRequested?'Cancellation requested':'Request cancellation'}</button>`;
  }else if(state.stage==='review'&&review){
   body=`<div class="flow-summary"><h2>${rows.length?`${rows.length} game${rows.length===1?'':'s'} ready`:'Nothing ready yet'}</h2>${review.summary?`<p>${e(review.summary)}</p>`:''}</div><div class="flow-review-list">${rows.map(row=>reviewRow(row,games,icon)).join('')}${blocked.length?`<h3 class="flow-attention">Needs attention · ${blocked.length}</h3>${blocked.map(row=>reviewRow(row,games,icon,false)).join('')}`:''}</div>${supported}${warnings.length?`<div class="flow-warnings">${warnings.map(row=>`<div>${icon('warning')}<p><strong>${e(row.name||row.title||'Review warning')}</strong>${e(row.reason||row.detail||'')}</p></div>`).join('')}</div>`:''}${review.note?`<p class="flow-note">${e(review.note)}</p>`:''}<p class="flow-assurance">Your files will only change after you review and confirm.</p>${review.trust?`<label class="trust-choice"><input id="review-trust" type="checkbox"/><span>${e(review.trust)}</span></label>`:''}`;
   footer=`<button class="quiet" data-action="discard-review">Back</button><button class="primary" data-action="confirm-operation" ${!rows.length||review.trust?'disabled':''}>${e(review.action||'Confirm changes')}</button>`;
+  body+=afterReview;
  }else{
   const result=state.result as Record<string,unknown>|undefined,errors=Array.isArray(result?.errors)?result.errors:[];
   const cancelled=result?.cancelled===true,failed=state.stage==='error'||errors.length>0;

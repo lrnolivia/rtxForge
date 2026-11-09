@@ -165,6 +165,14 @@ class NrAddonTests(unittest.TestCase):
         self.assertFalse(nr.check(PLAIN_GAME, {'environment': {'addon': 'shortfuse'}})['ok'])
         self.assertTrue(nr.check(DLSS_GAME, {'environment': {'addon': 'gitc'}})['ok'])
 
+    def test_picker_refuses_standalone_lecram_without_native_dlss(self):
+        setup = {'environment': {'addon': 'lecram'}}
+        self.assertTrue(nr.plan(PLAIN_GAME, setup)['feeder'])
+        result = nr.check(PLAIN_GAME, setup)
+        self.assertFalse(result['ok'])
+        self.assertIn('Choose Feeder NR', result['reason'])
+        self.assertTrue(nr.check(DLSS_GAME, setup)['ok'])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -141,6 +141,7 @@ public sealed partial class GamePage
         async Task CheckAsync()
         {
             var ticket = ++checking;
+            install.IsEnabled = false;
             try
             {
                 var result = await shell.Service.NrCheckAsync(g, Setup());
@@ -148,7 +149,7 @@ public sealed partial class GamePage
                 var ok = result["ok"]?.GetValue<bool>() == true;
                 var text = ok
                     ? (result["optiscaler_nr"]?.GetValue<bool>() == true ? $"{world} covers the environment. " : "")
-                      + (result["verified"]?.GetValue<bool>() == true ? "Works in this game." : "Works in this game · this pairing is not verified on a test copy yet.")
+                      + (result["verified"]?.GetValue<bool>() == true ? "Available to review." : "Available to review · this pairing is not verified on a test copy yet.")
                       + ((result["skipped"] as JsonArray ?? []).Count > 0 ? " Some settings aren't verified for this add-on and are left out." : "")
                     : (string?)result["reason"] ?? "Not available for this game.";
                 SetSubtitle(verdict, text);

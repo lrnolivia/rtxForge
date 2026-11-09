@@ -159,18 +159,23 @@ def _value(value):
     return str(value)
 
 
-def prepare(config, row, setup, gpu='ada'):
+def prepare(config, row, setup, gpu='ada', *, adapt=False):
     root, exe, _, e = hdr._eligible(config, row)
     receipt = _receipt(row)
     t.need(not receipt.exists(), 'An NR add-on setup is already installed. Remove it before choosing another.')
     arch = hdr.architecture(exe)
     route, host, optiscaler_ini = hdr._route(e, exe, arch)
     # The game folder, not the library row, says whether OptiScaler is here and runs its own NR.
-    mode = None
-    if route == 'optiscaler':
-        mode = ((hdr._managed(e, exe.parent) or {}).get('current') or {}).get('feature_mode') or 'unknown'
-    plan = nr_addons.plan(dict(row, arch=arch, optiscaler_mode=mode), setup)
-    t.need(not plan['feeder'], 'This game has no DLSS of its own, so Lecram runs through Feeder NR. Choose Feeder NR for it.')
+    current = (hdr._managed(e, exe.parent) or {}).get('current') or {}
+    provider = current.get('provider_id') or (current.get('archive') or {}).get('family')
+    optiscaler = route == 'optiscaler' or provider in nr_addons.RUNTIME_NAMES
+    mode = (current.get('feature_mode') or 'unknown') if optiscaler else None
+    game = dict(row, arch=arch, optiscaler_mode=mode)
+    if provider:
+        game['runtime_provider'] = provider
+    if adapt:
+        setup = nr_addons.combo_setup(game, setup)
+    plan = nr_addons.install_plan(game, setup)
     directory = exe.parent
     files, model_build = _payload(config, plan, gpu)
     writes, checks, owned = {}, {str(exe): t.digest(exe)}, {}
@@ -231,8 +236,57 @@ def prepare(config, row, setup, gpu='ada'):
     review.update(kind='nr-addons', route=route, prefix=hdr._prefix_review(config, row, route, host),
                   notes=[NOTICE, *([] if plan['verified'] else ['This pairing has not been verified on a test copy yet.']),
                          *([MEMORY_NOTE] if plan['optiscaler_nr'] else [])],
-                  setup=setup, skipped=plan['skipped'])
+                  setup=setup, skipped=plan['skipped'],
+                  selection=selection(plan, model_build))
     return hdr._freeze(config, review)
+
+
+def selection(plan, model_build):
+    roles = {'environment': 'Environment', 'character': 'Character detail'}
+    parts = [f'Environment: {plan["world"]} (shared model)'] if plan['optiscaler_nr'] else []
+    parts.extend(f'{roles[slot["slot"]]}: {slot["name"]} {slot["build"]}' for slot in plan['slots'])
+    if model_build:
+        parts.append(f'Model: {model_build}')
+    return ' · '.join(parts)
+
+
+def prepare_batch(config, rows, choice, gpu='ada'):
+    """Freeze one reviewed transaction per game, with no implicit writes to excluded games."""
+    t.need(isinstance(choice, dict) and isinstance(choice.get('setup'), dict)
+           and type(choice.get('adapt')) is bool, 'Choose an NR add-on setup.')
+    plans, blocked, roots = [], [], set()
+    for row in rows:
+        try:
+            t.need(row.get('exe'), 'The selected game executable is unavailable.')
+            root = t.safe(row['game'])
+            t.need(root not in roots, 'This folder already has an NR add-on setup in this review.')
+            plan = prepare(config, row, choice['setup'], gpu, adapt=choice['adapt'])
+        except (t.Refusal, OSError, ValueError, configparser.Error) as error:
+            blocked.append({'game': row['game'], 'name': row['name'], 'reason': str(error)})
+        else:
+            plans.append(plan)
+            roots.add(root)
+    return {'plans': plans, 'blocked': blocked}
+
+
+def describe_changes(plan):
+    changes = [' '.join(('Remove' if c['after'] is None else 'Update' if c['before'] else 'Add', c['path']))
+               + ('\nSHA-256: ' + c['after'] if c['after'] else '') for c in plan['changes']]
+    return '\n'.join([*changes, *plan.get('notes', [])])
+
+
+def apply_batch(config, review, progress=None):
+    count, errors = 0, []
+    for index, plan in enumerate(review['plans']):
+        if progress:
+            progress(plan['name'], index, len(review['plans']))
+        try:
+            apply(config, plan)
+        except (t.Refusal, OSError, ValueError, configparser.Error) as error:
+            errors.append(f'{plan["name"]}: {error}')
+        else:
+            count += 1
+    return {'message': f'NR add-ons installed in {count} game' + ('s.' if count != 1 else '.'), 'errors': errors}
 
 
 def _names(value):

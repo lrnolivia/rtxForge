@@ -2,7 +2,9 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using System.Text.Json.Nodes;
 using RtxForge.Windows.Models;
+using RtxForge.Windows.Services;
 using RtxForge.Windows.ViewModels;
 
 namespace RtxForge.Windows.Controls;
@@ -27,6 +29,7 @@ public sealed class OperationDialog
     CancellationTokenSource? cancel;
     bool closed, completed;
     bool offlineAcknowledged;
+    JsonObject? nrChoice;
 
     // One step layout for checking and progress (OperationStepPanel).
     readonly OperationStepPanel checkingPanel = new();
@@ -61,6 +64,11 @@ public sealed class OperationDialog
         var shown = flow.dialog.ShowAsync();
         await flow.PrepareAsync();
         await shown;
+        if (flow.completed && flow.nrChoice is { } choice && shell.Service is EngineForgeService engine)
+        {
+            var reviewedGames = flow.review!.Ready.Select(item => item.Game).ToArray();
+            await ShowPreparedAsync(shell, "install-nr-addons", progress => engine.ReviewNrBatchAsync(reviewedGames, choice, progress));
+        }
         return flow.completed;
     }
 
@@ -165,6 +173,7 @@ public sealed class OperationDialog
     string Title() => operation switch
     {
         "install" => "Review Installation",
+        "install-nr-addons" => "Review NR Add-ons",
         "uninstall" => "Review Restoration",
         "update-dlss" => "Review DLSS Update",
         "update-overlays" => "Update Overlays",
@@ -213,6 +222,8 @@ public sealed class OperationDialog
                     block.Summary is null ? null : block.Reason));
         }
         body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 380, HorizontalScrollMode = ScrollMode.Disabled });
+        if (operation == "install" && count > 0 && shell.Service is EngineForgeService engine)
+            _ = AddNrChoicesAsync(body, engine);
         body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
 
         dialog.Content = body;
@@ -231,6 +242,37 @@ public sealed class OperationDialog
         AccentPrimary();
     }
 
+    async Task AddNrChoicesAsync(StackPanel body, EngineForgeService engine)
+    {
+        var group = new PreferencesGroup("DLSS5 NR add-ons",
+            "Optional Environment and Character detail. Review the add-on files after the main package installs.");
+        var status = group.Add(Prefs.Row("Add-on setup", "Loading choices…"));
+        body.Children.Add(group);
+        try
+        {
+            var catalog = await engine.NrCatalogAsync();
+            if (closed || stage != Stage.Review) return;
+            group.Root.Children.Remove(status);
+            group.Add(NrChoiceRow(catalog, choice => nrChoice = choice));
+        }
+        catch (InvalidOperationException)
+        {
+            if (!closed && stage == Stage.Review)
+                body.Children.Remove(group.Root);
+        }
+    }
+
+    internal static Border NrChoiceRow(JsonObject catalog, Action<JsonObject?> selected)
+    {
+        var choices = (catalog["install_choices"] as JsonArray ?? []).OfType<JsonObject>().ToArray();
+        var (row, picker) = Prefs.ComboRow("Add-on setup", "Choose a built-in or saved setup.",
+            ["None", .. choices.Select(choice => choice["label"]?.ToString() ?? "")], 0);
+        picker.MaxWidth = 340;
+        picker.SelectionChanged += (_, _) =>
+            selected(picker.SelectedIndex > 0 ? choices[picker.SelectedIndex - 1] : null);
+        return row;
+    }
+
     /// <summary>
     /// The primary button in the accent style. The dialog opened while checking, already
     /// with Primary as its default button; setting the same value again doesn't restyle
@@ -245,6 +287,7 @@ public sealed class OperationDialog
     string ActionVerb() => operation switch
     {
         "install" => "Install",
+        "install-nr-addons" => "Install NR add-ons",
         "uninstall" => "Restore",
         "update-dlss" => "Update",
         "update-overlays" => "Update Overlays",
@@ -422,6 +465,7 @@ public sealed class OperationDialog
     string ProgressVerb() => operation switch
     {
         "install" => "Installing",
+        "install-nr-addons" => "Installing NR add-ons",
         "uninstall" => "Restoring",
         "update-dlss" => "Updating",
         "update-overlays" => "Updating",

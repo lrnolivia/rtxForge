@@ -664,7 +664,7 @@ def prepare(config,rows,mode,operation,settings):
                           'proton_stack':stack,'settings':dict(settings)})
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
         ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
-    return {'kind':'engine','operation':operation,'title':'Update NR + MFG bridge' if upgrade else operation.title(),'rows':[{'name':p['row']['name'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
+    return {'kind':'engine','operation':operation,'title':'Update NR + MFG bridge' if upgrade else operation.title(),'rows':[{'name':p['row']['name'],'game':p['row']['game'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
             'blocked':blocked,'plans':ready,'engine':e,'payload':data,'meta':meta,'nr':nr,'nrmeta':nrmeta,'mode':mode,'enable_effects':True,'nr_on_launch':settings.get('nr_on_launch',False) if operation=='install' else None,'native_mfg_fallback':bool(settings.get('native_mfg_fallback',False)),'nr_strength':strength,'mfg_multiplier':multiplier,'sharpening_strength':sharpening,'feature_controls':controls,'apply_requested_presets':bool(settings.get('apply_requested_presets',False))}
 
 def share_install(e,g,review):

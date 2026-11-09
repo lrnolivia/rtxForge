@@ -1,6 +1,12 @@
 # DLSS5 NR add-ons
 
-Open a game's **Tools → DLSS5 NR add-ons**. The group has two slots:
+Open **Packages → DLSS5 NR add-ons → Choose games** to review an add-on setup
+for one or more games. You can also choose an add-on setup in the main
+installation review. After the main package installs, rtxForge opens the
+add-on review with the resolved roles, planned files and skipped games.
+
+For custom builds, tuning and saved combos, open a game's
+**Tools → DLSS5 NR add-ons**. The group has two slots:
 
 - **Environment** — the world, required. Where Skynizz runs NR + MFG or NR
   Only, Skynizz is the world: the slot shows **Skynizz** and nothing else.
@@ -15,7 +21,7 @@ usual review, which lists every file and its SHA-256 before anything changes.
 
 | Add-on | Builds | How it runs |
 | --- | --- | --- |
-| Lecram (`renodx-dlss5.addon64`) | 10.8 | ReShade add-on. Not offered where OptiScaler is installed. In a game without DLSS it runs through Feeder NR, which uses rtxForge's own 8.5 build. |
+| Lecram (`renodx-dlss5.addon64`) | 10.8 | ReShade add-on for games with native DLSS and without OptiScaler. For a game without native DLSS, choose Feeder NR, which uses rtxForge's own 8.5 build. |
 | ShortFuse (`renodx-dlss.addon64`) | 26.1025.0009 | Hooks the game's own DLSS calls, so it needs a 64-bit game with DLSS. ReShade loads it while it starts (`[ADDON] LoadFromDllMain`). It reads its settings from `[RENODX-DLSS]` and writes them back there when the game starts. |
 | GITC Uplift | 1.8.0 | ReShade add-on with its helper and shaders. It runs alone. |
 

@@ -22,6 +22,10 @@ public sealed partial class EngineForgeService
     public async Task<EngineReview> ReviewNrAsync(Game game, JsonObject? setup, bool remove = false) =>
         ToReview(await CallAsync("nr_review", new JsonObject { ["row"] = Row(game), ["setup"] = setup?.DeepClone(), ["remove"] = remove }));
 
+    public async Task<EngineReview> ReviewNrBatchAsync(IReadOnlyList<Game> games, JsonObject choice, IProgress<PrepareProgress> progress) =>
+        ToReview(await CallAsync("nr_review", new JsonObject { ["rows"] = Rows(games), ["choice"] = choice.DeepClone() },
+            message => progress.Report(Phase(message))));
+
     public async Task<JsonObject> SaveNrComboAsync(string name, JsonObject combo) =>
         await CallAsync("nr_combo_save", new JsonObject { ["name"] = name, ["combo"] = combo.DeepClone() }) as JsonObject
             ?? throw new InvalidOperationException("The combo was not saved.");

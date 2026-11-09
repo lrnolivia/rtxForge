@@ -164,6 +164,38 @@ class NrInstallTests(unittest.TestCase):
         with self.assertRaisesRegex(t.Refusal, 'Feeder NR'):
             nr_install.prepare({}, dict(self.row, native_dlss=False), {'environment': {'addon': 'lecram'}})
 
+    def test_batch_reviews_compatible_games_and_keeps_skipped_games_untouched(self):
+        plain = self.game.with_name('plain')
+        plain.mkdir()
+        (plain / 'Game.exe').write_bytes(pe())
+        unsupported = dict(self.row, name='No native DLSS', game=str(plain), native_dlss=False)
+        choice = {'setup': {'environment': {'addon': 'lecram'}}, 'adapt': False}
+
+        def eligible(config, row):
+            root = Path(row['game'])
+            return root, root / row['exe'], None, self.engine
+
+        before = self.files()
+        with patch.object(hdr, '_eligible', eligible):
+            review = nr_install.prepare_batch({}, [unsupported, self.row], choice)
+            self.assertEqual(self.files(), before)
+            self.assertEqual([p['name'] for p in review['plans']], [self.row['name']])
+            self.assertIn('Choose Feeder NR', review['blocked'][0]['reason'])
+            self.assertIn('Environment: Lecram', review['plans'][0]['selection'])
+            self.assertEqual(nr_install.apply_batch({}, review)['errors'], [])
+        self.assertTrue(nr_install.status(self.row)['installed'])
+        self.assertEqual(list(plain.iterdir()), [plain / 'Game.exe'])
+
+    def test_batch_combo_resolves_against_the_installed_package(self):
+        self.optiscaler('nr-mfg')
+        choice = {'setup': nr_install.nr_addons.builtin_combos()['characters-and-world'], 'adapt': True}
+        review = nr_install.prepare_batch({}, [self.row], choice)
+        self.assertEqual(review['blocked'], [])
+        plan = review['plans'][0]
+        self.assertIn('Environment: Skynizz (shared model)', plan['selection'])
+        self.assertIn('Character detail: ShortFuse', plan['selection'])
+        self.assertFalse(any(p['path'] == 'nvngx_dlssnr.dll' for p in plan['changes']))
+
     def test_gitc_keeps_its_model_in_its_own_folder(self):
         self.addons.update({'gitc-uplift.addon64': pe(b'GITC'), 'gitc-uplift.addon32': b'32', 'gitc-uplift-helper64.exe': pe(b'helper'),
                             'Uplift.fx': b'fx', 'UpliftMask.fx': b'mask', 'LICENSE': b'MIT', 'THIRD_PARTY_NOTICES.md': b'notices'})

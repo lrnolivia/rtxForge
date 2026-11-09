@@ -1,7 +1,9 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System.Text.Json.Nodes;
 using RtxForge.Windows.Controls;
 using RtxForge.Windows.Models;
+using RtxForge.Windows.Services;
 
 namespace RtxForge.Windows.Views;
 
@@ -119,6 +121,13 @@ public sealed partial class PackagesPage : Page
         columns.Children.Add(mfg);
         body.Children.Add(columns);
 
+        var addons = Section("DLSS5 NR add-ons",
+            "Choose Environment and Character detail for compatible games. Use Lecram, ShortFuse, GITC Uplift or a saved combo.");
+        var reviewAddons = Prefs.ActionButton("Choose games", async (_, _) => await ChooseNrGamesAsync());
+        reviewAddons.IsEnabled = !shell.Service.IsPreview;
+        addons.Children.Add(reviewAddons);
+        body.Children.Add(Card(addons));
+
         // Whole packages: NR and MFG together.
         var unified = new StackPanel { Spacing = 12, Margin = new Thickness(0, 12, 0, 0) };
         unified.Children.Add(Heading("Unified packages", "NR and frame generation in one package, for games with DLSS. Choosing one replaces your NR package for those games."));
@@ -154,6 +163,40 @@ public sealed partial class PackagesPage : Page
             }
             body.Children.Add(Card(community));
         }
+    }
+
+    async Task ChooseNrGamesAsync()
+    {
+        if (shell.Busy || shell.Service is not EngineForgeService engine) return;
+        try
+        {
+            var catalog = await engine.NrCatalogAsync();
+            var games = new ListView
+            {
+                ItemsSource = shell.Games.Where(game => game.EngineRow is not null).OrderBy(game => game.Name).ToArray(),
+                DisplayMemberPath = nameof(Game.Name), SelectionMode = ListViewSelectionMode.Multiple, MaxHeight = 320,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(games, "Games for NR add-ons");
+            var dialog = shell.NewDialog();
+            dialog.Title = "DLSS5 NR add-ons";
+            dialog.PrimaryButtonText = "Review games";
+            dialog.CloseButtonText = "Cancel";
+            dialog.IsPrimaryButtonEnabled = false;
+            JsonObject? choice = null;
+            void Update() => dialog.IsPrimaryButtonEnabled = choice is not null && games.SelectedItems.Count > 0;
+            games.SelectionChanged += (_, _) => Update();
+            var content = new StackPanel { Spacing = 12 };
+            content.Children.Add(OperationDialog.NrChoiceRow(catalog, value => { choice = value; Update(); }));
+            content.Children.Add(games);
+            dialog.Content = content;
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary && choice is { } selected)
+            {
+                var targets = games.SelectedItems.OfType<Game>().ToArray();
+                await OperationDialog.ShowPreparedAsync(shell, "install-nr-addons",
+                    progress => engine.ReviewNrBatchAsync(targets, selected, progress));
+            }
+        }
+        catch (InvalidOperationException error) { shell.ShowToast(error.Message); }
     }
 
     Expander FeederSetup()

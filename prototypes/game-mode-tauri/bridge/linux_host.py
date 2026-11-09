@@ -283,10 +283,24 @@ def bind(root, send):
         return status_inventory.snapshot(service.config)
 
     import overview_summary
+    import nr_addons
+    import nr_install
+
+    def nr_review(params):
+        plan = nr_install.prepare_batch(service.config, params['rows'], params['choice'],
+                                        service.hardware().get('family') or 'ada')
+        rows = [{'name': p['name'], 'game': p['game'], 'summary': p['selection'],
+                 'details': nr_install.describe_changes(p)} for p in plan['plans']]
+        def apply(review):
+            return nr_install.apply_batch(service.config, review, lambda name, index, total:
+                                          ui.progress('Installing NR add-ons', game=name, checked=index, total=total))
+        return reviewed('Review NR Add-ons', rows, plan, apply, blocked=plan['blocked'], action='Install NR add-ons')
+
     methods = dict(overview_inspect=lambda p: overview_summary.inspect(p["row"], engine_bridge.module(service.config)), overlay_status=overlay_status, hello=lambda _p: {'root': str(root), 'platform': 'Linux'}, hardware=lambda _p: service.hardware(), scan=scan,
                    prepare=prepare, execute=execute, cancel=cancel, discard_operation=discard, discard=discard, run=execute,
                    settings_get=lambda _p: library_media.load_settings(service.config), settings_review=settings_review,
                    packages=lambda _p: {'catalog': package_catalog.catalog(service.hardware())},
+                   nr_catalog=lambda _p: {'install_choices': nr_addons.install_choices(service.config)}, nr_review=nr_review,
                    extras_list=lambda p: extra_tools.recoveries(service.config, p['row']), extra_review=extra_review,
                    extra_restore_review=extra_restore, prepare_dlss=prepare_dlss, update_dlss=execute, dlss_restore_review=restore_dlss,
                    dlss_inventory=lambda p: runtime_updates.display_inventory(service.config, p['row']), diagnose=lambda p: runtime_diagnostics.inspect(p['row']),

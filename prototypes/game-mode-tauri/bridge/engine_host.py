@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 ALLOWED = frozenset(('hello', 'hardware', 'scan', 'prepare', 'execute', 'cancel', 'discard_operation',
                      'prepare_routes', 'execute_routes', 'cancel_routes', 'discard_routes',
+                     'nr_catalog', 'nr_review',
                      'prepare_dlss', 'update_dlss', 'packages', 'overview_inspect', 'extras_list', 'extra_review',
                      'extra_restore_review', 'run', 'discard', 'steam_status', 'steam_review',
                      'steam_install', 'steam_remove', 'recoveries', 'recovery_review', 'cleanup_review', 'open_game_folder',

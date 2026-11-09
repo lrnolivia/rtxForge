@@ -17,6 +17,8 @@ allowedMethods.add('executable_review');
 allowedMethods.add('cleanup_review');
 allowedMethods.add('open_game_folder');
 allowedMethods.add('overlay_status');
+allowedMethods.add('nr_catalog');
+allowedMethods.add('nr_review');
 const root = path.dirname(fileURLToPath(import.meta.url));
 export class EngineClient extends EventEmitter {
   child;

@@ -162,6 +162,14 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
         cards._resize_handler=scroll.get_hadjustment().connect('notify::page-size',resize_columns)
         resize_columns(scroll.get_hadjustment())
         cards.append(columns)
+        addons=Adw.PreferencesGroup(title='DLSS5 NR add-ons',
+            description='Choose Environment and Character detail for compatible games. Use Lecram, ShortFuse, GITC Uplift or a saved combo.')
+        choose_games=owner.make_action_button('Choose games',lambda *_:owner.choose_nr_games())
+        choose_games.set_sensitive(not owner.options.demo)
+        choose_games.set_valign(Gtk.Align.CENTER)
+        addons_row=Adw.ActionRow(title='Install NR add-ons',subtitle='Review a setup for one or more games.')
+        addons_row.add_suffix(choose_games);addons_row.set_activatable_widget(choose_games);addons.add(addons_row)
+        cards.append(addons)
         unified=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
         unified.append(heading('Unified packages','NR and frame generation in one package, for games with DLSS.'))
         for item in catalog:

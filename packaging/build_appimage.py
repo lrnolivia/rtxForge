@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Build the Bazzite 44 GNOME-targeted AppImage; does not install OS packages."""
 from pathlib import Path
-import hashlib,json,os,shutil,subprocess,urllib.request
+import hashlib,json,os,shutil,subprocess,sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
+from build_downloads import download_verified_asset
 
 
 def bundle_overlays(root,payload,expected_sha=None):
@@ -128,7 +132,7 @@ def stage_payload(root, payload, game_mode_package=None):
 
 
 def main():
-    root=Path(__file__).resolve().parents[1]
+    root=ROOT
     dist=root/'dist'
     stage=dist/'AppImage-build';stage.mkdir(parents=True, exist_ok=True)
     app=stage/'RTXForge.AppDir'
@@ -142,12 +146,11 @@ def main():
     shutil.copyfile(root/f'gui/icons/hicolor/scalable/apps/{icon}.svg',app/f'{icon}.svg')
     (app/f'{icon}.desktop').write_text(f'[Desktop Entry]\nType=Application\nName=RTXForge\nExec=AppRun\nIcon={icon}\nCategories=Game;Utility;\nTerminal=false\n')
     meta=json.loads((root/'packaging/runtime.json').read_text());runtime=dist/'appimage-runtime'
-    if not runtime.exists():runtime.write_bytes(urllib.request.urlopen(meta['url']).read())
-    assert hashlib.sha256(runtime.read_bytes()).hexdigest()==meta['sha256']
+    download_verified_asset(meta['url'],meta['asset_url'],meta['sha256'],runtime,size=meta['size'])
     squash=stage/'payload.squashfs';squash.unlink(missing_ok=True)
     cmd=['mksquashfs',str(app),str(squash),'-noappend','-comp','gzip','-all-root','-processors','1','-quiet']
     if not shutil.which('mksquashfs'):cmd.insert(0,'distrobox-host-exec')
-    subprocess.run(cmd,check=True)
+    subprocess.run(cmd,check=True,env={key: value for key, value in os.environ.items() if key != 'GH_TOKEN'})
     out=dist/f'RTXForge-{version}-Bazzite-x86_64.AppImage'
     with out.open('wb') as f:
         for source in (runtime,squash):

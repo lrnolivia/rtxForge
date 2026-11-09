@@ -1,6 +1,5 @@
 """Fetch and verify the exact reviewed Vulkan runtime/model bundle for builds."""
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -9,7 +8,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parents[1] / 'scripts'))
-import packages
+from build_downloads import download_verified_asset
 import transactions as t
 
 
@@ -19,7 +18,9 @@ def install(output, archive=None):
     output.mkdir(parents=True, exist_ok=True)
     source = Path(archive).resolve() if archive else output.parent / spec['archive']
     if archive is None:
-        packages.download(spec['url'], source, expected=spec['sha256'], size=spec['size'])
+        download_verified_asset(spec['url'],
+                                'https://api.github.com/repos/lrnolivia/rtxForge/releases/assets/668303214',
+                                spec['sha256'], source, size=spec['size'])
     t.need(source.stat().st_size == spec['size'] and t.digest(source) == spec['sha256'], 'Vulkan build bundle differs.')
     with zipfile.ZipFile(source) as bundle:
         t.need(len(bundle.infolist()) == len(spec['files']), 'Vulkan bundle inventory differs.')

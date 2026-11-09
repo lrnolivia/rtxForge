@@ -9,12 +9,12 @@ import subprocess
 import sys
 import tarfile
 import tomllib
-import urllib.request
 
 APP = Path(__file__).resolve().parent
 REPO = APP.parents[1]
 LINUX_PYTHON = 'https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10%2B20261026-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz'
 LINUX_PYTHON_SHA = '4d3c16c59ed0802a3d1d34d8bce504b15ceeaff39d62dadecc6a9fa803412aed'
+LINUX_PYTHON_ASSET = 'https://api.github.com/repos/astral-sh/python-build-standalone/releases/assets/678581609'
 
 
 def digest(path):
@@ -68,7 +68,7 @@ def smoke(folder):
     python = folder / ('python/python.exe' if os.name == 'nt' else 'python/bin/python3')
     env = dict(os.environ, RTXFORGE_ROOT=str(folder / 'engine'), RTXFORGE_ENGINE_BRIDGE='1',
                RTXFORGE_APP_EXE=str(folder / ('rtxforge-game-mode.exe' if os.name == 'nt' else 'rtxforge-game-mode')))
-    for key in ('PYTHONPATH', 'RTXFORGE_PREVIEW_READ_ONLY', 'RTXFORGE_PYTHON', 'RTXFORGE_READ_ONLY'):
+    for key in ('PYTHONPATH', 'RTXFORGE_PREVIEW_READ_ONLY', 'RTXFORGE_PYTHON', 'RTXFORGE_READ_ONLY', 'GH_TOKEN'):
         env.pop(key, None)
     child = subprocess.Popen([str(python), '-u', '-B', str(folder / 'bridge/engine_host.py')],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -108,10 +108,11 @@ def bundle(output, screening):
                     ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     shutil.copytree(screening, output / 'screening', dirs_exist_ok=True)
     if os.name != 'nt':
+        sys.path.insert(0, str(REPO / 'scripts'))
+        from build_downloads import download_verified_asset
+
         archive = output.parent / 'python-linux-x64.tar.gz'
-        if not archive.is_file() or digest(archive) != LINUX_PYTHON_SHA:
-            urllib.request.urlretrieve(LINUX_PYTHON, archive)
-        if digest(archive) != LINUX_PYTHON_SHA: raise ValueError('Private Python archive hash mismatch.')
+        download_verified_asset(LINUX_PYTHON, LINUX_PYTHON_ASSET, LINUX_PYTHON_SHA, archive)
         with tarfile.open(archive) as source: source.extractall(output, filter='data')
         for relative in ('engine', 'scripts', 'providers', 'windows/engine-host', 'gui/icons', 'packaging/steam-artwork'):
             shutil.copytree(REPO / relative, output / 'engine' / relative, dirs_exist_ok=True,

@@ -75,11 +75,14 @@ jobs:
         run: ./Build-Portable.ps1 -SkipBuild -OutputPath "$env:RUNNER_TEMP/package" -ScreeningPath "$env:RUNNER_TEMP/screening-build/dist/rtxforge-screenshot-screen"
       - name: Linux complete payload and host smoke
         if: runner.os == 'Linux'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python package_bundle.py --output "$RUNNER_TEMP/package" --screening "$RUNNER_TEMP/screening-build/dist/rtxforge-screenshot-screen"
       - name: Bundle Linux webview and private runtime
         if: runner.os == 'Linux'
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
+          GH_TOKEN: ${{ github.token }}
         run: |
           python bundle_appimage.py --payload "$RUNNER_TEMP/package" --output "$RUNNER_TEMP/game-mode-appimage"
       - uses: actions/upload-artifact@v4

@@ -171,32 +171,102 @@ public sealed partial class PackagesPage : Page
         try
         {
             var catalog = await engine.NrCatalogAsync();
-            var games = new ListView
-            {
-                ItemsSource = shell.Games.Where(game => game.EngineRow is not null).OrderBy(game => game.Name).ToArray(),
-                DisplayMemberPath = nameof(Game.Name), SelectionMode = ListViewSelectionMode.Multiple, MaxHeight = 320,
-            };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(games, "Games for NR add-ons");
-            var dialog = shell.NewDialog();
-            dialog.Title = "DLSS5 NR add-ons";
-            dialog.PrimaryButtonText = "Review games";
-            dialog.CloseButtonText = "Cancel";
-            dialog.IsPrimaryButtonEnabled = false;
-            JsonObject? choice = null;
-            void Update() => dialog.IsPrimaryButtonEnabled = choice is not null && games.SelectedItems.Count > 0;
-            games.SelectionChanged += (_, _) => Update();
-            var content = new StackPanel { Spacing = 12 };
-            content.Children.Add(OperationDialog.NrChoiceRow(catalog, value => { choice = value; Update(); }));
-            content.Children.Add(games);
-            dialog.Content = content;
-            if (await dialog.ShowAsync() == ContentDialogResult.Primary && choice is { } selected)
-            {
-                var targets = games.SelectedItems.OfType<Game>().ToArray();
+            var games = shell.Games.Where(game => game.EngineRow is not null).OrderBy(game => game.Name).ToArray();
+            if (await PickNrGamesAsync(catalog, games) is { } selection)
                 await OperationDialog.ShowPreparedAsync(shell, "install-nr-addons",
-                    progress => engine.ReviewNrBatchAsync(targets, selected, progress));
-            }
+                    progress => engine.ReviewNrBatchAsync(selection.Games, selection.Setup, progress));
         }
         catch (InvalidOperationException error) { shell.ShowToast(error.Message); }
+    }
+
+    private async Task<(Game[] Games, JsonObject Setup)?> PickNrGamesAsync(JsonObject catalog, Game[] catalogGames)
+    {
+        var dialog = shell.NewDialog();
+        dialog.Title = "Choose DLSS5 NR add-ons";
+        dialog.PrimaryButtonText = "Review selection";
+        dialog.CloseButtonText = "Cancel";
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        dialog.IsPrimaryButtonEnabled = false;
+        var width = Math.Clamp(dialog.XamlRoot.Size.Width - 112, 264, 690);
+        var wide = width >= 600;
+        var chosen = new HashSet<string>();
+        var picker = new NrSetupPicker(catalog);
+        var search = new TextBox { PlaceholderText = "Search games" };
+        var games = new ListView
+        {
+            DisplayMemberPath = nameof(Game.Name), SelectionMode = ListViewSelectionMode.Multiple,
+            Height = wide ? 276 : 180,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(search, "Search games");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(games, "Games for NR add-ons");
+        var selection = Prefs.Label("0 selected", "ForgeCaptionDimTextStyle");
+        var empty = Prefs.Label("No games match your search.");
+        empty.Margin = new Thickness(8, 16, 8, 0);
+        empty.IsHitTestVisible = false;
+        var gameList = new Grid();
+        gameList.Children.Add(games);
+        gameList.Children.Add(empty);
+        var filtering = false;
+        void Update()
+        {
+            selection.Text = $"{chosen.Count} selected";
+            dialog.IsPrimaryButtonEnabled = picker.Choice is not null && chosen.Count > 0;
+        }
+        void Filter()
+        {
+            filtering = true;
+            var matches = catalogGames.Where(game => game.Name.Contains(search.Text.Trim(), StringComparison.OrdinalIgnoreCase)).ToArray();
+            games.ItemsSource = matches;
+            foreach (var game in matches.Where(game => chosen.Contains(game.Id))) games.SelectedItems.Add(game);
+            empty.Text = catalogGames.Length == 0 ? "There are no scanned games in your library." : "No games match your search.";
+            empty.Visibility = matches.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            filtering = false;
+        }
+        games.SelectionChanged += (_, args) =>
+        {
+            if (filtering) return;
+            foreach (var game in args.RemovedItems.OfType<Game>()) chosen.Remove(game.Id);
+            foreach (var game in args.AddedItems.OfType<Game>()) chosen.Add(game.Id);
+            Update();
+        };
+        search.TextChanged += (_, _) => Filter();
+        picker.Changed += Update;
+        Filter();
+
+        var gameColumn = new StackPanel { Spacing = 8 };
+        gameColumn.Children.Add(Prefs.Label("Games", "ForgeHeadingTextStyle"));
+        gameColumn.Children.Add(search);
+        gameColumn.Children.Add(gameList);
+        gameColumn.Children.Add(selection);
+        var setupColumn = new StackPanel { Spacing = 8 };
+        setupColumn.Children.Add(Prefs.Label("Add-on setup", "ForgeHeadingTextStyle"));
+        setupColumn.Children.Add(picker.Root);
+        var columns = new Grid { ColumnSpacing = 24, RowSpacing = 20 };
+        if (wide)
+        {
+            columns.ColumnDefinitions.Add(new ColumnDefinition());
+            columns.ColumnDefinitions.Add(new ColumnDefinition());
+            Grid.SetColumn(setupColumn, 1);
+        }
+        else
+        {
+            columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(setupColumn, 1);
+        }
+        columns.Children.Add(gameColumn);
+        columns.Children.Add(setupColumn);
+        var content = new StackPanel { Width = width, Spacing = 16 };
+        content.Children.Add(Prefs.Label("Choose games and a setup. The review checks compatibility for each game."));
+        content.Children.Add(columns);
+        dialog.Content = new ScrollViewer
+        {
+            Content = content, HorizontalScrollMode = ScrollMode.Disabled,
+            MaxHeight = Math.Max(200, dialog.XamlRoot.Size.Height - 184),
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary || picker.Choice is not { } selected)
+            return null;
+        return (catalogGames.Where(game => chosen.Contains(game.Id)).ToArray(), selected);
     }
 
     Expander FeederSetup()

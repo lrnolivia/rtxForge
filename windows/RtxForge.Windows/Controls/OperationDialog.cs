@@ -226,7 +226,11 @@ public sealed class OperationDialog
             _ = AddNrChoicesAsync(body, engine);
         body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
 
-        dialog.Content = body;
+        dialog.Content = operation == "install" ? new ScrollViewer
+        {
+            Content = body, HorizontalScrollMode = ScrollMode.Disabled,
+            MaxHeight = Math.Max(240, dialog.XamlRoot.Size.Height - 184),
+        } : body;
         dialog.PrimaryButtonText = ActionVerb();
         dialog.IsPrimaryButtonEnabled = count > 0;
         offlineAcknowledged = false;
@@ -244,33 +248,35 @@ public sealed class OperationDialog
 
     async Task AddNrChoicesAsync(StackPanel body, EngineForgeService engine)
     {
-        var group = new PreferencesGroup("DLSS5 NR add-ons",
-            "Optional Environment and Character detail. Review the add-on files after the main package installs.");
-        var status = group.Add(Prefs.Row("Add-on setup", "Loading choices…"));
-        body.Children.Add(group);
+        var options = new Expander
+        {
+            Header = "DLSS5 NR add-ons",
+            Content = Prefs.Label("Loading setups…"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+        };
+        body.Children.Add(options);
         try
         {
             var catalog = await engine.NrCatalogAsync();
             if (closed || stage != Stage.Review) return;
-            group.Root.Children.Remove(status);
-            group.Add(NrChoiceRow(catalog, choice => nrChoice = choice));
+            var picker = new NrSetupPicker(catalog);
+            var fields = new StackPanel { Spacing = 12 };
+            fields.Children.Add(Prefs.Label("Optional. Review the add-on files after the main package installs."));
+            fields.Children.Add(picker.Root);
+            options.Content = fields;
+            options.Header = "DLSS5 NR add-ons · None";
+            picker.Changed += () =>
+            {
+                nrChoice = picker.Choice;
+                options.Header = "DLSS5 NR add-ons · " + picker.Summary;
+            };
         }
         catch (InvalidOperationException)
         {
             if (!closed && stage == Stage.Review)
-                body.Children.Remove(group.Root);
+                body.Children.Remove(options);
         }
-    }
-
-    internal static Border NrChoiceRow(JsonObject catalog, Action<JsonObject?> selected)
-    {
-        var choices = (catalog["install_choices"] as JsonArray ?? []).OfType<JsonObject>().ToArray();
-        var (row, picker) = Prefs.ComboRow("Add-on setup", "Choose a built-in or saved setup.",
-            ["None", .. choices.Select(choice => choice["label"]?.ToString() ?? "")], 0);
-        picker.MaxWidth = 340;
-        picker.SelectionChanged += (_, _) =>
-            selected(picker.SelectedIndex > 0 ? choices[picker.SelectedIndex - 1] : null);
-        return row;
     }
 
     /// <summary>

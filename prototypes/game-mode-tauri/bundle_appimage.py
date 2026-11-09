@@ -7,11 +7,13 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
+import sys
 import tempfile
 
-from package_bundle import download_verified_asset
-
 APP = Path(__file__).resolve().parent
+sys.path.insert(0, str(APP.parents[1] / 'scripts'))
+from build_downloads import download_verified_asset
+
 GITHUB = 'https://github.com'
 GITHUB_API = 'https://api.github.com/repos'
 # Match the x64 tools expected by the locked Tauri CLI. The output plugin and

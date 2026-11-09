@@ -1,38 +1,15 @@
 """Fetch and verify the exact reviewed Vulkan runtime/model bundle for builds."""
 import argparse
 import json
-import os
 from pathlib import Path
 import shutil
 import sys
-import time
-from urllib.error import HTTPError, URLError
-from urllib.request import Request
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parents[1] / 'scripts'))
-import packages
+from build_downloads import download_verified_asset
 import transactions as t
-
-
-def download_bundle(spec, source):
-    token = os.environ.get('GH_TOKEN')
-    public_url = spec['url']
-    for attempt in range(3):
-        request = public_url
-        if token and attempt != 1:
-            request = Request('https://api.github.com/repos/lrnolivia/rtxForge/releases/assets/668303214'
-                              + f'?fresh={time.time_ns()}', headers={'Accept': 'application/octet-stream'})
-            request.add_unredirected_header('Authorization', f'Bearer {token}')
-        try:
-            packages.download(request, source, expected=spec['sha256'], size=spec['size'])
-            return
-        except (URLError, TimeoutError, ConnectionError) as error:
-            if attempt == 2 or isinstance(error, HTTPError) and error.code not in (429, 500, 502, 503, 504):
-                raise
-            print(f'Vulkan bundle download failed ({error}); retrying.', flush=True)
-            time.sleep(2 ** (attempt + 1))
 
 
 def install(output, archive=None):
@@ -41,7 +18,9 @@ def install(output, archive=None):
     output.mkdir(parents=True, exist_ok=True)
     source = Path(archive).resolve() if archive else output.parent / spec['archive']
     if archive is None:
-        download_bundle(spec, source)
+        download_verified_asset(spec['url'],
+                                'https://api.github.com/repos/lrnolivia/rtxForge/releases/assets/668303214',
+                                spec['sha256'], source, size=spec['size'])
     t.need(source.stat().st_size == spec['size'] and t.digest(source) == spec['sha256'], 'Vulkan build bundle differs.')
     with zipfile.ZipFile(source) as bundle:
         t.need(len(bundle.infolist()) == len(spec['files']), 'Vulkan bundle inventory differs.')

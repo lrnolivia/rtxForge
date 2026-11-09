@@ -1,7 +1,6 @@
 """Record native build identity, assemble payloads, and verify complete manifests."""
 import argparse
 import hashlib
-from http.client import IncompleteRead
 import json
 import os
 from pathlib import Path
@@ -9,11 +8,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
-import tempfile
-import time
 import tomllib
-from urllib.error import HTTPError, URLError
-import urllib.request
 
 APP = Path(__file__).resolve().parent
 REPO = APP.parents[1]
@@ -25,37 +20,6 @@ LINUX_PYTHON_ASSET = 'https://api.github.com/repos/astral-sh/python-build-standa
 def digest(path):
     with Path(path).open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
-
-
-def download_verified_asset(public_url, api_url, expected_sha, target):
-    if target.is_file() and digest(target) == expected_sha:
-        return
-    token = os.environ.get('GH_TOKEN')
-    with tempfile.TemporaryDirectory(dir=target.parent) as directory:
-        candidate = Path(directory) / target.name
-        for attempt in range(3):
-            use_api = bool(token) and attempt != 1
-            request = urllib.request.Request(api_url + f'?fresh={time.time_ns()}' if use_api else public_url,
-                                             headers={'Accept': 'application/octet-stream'})
-            if use_api:
-                request.add_unredirected_header('Authorization', f'Bearer {token}')
-            try:
-                with urllib.request.urlopen(request, timeout=90) as source:
-                    if use_api and source.headers.get_content_type() == 'application/json':
-                        raise URLError('GitHub returned asset metadata instead of the download')
-                    with candidate.open('wb') as stream:
-                        shutil.copyfileobj(source, stream)
-                break
-            except (URLError, TimeoutError, ConnectionError, IncompleteRead) as error:
-                retryable = not isinstance(error, HTTPError) or error.code in (429, 500, 502, 503, 504)
-                api_denied = use_api and isinstance(error, HTTPError) and error.code in (401, 403, 404)
-                if attempt == 2 or not (retryable or api_denied):
-                    raise
-                print(f'{target.name} download failed ({error}); retrying.', flush=True)
-                time.sleep(2 ** (attempt + 1))
-        if digest(candidate) != expected_sha:
-            raise ValueError(f'{target.name} download hash mismatch.')
-        candidate.replace(target)
 
 
 def revision():
@@ -144,6 +108,9 @@ def bundle(output, screening):
                     ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     shutil.copytree(screening, output / 'screening', dirs_exist_ok=True)
     if os.name != 'nt':
+        sys.path.insert(0, str(REPO / 'scripts'))
+        from build_downloads import download_verified_asset
+
         archive = output.parent / 'python-linux-x64.tar.gz'
         download_verified_asset(LINUX_PYTHON, LINUX_PYTHON_ASSET, LINUX_PYTHON_SHA, archive)
         with tarfile.open(archive) as source: source.extractall(output, filter='data')

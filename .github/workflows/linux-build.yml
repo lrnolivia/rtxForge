@@ -240,6 +240,8 @@ jobs:
           xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 -m unittest tests.test_game_mode_launcher
 
       - name: Build AppImage
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 packaging/build_appimage.py
           python3 - <<'PYBUILD'

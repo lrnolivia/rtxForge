@@ -120,11 +120,14 @@ jobs:
           git rev-parse --show-toplevel
           git rev-parse HEAD
 
+      - name: Fetch the verified Vulkan provider
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: /usr/bin/python3 providers/vulkan-dlssg/distribution.py --output windows/out/vulkan-provider
+
       - name: Validate Python and engine behavior
         run: |
           set -euo pipefail
-
-          /usr/bin/python3 providers/vulkan-dlssg/distribution.py --output windows/out/vulkan-provider
 
           /usr/bin/python3 -m py_compile \
             engine/rtxengine.py \
@@ -446,6 +449,8 @@ jobs:
           flatpak install --user -y --noninteractive flathub org.gnome.Platform//51 org.gnome.Sdk//51
 
       - name: Fetch the verified Vulkan provider
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python3 providers/vulkan-dlssg/distribution.py --output windows/out/vulkan-provider
 
       - name: Build Flatpak bundle

@@ -141,6 +141,8 @@ jobs:
 
       - name: Bundle the reviewed native Vulkan package and NR model
         if: matrix.platform == 'x64'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./windows/build/Build-VulkanProvider.ps1
 
       - name: Set up .NET 10

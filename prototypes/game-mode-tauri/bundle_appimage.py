@@ -22,8 +22,12 @@ def bundle(payload, output):
     with tempfile.TemporaryDirectory() as temporary:
         path = Path(temporary) / 'bundle.json'
         path.write_text(json.dumps(config))
+        # The linuxdeploy AppImage ships its own strip, which can fail on newer
+        # system libraries. The Rust release binary is already built and verified.
+        env = os.environ | {'NO_STRIP': 'true'}
         subprocess.run(['node', 'node_modules/@tauri-apps/cli/tauri.js', 'bundle',
-                        '--ci', '--bundles', 'appimage', '--config', str(path)], cwd=APP, check=True)
+                        '--ci', '--verbose', '--bundles', 'appimage', '--config', str(path)],
+                       cwd=APP, env=env, check=True)
     candidates = list((APP / 'src-tauri/target/release/bundle/appimage').glob('*.AppImage'))
     if len(candidates) != 1:
         raise ValueError('Expected one native Game Mode AppImage.')

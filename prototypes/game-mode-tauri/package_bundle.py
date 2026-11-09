@@ -1,6 +1,7 @@
 """Record native build identity, assemble payloads, and verify complete manifests."""
 import argparse
 import hashlib
+from http.client import IncompleteRead
 import json
 import os
 from pathlib import Path
@@ -8,7 +9,10 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
+import time
 import tomllib
+from urllib.error import HTTPError, URLError
 import urllib.request
 
 APP = Path(__file__).resolve().parent
@@ -20,6 +24,26 @@ LINUX_PYTHON_SHA = '4d3c16c59ed0802a3d1d34d8bce504b15ceeaff39d62dadecc6a9fa80341
 def digest(path):
     with Path(path).open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def download_linux_python(archive):
+    if archive.is_file() and digest(archive) == LINUX_PYTHON_SHA:
+        return
+    with tempfile.TemporaryDirectory(dir=archive.parent) as directory:
+        candidate = Path(directory) / archive.name
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(LINUX_PYTHON, timeout=90) as source, candidate.open('wb') as target:
+                    shutil.copyfileobj(source, target)
+                break
+            except (URLError, TimeoutError, ConnectionError, IncompleteRead) as error:
+                if attempt == 2 or isinstance(error, HTTPError) and error.code not in (429, 500, 502, 503, 504):
+                    raise
+                print(f'Private Python download failed ({error}); retrying.', flush=True)
+                time.sleep(2 ** (attempt + 1))
+        if digest(candidate) != LINUX_PYTHON_SHA:
+            raise ValueError('Private Python archive hash mismatch.')
+        candidate.replace(archive)
 
 
 def revision():
@@ -109,9 +133,7 @@ def bundle(output, screening):
     shutil.copytree(screening, output / 'screening', dirs_exist_ok=True)
     if os.name != 'nt':
         archive = output.parent / 'python-linux-x64.tar.gz'
-        if not archive.is_file() or digest(archive) != LINUX_PYTHON_SHA:
-            urllib.request.urlretrieve(LINUX_PYTHON, archive)
-        if digest(archive) != LINUX_PYTHON_SHA: raise ValueError('Private Python archive hash mismatch.')
+        download_linux_python(archive)
         with tarfile.open(archive) as source: source.extractall(output, filter='data')
         for relative in ('engine', 'scripts', 'providers', 'windows/engine-host', 'gui/icons', 'packaging/steam-artwork'):
             shutil.copytree(REPO / relative, output / 'engine' / relative, dirs_exist_ok=True,

@@ -9,37 +9,45 @@
             <Setter Property="Padding" Value="4,2,4,2"/>
         </Style>
         <DataTemplate x:Key="NrPickerGameTemplate" x:DataType="views:NrPickerGame">
-            <Grid ColumnSpacing="12" Padding="8,6,12,6"
-                  Background="{x:Bind Highlight, Mode=OneWay, TargetNullValue={ThemeResource CardBackgroundFillColorDefaultBrush}}"
+            <Grid Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                   PointerEntered="OnNrRowPointerEntered" PointerExited="OnNrRowPointerExited"
                   CornerRadius="{StaticResource ForgeArtCornerRadius}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <!-- The ListViewItem owns focus, hit testing, and accessible selection. -->
-                <CheckBox Width="22" MinWidth="0" VerticalAlignment="Center"
-                          IsChecked="{x:Bind IsSelected, Mode=OneWay}" IsHitTestVisible="False" IsTabStop="False"
-                          AutomationProperties.AccessibilityView="Raw"/>
-                <Grid Grid.Column="1" Width="92" Height="43" VerticalAlignment="Center"
-                      CornerRadius="{StaticResource ForgeArtCornerRadius}"
-                      Background="{ThemeResource ControlFillColorSecondaryBrush}"
-                      AutomationProperties.AccessibilityView="Raw">
-                    <FontIcon Glyph="&#xE7FC;" FontSize="16" Opacity=".55"/>
-                    <Image Source="{x:Bind Artwork}" Stretch="UniformToFill"/>
-                    <Border BorderThickness="1" BorderBrush="{x:Bind ArtworkBorder, Mode=OneWay}"
-                            CornerRadius="{StaticResource ForgeArtCornerRadius}"/>
+                <Border Background="{x:Bind Highlight, Mode=OneWay}" IsHitTestVisible="False"
+                        CornerRadius="{StaticResource ForgeArtCornerRadius}"/>
+                <Grid ColumnSpacing="12" Padding="8,6,12,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <!-- The ListViewItem owns focus, hit testing, and accessible selection. -->
+                    <Grid Width="20" Height="20" VerticalAlignment="Center"
+                          AutomationProperties.AccessibilityView="Raw" IsHitTestVisible="False">
+                        <Border Style="{StaticResource ForgeCheckStyle}" Width="20" Height="20"
+                                BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"/>
+                        <Border Background="#B8FFFFFF" CornerRadius="{ThemeResource ControlCornerRadius}"
+                                Visibility="{x:Bind CheckVisibility, Mode=OneWay}">
+                            <FontIcon Glyph="&#xE73E;" FontSize="12" Foreground="{x:Bind CheckInk, Mode=OneWay}"/>
+                        </Border>
+                    </Grid>
+                    <Grid Grid.Column="1" Width="92" Height="43" VerticalAlignment="Center"
+                          CornerRadius="{StaticResource ForgeArtCornerRadius}"
+                          Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                          AutomationProperties.AccessibilityView="Raw">
+                        <FontIcon Glyph="&#xE7FC;" FontSize="16" Opacity=".55"/>
+                        <Image Source="{x:Bind Artwork}" Stretch="UniformToFill"/>
+                        <Border BorderThickness="1" BorderBrush="{x:Bind ArtworkBorder, Mode=OneWay}"
+                                CornerRadius="{StaticResource ForgeArtCornerRadius}"/>
+                    </Grid>
+                    <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="{x:Bind Game.Name}" FontWeight="SemiBold" TextWrapping="Wrap"
+                                   Foreground="{x:Bind TitleInk, Mode=OneWay}"/>
+                        <TextBlock Text="{x:Bind Detail}" Visibility="{x:Bind DetailVisibility}"
+                                   TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                                   ToolTipService.ToolTip="{x:Bind Detail}" Foreground="{x:Bind DetailInk, Mode=OneWay}"
+                                   Style="{StaticResource ForgeCaptionDimTextStyle}"/>
+                    </StackPanel>
                 </Grid>
-                <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
-                    <TextBlock Text="{x:Bind Game.Name}" FontWeight="SemiBold" TextWrapping="Wrap"
-                               Foreground="{x:Bind SelectedInk, Mode=OneWay, TargetNullValue={ThemeResource TextFillColorPrimaryBrush}}"/>
-                    <TextBlock Text="{x:Bind Detail}" Visibility="{x:Bind DetailVisibility}"
-                               TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
-                               ToolTipService.ToolTip="{x:Bind Detail}"
-                               Foreground="{x:Bind SelectedInk, Mode=OneWay, TargetNullValue={ThemeResource TextFillColorSecondaryBrush}}"
-                               Style="{StaticResource ForgeCaptionDimTextStyle}"/>
-                </StackPanel>
             </Grid>
         </DataTemplate>
     </Page.Resources>

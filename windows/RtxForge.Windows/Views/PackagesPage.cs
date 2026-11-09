@@ -198,7 +198,6 @@ public sealed partial class PackagesPage : Page
         var chosen = new HashSet<string>();
         var picker = new NrSetupPicker(catalog);
         var search = new AutoSuggestBox { PlaceholderText = "Search games", QueryIcon = new SymbolIcon(Symbol.Find) };
-        var rows = catalogGames.Select(game => new NrPickerGame(game)).ToArray();
         var games = new ListView
         {
             ItemTemplate = (DataTemplate)Resources["NrPickerGameTemplate"],
@@ -207,6 +206,7 @@ public sealed partial class PackagesPage : Page
             IsMultiSelectCheckBoxEnabled = false,
             Height = wide ? Math.Clamp(dialog.XamlRoot.Size.Height - 370, 230, 366) : 196,
         };
+        var rows = catalogGames.Select(game => new NrPickerGame(game, games)).ToArray();
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(search, "Search games");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(games, "Games for Split Render");
         var selection = Prefs.Label("0 selected", "ForgeCaptionDimTextStyle");
@@ -285,7 +285,7 @@ public sealed partial class PackagesPage : Page
             matchError = null;
             notice.Visibility = Visibility.Collapsed;
             checking = choice is not null;
-            if (choice is null) rows = catalogGames.Select(game => new NrPickerGame(game)).ToArray();
+            if (choice is null) rows = catalogGames.Select(game => new NrPickerGame(game, games)).ToArray();
             Filter();
             if (choice is null) return;
             await Task.Delay(160);
@@ -295,7 +295,7 @@ public sealed partial class PackagesPage : Page
                 var compatible = await matchGames(catalogGames, choice);
                 if (current != revision) return;
                 rows = catalogGames.Where(game => compatible.ContainsKey(game.Id))
-                    .Select(game => new NrPickerGame(game, compatible[game.Id])).ToArray();
+                    .Select(game => new NrPickerGame(game, games, compatible[game.Id])).ToArray();
                 var removed = chosen.RemoveWhere(id => !compatible.ContainsKey(id));
                 if (removed > 0)
                 {
@@ -370,7 +370,7 @@ public sealed partial class PackagesPage : Page
         }
         columns.Children.Add(setupColumn);
         columns.Children.Add(gameColumn);
-        var content = new StackPanel { Width = width, Spacing = 16 };
+        var content = new StackPanel { Width = width, Spacing = 16, Padding = new Thickness(4) };
         content.Children.Add(Prefs.Label("Choose a setup to see compatible games. Review confirms what each game will use."));
         content.Children.Add(columns);
         dialog.Content = new ScrollViewer
@@ -670,8 +670,9 @@ public sealed partial class PackagesPage : Page
     }
 }
 
-internal sealed class NrPickerGame(Game game, string? detail = null) : INotifyPropertyChanged
+internal sealed class NrPickerGame(Game game, Control themeHost, string? detail = null) : INotifyPropertyChanged
 {
+    static readonly global::Windows.UI.Color White = global::Windows.UI.Color.FromArgb(255, 255, 255, 255);
     public event PropertyChangedEventHandler? PropertyChanged;
     bool accentRequested;
     bool isSelected;
@@ -706,7 +707,14 @@ internal sealed class NrPickerGame(Game game, string? detail = null) : INotifyPr
     }
     public Brush? Highlight => IsSelected ? palette?.AccentBrush : isHovered && palette is not null
         ? palette.Brush(palette.Color, .15) : null;
-    public Brush? SelectedInk => IsSelected && palette is not null ? palette.Brush(palette.AccentDark) : null;
+    Brush? SelectedInk => IsSelected && palette is not null ? palette.Brush(palette.AccentDark) : null;
+    Brush NormalInk => themeHost.Foreground ?? (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+    public Brush TitleInk => SelectedInk ?? NormalInk;
+    public Brush DetailInk => SelectedInk ?? (NormalInk is SolidColorBrush ink
+        ? new SolidColorBrush(ink.Color) { Opacity = ink.Opacity * .72 } : NormalInk);
+    public Visibility CheckVisibility => IsSelected ? Visibility.Visible : Visibility.Collapsed;
+    public Brush CheckInk => palette is null ? new SolidColorBrush(Microsoft.UI.Colors.Black)
+        : palette.Brush(ArtAccent.Readable(palette.Color, ArtAccent.Mix(White, palette.Color, .72)));
 
     internal void SetHovered(bool hovered)
     {

@@ -1,7 +1,7 @@
 """DLSS5 neural-rendering add-on choice per game: Environment and Character slots.
 
 Each slot takes the add-on the user chooses (Lecram, ShortFuse or GITC Uplift),
-one of its pinned builds, an Old or New DLSS5 model, and its settings. plan()
+one of its pinned builds, an Old or New DLSS 5 model, and its settings. plan()
 turns a game and a setup into what an install needs: the add-ons and model to
 fetch (all pinned in providers/nr-addons.json), the ReShade.ini values to write,
 whether Feeder supplies the frames, and whether this pairing has been verified.
@@ -107,7 +107,7 @@ def _slot(spec, slot, game):
     build_id = spec.get('build') or next(b for b, v in addon['builds'].items() if v.get('default'))
     t.need(build_id in addon['builds'], f'{addon["name"]} has no build {build_id}.')
     model = spec.get('model', 'new')
-    t.need(model in MODELS, 'Choose the Old or New DLSS5 model.')
+    t.need(model in MODELS, 'Choose the Old or New DLSS 5 model.')
     if addon.get('needs_native_dlss'):
         t.need(game.get('native_dlss'), f'{addon["name"]} hooks the game\'s own DLSS, and this game has none.')
     if addon.get('arch'):

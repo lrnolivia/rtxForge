@@ -1,19 +1,29 @@
-# DLSS5 NR add-ons
+# Split Render
 
-Open **Packages → DLSS5 NR add-ons → Choose games** to review an add-on setup
-for one or more games. You can also choose an add-on setup in the main
-installation review. After the main package installs, rtxForge opens the
-add-on review with the resolved roles, planned files and skipped games.
+Split Render uses DLSS 5 NR for the environment and characters, with a
+separate character pass where supported. Open **Packages → Split Render →
+Choose games** to review a setup for one or more games. Changing the setup
+filters the list to compatible titles. **Select all results** selects the
+games matching the current search and keeps earlier selections.
+**Clear selection** clears all checked games.
+
+**Auto** uses ShortFuse for character detail where Skynizz already runs NR.
+Elsewhere it tries a single environment pass in this order: Lecram, ShortFuse,
+GITC Uplift. The chosen DLSS 5 model applies to any newly installed model.
+The review confirms the provider and model for each game and checks the files
+before installing. You can also choose Split Render in the main installation
+review, then review the Split Render changes after the main package installs.
 
 For custom builds, tuning and saved combos, open a game's
-**Tools → DLSS5 NR add-ons**. The group has two slots:
+**Tools → Split Render**. The group has two slots:
 
 - **Environment** — the world, required. Where Skynizz runs NR + MFG or NR
   Only, Skynizz is the world: the slot shows **Skynizz** and nothing else.
 - **Character detail** — optional; choose **None** to run one add-on.
 
-Each slot takes the add-on, one of its pinned builds, and the **Old** or **New**
-DLSS5 model. rtxForge checks the choice against the game every time it changes
+Each slot takes an add-on and one of its pinned builds. The slots share one
+**Old** or **New** DLSS 5 model. Where Skynizz already runs NR, both passes
+use its installed model. rtxForge checks the choice every time it changes
 and offers **Install** only when it can work. Install and Remove go through the
 usual review, which lists every file and its SHA-256 before anything changes.
 
@@ -72,7 +82,7 @@ A pairing that hasn't been confirmed on a Forge Lab test copy is marked as
 
 ## Combos
 
-The **Combo** picker fills both slots at once. One combo is built in,
+The **Preset** picker fills both slots at once. One preset is built in,
 **Characters + world**: ShortFuse for character detail, with the world from
 
 - **Lecram 10.8** in games without OptiScaler, or
@@ -85,8 +95,8 @@ Reconstruction and frame generation running.
 Every combo's world works the same way: where Skynizz runs NR, Skynizz is the
 world in place of the combo's Environment add-on.
 
-**Save combo…** stores the current slots under a name, with up to 100 saved
-combos. Every combo is available for every game. Each game checks a combo
+**Save preset…** stores the current slots under a name, with up to 100 saved
+presets. Every preset is available for every game. Each game checks a preset
 against itself, so one saved in a DLSS game is refused in a game without DLSS
 when it uses ShortFuse.
 

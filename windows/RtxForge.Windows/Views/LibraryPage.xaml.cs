@@ -172,7 +172,7 @@ public sealed partial class LibraryPage : Page
 
         var scale = Settings.ArtScale / 100.0;
         var items = LibraryScope.Filter(games, Settings.LibraryFilter, shell.Query)
-            .Select(g => new GameItem(g, Settings, actions, selectedIds.Count > 0, selectedIds.Contains(g.Id), density, this) { PresetMode = shell.PresetSelecting })
+            .Select(g => new GameItem(g, Settings, actions, selectedIds.Contains(g.Id), density, this) { PresetMode = shell.PresetSelecting })
             .ToList();
         for (var i = 0; i < items.Count; i++)
         {
@@ -466,9 +466,6 @@ public sealed partial class LibraryPage : Page
         RemoveSelectedButton.IsEnabled = count > 0 && !shell.Busy;
         SelectAllIcon.Glyph = count > 0 ? "" : "";
         ToolTipService.SetToolTip(SelectAllButton, count > 0 ? "Clear selection" : "Select every game in this view");
-        // Once anything is selected, every card shows its check.
-        if (Library.ItemsSource is IEnumerable<GameItem> visible)
-            foreach (var item in visible) item.IsSelecting = selectedIds.Count > 0;
     }
 
     void OnInstallFeatures(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", Selection().Where(g => !g.Blocked).ToList());

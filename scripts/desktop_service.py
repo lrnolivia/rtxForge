@@ -458,7 +458,7 @@ class DesktopService:
         roots=self.libraries()
         t.need(roots,'No Steam libraries were found for cleanup.')
         items=cleanup.discover(roots,self.config)
-        return {'kind':'cleanup','title':'Global DLSS5 cleanup','items':items,'blocked':[],
+        return {'kind':'cleanup','title':'Global DLSS 5 cleanup','items':items,'blocked':[],
                 'rows':[{'name':Path(r['path']).name,'detail':r['path']} for r in items]}
 
     def execute(self,review):

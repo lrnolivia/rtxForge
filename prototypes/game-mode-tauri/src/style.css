@@ -339,11 +339,17 @@ button:not(:disabled):focus-visible{transform:translateY(-2px) scale(1.015);box-
 .accent-label-control.primary>.control-label,.accent-label-control.primary>.icon{color:var(--primary-ink,#242424)!important;mix-blend-mode:normal!important}
 .accent-label-control.primary:disabled{opacity:1;background:var(--accent)}
 /* The hit target remains generous; the visible checkbox is one quiet shape. */
-.game-item .select-game,.game-item[data-selected=true] .select-game{width:38px;height:38px;min-height:38px;padding:8px;background:transparent;color:#f7f3ec;box-shadow:none;backdrop-filter:none}
-.game-item .selection-check{width:22px;height:22px;flex-shrink:0;border-radius:6px;border:1px solid rgb(255 255 255 / .65);background:rgb(24 25 26 / .64);box-shadow:0 2px 5px rgb(0 0 0 / .12);backdrop-filter:blur(12px)}
-.game-item[data-selected=true] .selection-check{background:rgb(24 25 26 / .78);border-color:rgb(255 255 255 / .8)}
-.game-item .selection-check .icon{font-size:16px;color:#f7f3ec}
+.game-item .select-game,.game-item[data-selected=true] .select-game{width:38px;height:38px;min-height:38px;padding:8px;background:transparent;color:#f7f3ec;box-shadow:none;backdrop-filter:none;opacity:1}
+.game-item .selection-check,.nr-target-choice .selection-check{width:22px;height:22px;flex-shrink:0;border-radius:6px;border:1px solid rgb(255 255 255 / .65);background:rgb(24 25 26 / .64);box-shadow:0 2px 5px rgb(0 0 0 / .12);backdrop-filter:blur(12px)}
+.game-item[data-selected=true] .selection-check,.nr-target-choice:has(input:checked) .selection-check{background:rgb(24 25 26 / .78);border-color:rgb(255 255 255 / .8)}
+.game-item .selection-check .icon,.nr-target-choice .selection-check .icon{font-size:16px;color:#f7f3ec}
 .game-list .game-item .select-game{left:6px}
+.nr-target-choice{position:relative;padding:8px;border-radius:8px}
+.nr-target-choice:hover{background:color-mix(in srgb,var(--game-accent) 15%,var(--nested))}
+.nr-target-choice:has(input:checked){background:var(--game-accent);color:var(--game-selected-ink)}
+.nr-target-choice input{position:absolute;opacity:0}
+.nr-target-choice input:not(:checked)+.selection-check .icon{visibility:hidden}
+.nr-target-choice input:focus-visible+.selection-check{outline:2px solid currentColor;outline-offset:3px}
 
 .layout-icon{display:block;width:24px;height:24px;flex-shrink:0}
 .pad-glyph{display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;width:28px;height:28px;line-height:1;vertical-align:middle}

@@ -762,7 +762,7 @@ public sealed partial class MainWindow
     // ---------- Tools: ReShade and add-ons (choose_extra / review_extra_restore) ----------
 
     public Task ChangeNrAsync(Game game, System.Text.Json.Nodes.JsonObject? setup, bool remove = false) =>
-        ReviewDialog.ShowAsync(this, remove ? "Remove NR add-ons" : "Install NR add-ons", () => Service.ReviewNrAsync(game, setup, remove));
+        ReviewDialog.ShowAsync(this, remove ? "Remove Split Render" : "Install Split Render", () => Service.ReviewNrAsync(game, setup, remove));
 
     public Task ChangeHdrAsync(Game game, bool remove = false) =>
         ReviewDialog.ShowAsync(this, remove ? "Remove RenoDX HDR" : "Install RenoDX HDR", () => Service.ReviewHdrAsync(game, remove));

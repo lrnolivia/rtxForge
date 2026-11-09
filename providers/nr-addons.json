@@ -3,7 +3,7 @@
   "note": "DLSS5 neural-rendering add-ons a game can use, the NR models they run on, and how they may be combined. Every archive is pinned by SHA-256 from its publisher's release; files inside are pinned where they were verified. Values marked null are not yet verified on a Forge Lab copy and are never written by a preset.",
   "addons": {
     "lecram": {
-      "name": "Lecram (RenoDX DLSS5 Generic)",
+      "name": "Lecram (RenoDX DLSS 5 Generic)",
       "file": "renodx-dlss5.addon64",
       "section": "RenoDX.DLSS5",
       "route": "feeder",
@@ -120,7 +120,7 @@
   },
   "models": {
     "old": {
-      "label": "Old DLSS5 (310.8)",
+      "label": "Old DLSS 5 (310.8)",
       "builds": {
         "310.8.SF-v2": {
           "for": ["turing", "ampere"],
@@ -149,7 +149,7 @@
       }
     },
     "new": {
-      "label": "New DLSS5 (310.9.16)",
+      "label": "New DLSS 5 (310.9.16)",
       "builds": {
         "310.9.16": {
           "for": ["ada", "blackwell"],

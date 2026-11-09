@@ -7950,7 +7950,7 @@ def deep_clean_scan_game(game: Game) -> list[DeepCleanCandidate]:
                 add(path, "file", "ReShade artifact")
                 continue
             if low.startswith(("renodx", "dlss5-feed")) and low.endswith((".addon64", ".addon32", ".addon", ".dll", ".exe", ".cfg", ".ini", ".log")):
-                add(path, "file", "RenoDX/DLSS5 injector artifact")
+                add(path, "file", "RenoDX/DLSS 5 injector artifact")
                 continue
             if reshade_context and low.endswith((".addon64", ".addon32", ".addon")):
                 add(path, "file", "ReShade add-on")

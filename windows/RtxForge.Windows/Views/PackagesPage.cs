@@ -1,9 +1,13 @@
+using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using System.Text.Json.Nodes;
 using RtxForge.Windows.Controls;
 using RtxForge.Windows.Models;
 using RtxForge.Windows.Services;
+using RtxForge.Windows.ViewModels;
 
 namespace RtxForge.Windows.Views;
 
@@ -121,8 +125,8 @@ public sealed partial class PackagesPage : Page
         columns.Children.Add(mfg);
         body.Children.Add(columns);
 
-        var addons = Section("DLSS5 NR add-ons",
-            "Choose Environment and Character detail for compatible games. Use Lecram, ShortFuse, GITC Uplift or a saved combo.");
+        var addons = Section("Split Render",
+            "Render the environment and characters with DLSS 5 NR, with a separate character pass where supported.");
         var reviewAddons = Prefs.ActionButton("Choose games", async (_, _) => await ChooseNrGamesAsync());
         reviewAddons.IsEnabled = !shell.Service.IsPreview;
         addons.Children.Add(reviewAddons);
@@ -171,33 +175,221 @@ public sealed partial class PackagesPage : Page
         try
         {
             var catalog = await engine.NrCatalogAsync();
-            var games = new ListView
-            {
-                ItemsSource = shell.Games.Where(game => game.EngineRow is not null).OrderBy(game => game.Name).ToArray(),
-                DisplayMemberPath = nameof(Game.Name), SelectionMode = ListViewSelectionMode.Multiple, MaxHeight = 320,
-            };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(games, "Games for NR add-ons");
-            var dialog = shell.NewDialog();
-            dialog.Title = "DLSS5 NR add-ons";
-            dialog.PrimaryButtonText = "Review games";
-            dialog.CloseButtonText = "Cancel";
-            dialog.IsPrimaryButtonEnabled = false;
-            JsonObject? choice = null;
-            void Update() => dialog.IsPrimaryButtonEnabled = choice is not null && games.SelectedItems.Count > 0;
-            games.SelectionChanged += (_, _) => Update();
-            var content = new StackPanel { Spacing = 12 };
-            content.Children.Add(OperationDialog.NrChoiceRow(catalog, value => { choice = value; Update(); }));
-            content.Children.Add(games);
-            dialog.Content = content;
-            if (await dialog.ShowAsync() == ContentDialogResult.Primary && choice is { } selected)
-            {
-                var targets = games.SelectedItems.OfType<Game>().ToArray();
+            var games = shell.Games.Where(game => game.EngineRow is not null).OrderBy(game => game.Name).ToArray();
+            if (await PickNrGamesAsync(catalog, games, engine.MatchNrGamesAsync) is { } selection)
                 await OperationDialog.ShowPreparedAsync(shell, "install-nr-addons",
-                    progress => engine.ReviewNrBatchAsync(targets, selected, progress));
-            }
+                    progress => engine.ReviewNrBatchAsync(selection.Games, selection.Setup, progress));
         }
         catch (InvalidOperationException error) { shell.ShowToast(error.Message); }
     }
+
+    private async Task<(Game[] Games, JsonObject Setup)?> PickNrGamesAsync(JsonObject catalog, Game[] catalogGames,
+        Func<Game[], JsonObject, Task<Dictionary<string, string>>> matchGames)
+    {
+        var dialog = shell.NewDialog();
+        dialog.Title = "Set up Split Render";
+        dialog.PrimaryButtonText = "Review selection";
+        dialog.CloseButtonText = "Cancel";
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        dialog.IsPrimaryButtonEnabled = false;
+        var width = Math.Clamp(dialog.XamlRoot.Size.Width - 112, 264, 880);
+        dialog.Resources["ContentDialogMaxWidth"] = width + 56;
+        var wide = width >= 660;
+        var chosen = new HashSet<string>();
+        var picker = new NrSetupPicker(catalog);
+        var search = new AutoSuggestBox { PlaceholderText = "Search games", QueryIcon = new SymbolIcon(Symbol.Find) };
+        var games = new ListView
+        {
+            ItemTemplate = (DataTemplate)Resources["NrPickerGameTemplate"],
+            ItemContainerStyle = (Style)Resources["NrPickerGameContainerStyle"],
+            SelectionMode = ListViewSelectionMode.Multiple,
+            IsMultiSelectCheckBoxEnabled = false,
+            Height = wide ? Math.Clamp(dialog.XamlRoot.Size.Height - 370, 230, 366) : 196,
+        };
+        var rows = catalogGames.Select(game => new NrPickerGame(game, games)).ToArray();
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(search, "Search games");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(games, "Games for Split Render");
+        var selection = Prefs.Label("0 selected", "ForgeCaptionDimTextStyle");
+        var selectAll = new Button { MinHeight = 32, Padding = new Thickness(12, 6, 12, 6) };
+        var clear = new Button { Content = Prefs.Content("Clear selection", "\uE8E6"),
+            MinHeight = 32, Padding = new Thickness(12, 6, 12, 6) };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(clear, "Clear selection");
+        ToolTipService.SetToolTip(clear, "Deselect all games, including games outside the current search.");
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        actions.Children.Add(selectAll);
+        actions.Children.Add(clear);
+        var empty = Prefs.Label("No games match your search.");
+        empty.Margin = new Thickness(8, 16, 8, 0);
+        empty.IsHitTestVisible = false;
+        var gameList = new Grid();
+        gameList.Children.Add(games);
+        gameList.Children.Add(empty);
+        var notice = Prefs.Label("", "ForgeCaptionDimTextStyle");
+        notice.Visibility = Visibility.Collapsed;
+        var filtering = false;
+        var checking = false;
+        var revision = 0;
+        string? matchError = null;
+        void Update()
+        {
+            selection.Text = $"{chosen.Count} selected";
+            selectAll.IsEnabled = games.SelectedItems.Count < games.Items.Count;
+            clear.IsEnabled = chosen.Count > 0;
+            dialog.IsPrimaryButtonEnabled = !checking && matchError is null && picker.Choice is not null && chosen.Count > 0;
+        }
+        selectAll.Click += (_, _) =>
+        {
+            filtering = true;
+            foreach (var row in games.Items.OfType<NrPickerGame>())
+            {
+                if (!chosen.Add(row.Game.Id)) continue;
+                row.IsSelected = true;
+                games.SelectedItems.Add(row);
+            }
+            filtering = false;
+            Update();
+        };
+        clear.Click += (_, _) =>
+        {
+            chosen.Clear();
+            games.SelectedItems.Clear();
+            Update();
+        };
+        void Filter()
+        {
+            filtering = true;
+            var query = search.Text.Trim();
+            var matches = checking || matchError is not null ? [] :
+                rows.Where(row => row.Game.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).ToArray();
+            games.ItemsSource = matches;
+            foreach (var row in matches)
+            {
+                row.SetHovered(false);
+                row.IsSelected = chosen.Contains(row.Game.Id);
+                if (row.IsSelected) games.SelectedItems.Add(row);
+            }
+            var selectLabel = query.Length == 0 ? "Select all" : "Select all results";
+            selectAll.Content = Prefs.Content(selectLabel, "\uE8B3");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(selectAll, selectLabel);
+            empty.Text = matchError ?? (checking ? "Checking compatible games…" :
+                catalogGames.Length == 0 ? "There are no scanned games in your library." :
+                rows.Length == 0 ? "No games support this setup." : "No games match your search.");
+            empty.Visibility = matches.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            filtering = false;
+            Update();
+        }
+        async Task CheckSetupAsync()
+        {
+            var current = ++revision;
+            var choice = picker.Choice;
+            matchError = null;
+            notice.Visibility = Visibility.Collapsed;
+            checking = choice is not null;
+            if (choice is null) rows = catalogGames.Select(game => new NrPickerGame(game, games)).ToArray();
+            Filter();
+            if (choice is null) return;
+            await Task.Delay(160);
+            if (current != revision) return;
+            try
+            {
+                var compatible = await matchGames(catalogGames, choice);
+                if (current != revision) return;
+                rows = catalogGames.Where(game => compatible.ContainsKey(game.Id))
+                    .Select(game => new NrPickerGame(game, games, compatible[game.Id])).ToArray();
+                var removed = chosen.RemoveWhere(id => !compatible.ContainsKey(id));
+                if (removed > 0)
+                {
+                    notice.Text = removed == 1 ? "1 game was deselected because it cannot use this setup."
+                        : $"{removed} games were deselected because they cannot use this setup.";
+                    notice.Visibility = Visibility.Visible;
+                }
+            }
+            catch (Exception error) when (error is IOException or InvalidOperationException)
+            {
+                if (current != revision) return;
+                matchError = "Could not check compatibility. " + error.Message;
+            }
+            checking = false;
+            Filter();
+        }
+        games.SelectionChanged += (_, args) =>
+        {
+            if (filtering) return;
+            foreach (var row in args.RemovedItems.OfType<NrPickerGame>())
+            {
+                row.IsSelected = false;
+                chosen.Remove(row.Game.Id);
+            }
+            foreach (var row in args.AddedItems.OfType<NrPickerGame>())
+            {
+                row.IsSelected = true;
+                chosen.Add(row.Game.Id);
+            }
+            Update();
+        };
+        search.TextChanged += (_, _) => Filter();
+        picker.Changed += async () => await CheckSetupAsync();
+        Filter();
+
+        static StackPanel Heading(string title, string glyph)
+        {
+            var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            line.Children.Add(new FontIcon { Glyph = glyph, FontSize = 15 });
+            line.Children.Add(Prefs.Label(title, "ForgeHeadingTextStyle"));
+            return line;
+        }
+
+        var gameColumn = new StackPanel { Spacing = 8 };
+        var gameHeading = new Grid { ColumnSpacing = 8 };
+        gameHeading.ColumnDefinitions.Add(new ColumnDefinition());
+        gameHeading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        gameHeading.Children.Add(Heading("Games", "\uE7FC"));
+        Grid.SetColumn(selection, 1);
+        selection.VerticalAlignment = VerticalAlignment.Center;
+        gameHeading.Children.Add(selection);
+        gameColumn.Children.Add(gameHeading);
+        gameColumn.Children.Add(search);
+        gameColumn.Children.Add(actions);
+        gameColumn.Children.Add(gameList);
+        gameColumn.Children.Add(notice);
+        var setupColumn = new StackPanel { Spacing = 8 };
+        setupColumn.Children.Add(Heading("Setup", "\uE713"));
+        setupColumn.Children.Add(picker.Root);
+        var columns = new Grid { ColumnSpacing = 24, RowSpacing = 20 };
+        if (wide)
+        {
+            columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(304) });
+            columns.ColumnDefinitions.Add(new ColumnDefinition());
+            Grid.SetColumn(gameColumn, 1);
+        }
+        else
+        {
+            columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(gameColumn, 1);
+        }
+        columns.Children.Add(setupColumn);
+        columns.Children.Add(gameColumn);
+        var content = new StackPanel { Width = width, Spacing = 16, Padding = new Thickness(4) };
+        content.Children.Add(Prefs.Label("Choose a setup to see compatible games. Review confirms what each game will use."));
+        content.Children.Add(columns);
+        dialog.Content = new ScrollViewer
+        {
+            Content = content, HorizontalScrollMode = ScrollMode.Disabled,
+            MaxHeight = Math.Max(200, dialog.XamlRoot.Size.Height - 184),
+        };
+        var result = await dialog.ShowAsync();
+        revision++;
+        if (result != ContentDialogResult.Primary || picker.Choice is not { } selected)
+            return null;
+        return (catalogGames.Where(game => chosen.Contains(game.Id)).ToArray(), selected);
+    }
+
+    void OnNrRowPointerEntered(object sender, PointerRoutedEventArgs _) =>
+        (((FrameworkElement)sender).DataContext as NrPickerGame)?.SetHovered(true);
+
+    void OnNrRowPointerExited(object sender, PointerRoutedEventArgs _) =>
+        (((FrameworkElement)sender).DataContext as NrPickerGame)?.SetHovered(false);
 
     Expander FeederSetup()
     {
@@ -476,4 +668,67 @@ public sealed partial class PackagesPage : Page
         shell.SelectPackage("custom", choice.Presets);
         await LoadAsync();
     }
+}
+
+internal sealed class NrPickerGame(Game game, Control themeHost, string? detail = null) : INotifyPropertyChanged
+{
+    static readonly global::Windows.UI.Color White = global::Windows.UI.Color.FromArgb(255, 255, 255, 255);
+    public event PropertyChangedEventHandler? PropertyChanged;
+    bool accentRequested;
+    bool isSelected;
+    bool isHovered;
+    AccentPalette? palette;
+
+    public Game Game { get; } = game;
+    public ImageSource? Artwork => GameItem.Image(Game.CapsulePath ?? Game.PosterPath);
+    public string Detail { get; } = detail ?? (game.UsesFeeder ? "Feeder NR route" : game.Library);
+    public Visibility DetailVisibility => Detail.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public bool IsSelected
+    {
+        get => isSelected;
+        set
+        {
+            if (isSelected == value) return;
+            isSelected = value;
+            Changed();
+        }
+    }
+    public Brush? ArtworkBorder
+    {
+        get
+        {
+            if (!accentRequested)
+            {
+                accentRequested = true;
+                _ = LoadAccentAsync();
+            }
+            return palette?.AccentBrush;
+        }
+    }
+    public Brush? Highlight => IsSelected ? palette?.AccentBrush : isHovered && palette is not null
+        ? palette.Brush(palette.Color, .15) : null;
+    Brush? SelectedInk => IsSelected && palette is not null ? palette.Brush(palette.AccentDark) : null;
+    Brush NormalInk => themeHost.Foreground ?? (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+    public Brush TitleInk => SelectedInk ?? NormalInk;
+    public Brush DetailInk => SelectedInk ?? (NormalInk is SolidColorBrush ink
+        ? new SolidColorBrush(ink.Color) { Opacity = ink.Opacity * .72 } : NormalInk);
+    public Visibility CheckVisibility => IsSelected ? Visibility.Visible : Visibility.Collapsed;
+    public Brush CheckInk => palette is null ? new SolidColorBrush(Microsoft.UI.Colors.Black)
+        : palette.Brush(ArtAccent.Readable(palette.Color, ArtAccent.Mix(White, palette.Color, .72)));
+
+    internal void SetHovered(bool hovered)
+    {
+        if (isHovered == hovered) return;
+        isHovered = hovered;
+        Changed();
+    }
+
+    async Task LoadAccentAsync()
+    {
+        palette = await ArtAccent.ForGameAsync(Game);
+        Changed();
+    }
+
+    void Changed() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
+    public override string ToString() => Game.Name;
 }

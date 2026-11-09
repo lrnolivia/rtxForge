@@ -1,6 +1,55 @@
 <Page
     x:Class="RtxForge.Windows.Views.PackagesPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:RtxForge.Windows.Views">
+    <Page.Resources>
+        <Style x:Key="NrPickerGameContainerStyle" TargetType="ListViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="4,2,4,2"/>
+        </Style>
+        <DataTemplate x:Key="NrPickerGameTemplate" x:DataType="views:NrPickerGame">
+            <Grid Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                  PointerEntered="OnNrRowPointerEntered" PointerExited="OnNrRowPointerExited"
+                  CornerRadius="{StaticResource ForgeArtCornerRadius}">
+                <Border Background="{x:Bind Highlight, Mode=OneWay}" IsHitTestVisible="False"
+                        CornerRadius="{StaticResource ForgeArtCornerRadius}"/>
+                <Grid ColumnSpacing="12" Padding="8,6,12,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <!-- The ListViewItem owns focus, hit testing, and accessible selection. -->
+                    <Grid Width="20" Height="20" VerticalAlignment="Center"
+                          AutomationProperties.AccessibilityView="Raw" IsHitTestVisible="False">
+                        <Border Style="{StaticResource ForgeCheckStyle}" Width="20" Height="20"
+                                BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"/>
+                        <Border Background="#B8FFFFFF" CornerRadius="{ThemeResource ControlCornerRadius}"
+                                Visibility="{x:Bind CheckVisibility, Mode=OneWay}">
+                            <FontIcon Glyph="&#xE73E;" FontSize="12" Foreground="{x:Bind CheckInk, Mode=OneWay}"/>
+                        </Border>
+                    </Grid>
+                    <Grid Grid.Column="1" Width="92" Height="43" VerticalAlignment="Center"
+                          CornerRadius="{StaticResource ForgeArtCornerRadius}"
+                          Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                          AutomationProperties.AccessibilityView="Raw">
+                        <FontIcon Glyph="&#xE7FC;" FontSize="16" Opacity=".55"/>
+                        <Image Source="{x:Bind Artwork}" Stretch="UniformToFill"/>
+                        <Border BorderThickness="1" BorderBrush="{x:Bind ArtworkBorder, Mode=OneWay}"
+                                CornerRadius="{StaticResource ForgeArtCornerRadius}"/>
+                    </Grid>
+                    <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="{x:Bind Game.Name}" FontWeight="SemiBold" TextWrapping="Wrap"
+                                   Foreground="{x:Bind TitleInk, Mode=OneWay}"/>
+                        <TextBlock Text="{x:Bind Detail}" Visibility="{x:Bind DetailVisibility}"
+                                   TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                                   ToolTipService.ToolTip="{x:Bind Detail}" Foreground="{x:Bind DetailInk, Mode=OneWay}"
+                                   Style="{StaticResource ForgeCaptionDimTextStyle}"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
     <!-- Built in code (PackagesPage.cs), like the Linux panels it mirrors. -->
 </Page>

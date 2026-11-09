@@ -723,28 +723,31 @@ async function loadNrChoices() {
   nrChoices = catalog.install_choices ?? [];
 }
 function nrChoicePicker(help: string) {
-  return `<label class="field" for="nr-add-on-setup"><span><strong>DLSS5 NR add-ons</strong><small>${e(help)}</small></span><select id="nr-add-on-setup" ${nrChoices.length ? '' : 'disabled'}><option value="">None</option>${nrChoices.map((choice,index) => `<option value="${index}">${e(choice.label)}</option>`).join('')}</select></label>`;
+  return `<label class="field" for="nr-add-on-setup"><span><strong>Split Render</strong><small>${e(help)}</small></span><select id="nr-add-on-setup" ${nrChoices.length ? '' : 'disabled'}><option value="">None</option>${nrChoices.map((choice,index) => `<option value="${index}">${e(choice.label)}</option>`).join('')}</select></label>`;
 }
 function selectedNrChoice() {
   const value = app.querySelector<HTMLSelectElement>('#nr-add-on-setup')?.value;
   return value ? nrChoices[Number(value)] : undefined;
 }
 function nrPackageCard() {
-  return `<section class="glass-section"><h2>DLSS5 NR add-ons</h2><p>Choose Environment and Character detail for compatible games. Use Lecram, ShortFuse, GITC Uplift or a saved combo.</p>${backend.enabled ? `<details><summary>Choose games</summary>${nrChoicePicker('Choose an add-on setup to review for the selected games.')}` +
-    (snapshot?.games || []).map(game => `<label class="trust-choice"><input type="checkbox" data-nr-target="${e(game.id)}"/>${e(game.name)}</label>`).join('') +
+  return `<section class="glass-section"><h2>Split Render</h2><p>Render the environment and characters with DLSS 5 NR, with a separate character pass where supported.</p>${backend.enabled ? `<details><summary>Choose games</summary>${nrChoicePicker('Choose a Split Render setup to review for the selected games.')}` +
+    (snapshot?.games || []).map(game => {
+      const accent=detailsAccent(game)||'#b4b4b4';
+      return `<label class="trust-choice nr-target-choice" style="--game-accent:${e(accent)};--game-selected-ink:${selectionInk(accent)}"><input type="checkbox" data-nr-target="${e(game.id)}"/><span class="selection-check" aria-hidden="true">${icon('check')}</span><span>${e(game.name)}</span></label>`;
+    }).join('') +
     '<button class="primary" data-action="review-nr-addons">Review games</button></details>' : ''}</section>`;
 }
 async function reviewNrPackage() {
   const choice = selectedNrChoice();
   const selected = new Set([...app.querySelectorAll<HTMLInputElement>('[data-nr-target]:checked')].map(node => node.dataset.nrTarget));
-  if (!choice || !selected.size) { announce('Choose an add-on setup and at least one game.'); return; }
+  if (!choice || !selected.size) { announce('Choose a Split Render setup and at least one game.'); return; }
   const rows: EngineRow[] = [];
   for (const game of snapshot?.games || []) {
     if (!selected.has(game.id)) continue;
     const row = (await getEngineRows(game)).find(row => pathKey(row.game) === pathKey(game.path));
     rows.push(row ?? {name:game.name, game:game.path});
   }
-  if (view === 'packages') await withOperation('Review NR Add-ons', 'nr_review', {rows, choice});
+  if (view === 'packages') await withOperation('Review Split Render', 'nr_review', {rows, choice});
 }
 async function getEngineRows(target?: Game) {
   if (!backend.enabled) throw new Error(backend.reason);
@@ -1285,7 +1288,7 @@ async function confirmOperation() {
     });
     state.stage = 'done'; engineRows = [];if(state.execute==='steam_install')steamAdded=true;else if(state.execute==='steam_remove')steamAdded=false;
     if (choice && addonRows.length && !(state.result as Record<string,unknown>)?.cancelled) {
-      await withOperation('Review NR Add-ons', 'nr_review', {rows: addonRows, choice});
+      await withOperation('Review Split Render', 'nr_review', {rows: addonRows, choice});
       return;
     }
     if(state.origin === 'presets' && !(state.result as Record<string,unknown>)?.cancelled) { drafts.delete(presetId); presetSelection=false; batchSelection.clear(); }

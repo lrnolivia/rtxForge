@@ -196,6 +196,40 @@ class NrInstallTests(unittest.TestCase):
         self.assertIn('Character detail: ShortFuse', plan['selection'])
         self.assertFalse(any(p['path'] == 'nvngx_dlssnr.dll' for p in plan['changes']))
 
+    def test_matches_filter_by_route_and_model_without_downloading(self):
+        old = {'setup': {'environment': {'addon': 'lecram', 'model': 'old'}}, 'adapt': False}
+        new = {'setup': {'environment': {'addon': 'lecram', 'model': 'new'}}, 'adapt': False}
+        rows = [dict(self.row, native_dlss=False), self.row, dict(self.row, anti_cheat='detected')]
+        before = self.files()
+        with patch.object(nr_install.engine_bridge, 'module', return_value=self.engine), \
+             patch.object(nr_install, '_fetch', side_effect=AssertionError('matching downloaded files')):
+            matches = nr_install.match_batch({}, rows, old, 'ampere')
+            self.assertEqual([item['index'] for item in matches], [1])
+            self.assertIn('Environment: Lecram', matches[0]['summary'])
+            self.assertEqual(nr_install.match_batch({}, rows, new, 'ampere'), [])
+        self.assertEqual(self.files(), before)
+
+    def test_auto_matches_the_same_setup_that_batch_review_prepares(self):
+        choice = {'auto': True, 'model': 'old'}
+        with patch.object(nr_install.engine_bridge, 'module', return_value=self.engine):
+            for mode, detail in [(None, 'Environment: Lecram'),
+                                 ('mfg-only', 'Environment: ShortFuse'),
+                                 ('nr-mfg', 'Character detail: ShortFuse')]:
+                with self.subTest(mode=mode):
+                    if mode is not None:
+                        self.optiscaler(mode)
+                    [match] = nr_install.match_batch({}, [self.row], choice, 'ampere')
+                    result = nr_install.prepare_batch({}, [self.row], choice, 'ampere')
+                    self.assertEqual(result['blocked'], [])
+                    [review] = result['plans']
+                    self.assertEqual(match['summary'], review['selection'])
+                    self.assertIn(detail, review['selection'])
+                    if mode == 'nr-mfg':
+                        self.assertIn('shared model', review['selection'])
+                        self.assertFalse(any(p['path'] == 'nvngx_dlssnr.dll' for p in review['changes']))
+                    else:
+                        self.assertIn('Model: 310.8', review['selection'])
+
     def test_gitc_keeps_its_model_in_its_own_folder(self):
         self.addons.update({'gitc-uplift.addon64': pe(b'GITC'), 'gitc-uplift.addon32': b'32', 'gitc-uplift-helper64.exe': pe(b'helper'),
                             'Uplift.fx': b'fx', 'UpliftMask.fx': b'mask', 'LICENSE': b'MIT', 'THIRD_PARTY_NOTICES.md': b'notices'})

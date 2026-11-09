@@ -909,6 +909,12 @@ def nr_check(params):
     return nr_addons.check(params['row'], params['setup'])
 
 
+def nr_match(params):
+    """Match a Split Render choice against library rows without staging downloads."""
+    return nr_install.match_batch(_config(), params['rows'], params['choice'],
+                                  service.hardware().get('family') or 'ada')
+
+
 def nr_status(params):
     return nr_install.status(params['row'])
 
@@ -918,14 +924,14 @@ def nr_review(params):
         import hardware
         plan = nr_install.prepare_batch(_config(), params['rows'], params['choice'],
                                         hardware.detect().get('family') or 'ada')
-        return _review('nr-addons-batch', 'Review NR add-on installation',
+        return _review('nr-addons-batch', 'Review Split Render',
                        [_item(p['name'], p['selection'], 'Install', p['game'], nr_install.describe_changes(p))
                         for p in plan['plans']],
                        blocked=[_item(p['name'], p['reason'], 'Skipped', p['game']) for p in plan['blocked']],
-                       action='Install NR add-ons', payload=plan,
+                       action='Install Split Render', payload=plan,
                        summary='Each game has its own compatibility and file review.')
     remove = params.get('remove', False)
-    t.need(type(remove) is bool, 'Choose an NR add-on action.')
+    t.need(type(remove) is bool, 'Choose a Split Render action.')
     if remove:
         plan = nr_install.prepare_remove(_config(), params['row'])
     else:
@@ -934,8 +940,8 @@ def nr_review(params):
     changes = '\n'.join(('Remove ' if c['after'] is None else 'Update ' if c['before'] else 'Add ') + c['path']
                         + ('\nSHA-256: ' + c['after'] if c['after'] else '') for c in plan['changes'])
     slots = ' · '.join(f'{slot.capitalize()}: {spec["addon"]}' for slot, spec in (params.get('setup') or {}).items() if spec)
-    return _review('nr-addons', 'Remove NR add-ons' if remove else 'Install NR add-ons',
-                   [_item(plan['name'], 'Remove the NR add-ons; keep everything else.' if remove else slots,
+    return _review('nr-addons', 'Remove Split Render' if remove else 'Install Split Render',
+                   [_item(plan['name'], 'Remove Split Render and keep the rest of the setup.' if remove else slots,
                           'Remove' if remove else 'Install', plan['game'], changes)],
                    action='Remove' if remove else 'Install', payload=plan,
                    summary='Existing game files and your ReShade settings are kept; only recorded keys are restored.',
@@ -948,7 +954,7 @@ def _run_nr(plan):
 
 def _run_nr_batch(plan):
     return nr_install.apply_batch(_config(), plan, lambda name, index, total:
-                                  ui.progress('Installing NR add-ons', game=name, current=index, total=total))
+                                  ui.progress('Installing Split Render', game=name, current=index, total=total))
 
 
 def nr_combo_save(params):
@@ -1170,7 +1176,7 @@ METHODS = {
     "overview_inspect": overview_inspect, "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
     'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush,
     'nr_addon_settings': nr_addon_settings_snapshot, 'nr_addon_settings_flush': nr_addon_settings_flush,
-    'nr_catalog': nr_catalog, 'nr_check': nr_check, 'nr_status': nr_status, 'nr_review': nr_review,
+    'nr_catalog': nr_catalog, 'nr_check': nr_check, 'nr_match': nr_match, 'nr_status': nr_status, 'nr_review': nr_review,
     'nr_combo_save': nr_combo_save, 'nr_combo_delete': nr_combo_delete,
     "packages": packages, "package_inspect": package_inspect, "package_use": package_use,
     "update_check": update_check, "update_stage": update_stage, "update_apply": update_apply,

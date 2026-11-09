@@ -117,7 +117,7 @@ def run(args):
     if args.command=='cleanup':
         roots=args.roots or discovery.candidate_libraries()
         t.need(roots,'No game libraries found; pass --roots explicitly.')
-        ui.title('Advanced · global DLSS5 cleanup')
+        ui.title('Advanced · global DLSS 5 cleanup')
         ui.line('Scan roots',', '.join(str(p) for p in roots))
         items=ui.work('Scanning cleanup candidates',cleanup.discover,roots,c)
         for row in items:ui.line(row['kind'],row['path'])
@@ -168,7 +168,7 @@ def main(argv=None):
         if args.command:return run(args) or 0
         while True:
             ui.title('Make it yours')
-            for k,v in [('1','Install / update a batch'),('2','Repair a batch'),('3','Remove owned files'),('4','Roll back a batch'),('5','Prepare pinned payload'),('6','Advanced: global DLSS5 cleanup'),('7','Restore a global cleanup'),('0','Exit')]:ui.line(k,v)
+            for k,v in [('1','Install / update a batch'),('2','Repair a batch'),('3','Remove owned files'),('4','Roll back a batch'),('5','Prepare pinned payload'),('6','Advanced: global DLSS 5 cleanup'),('7','Restore a global cleanup'),('0','Exit')]:ui.line(k,v)
             choice=ui.prompt('Choose:')
             if choice=='0':return 0
             if choice not in ('1','2','3','4','5','6','7'):continue

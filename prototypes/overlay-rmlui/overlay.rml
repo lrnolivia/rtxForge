@@ -274,12 +274,12 @@
               </section>
               <section id="addons-section" style="display: none">
                 <div class="section-heading">
-                  <h2><img class="glyph" src="icons/stack-light.png" /><span>NR ADD-ONS</span></h2>
+                  <h2><img class="glyph" src="icons/stack-light.png" /><span>SPLIT RENDER</span></h2>
                 </div>
-                <p class="hint">DLSS5 add-ons rtxForge installed in this game. Changes apply after a restart.</p>
+                <p class="hint">DLSS 5 NR passes rtxForge installed in this game. Changes apply after a restart.</p>
                 <div class="inspector-links">
                   <button id="open-addons" class="text-link">
-                    <img class="glyph" src="icons/sliders-horizontal-light.png" /><span class="button-label">Adjust add-ons</span><span class="chevron" />
+                    <img class="glyph" src="icons/sliders-horizontal-light.png" /><span class="button-label">Adjust Split Render</span><span class="chevron" />
                   </button>
                 </div>
               </section>

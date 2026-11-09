@@ -31,9 +31,9 @@ public sealed class GameItem : INotifyPropertyChanged
     readonly GameActions actions;
     readonly Control? themeHost;
     AccentPalette? palette;
-    bool selected, hovered, selecting;
+    bool selected, hovered;
 
-    public GameItem(Game game, ForgeSettings settings, GameActions actions, bool selecting, bool selected, int density = 0, Control? themeHost = null)
+    public GameItem(Game game, ForgeSettings settings, GameActions actions, bool selected, int density = 0, Control? themeHost = null)
     {
         // List density: 0 all columns, 1 hides Location, 2 also hides Features.
         LocationWidth = new GridLength(density >= 1 ? 0 : 240);
@@ -42,7 +42,6 @@ public sealed class GameItem : INotifyPropertyChanged
         this.actions = actions;
         this.themeHost = themeHost;
         this.selected = selected;
-        this.selecting = selecting;
         PrimaryCommand = new RelayCommand(_ => actions.Primary(game));
         MoreCommand = new RelayCommand(target => { if (target is FrameworkElement element) actions.More(game, element); });
         NrChip = game.Installed ? $"NR {game.NrStrength ?? settings.NrStrength:0.0}" : "NR —";
@@ -61,20 +60,12 @@ public sealed class GameItem : INotifyPropertyChanged
 
     // ---------- selection / hover ----------
 
-    // The check appears on hover (Photos / File Explorer), and stays on every
-    // card while anything is selected. Unsupported games never show one.
+    // Selectable games show the check even before a batch starts.
     public Visibility SelectVisibility =>
-        !Game.Blocked && (hovered || selected || selecting) ? Visibility.Visible : Visibility.Collapsed;
-    // List rows keep the check's space so the row never shifts on hover.
+        Game.Blocked ? Visibility.Collapsed : Visibility.Visible;
+    // Keep the selection column aligned with the games that can be selected.
     public double RowCheckOpacity => SelectVisibility == Visibility.Visible ? 1 : 0;
     public bool SelectEnabled => !Game.Blocked;
-
-    /// <summary>True while any game in the library is selected.</summary>
-    public bool IsSelecting
-    {
-        get => selecting;
-        set { if (selecting != value) { selecting = value; Changed(); } }
-    }
 
     public bool IsSelected
     {

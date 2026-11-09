@@ -731,7 +731,10 @@ function selectedNrChoice() {
 }
 function nrPackageCard() {
   return `<section class="glass-section"><h2>Split Render</h2><p>Render the environment and characters with DLSS 5 NR, with a separate character pass where supported.</p>${backend.enabled ? `<details><summary>Choose games</summary>${nrChoicePicker('Choose a Split Render setup to review for the selected games.')}` +
-    (snapshot?.games || []).map(game => `<label class="trust-choice"><input type="checkbox" data-nr-target="${e(game.id)}"/>${e(game.name)}</label>`).join('') +
+    (snapshot?.games || []).map(game => {
+      const accent=detailsAccent(game)||'#b4b4b4';
+      return `<label class="trust-choice nr-target-choice" style="--game-accent:${e(accent)};--game-selected-ink:${selectionInk(accent)}"><input type="checkbox" data-nr-target="${e(game.id)}"/><span class="selection-check" aria-hidden="true">${icon('check')}</span><span>${e(game.name)}</span></label>`;
+    }).join('') +
     '<button class="primary" data-action="review-nr-addons">Review games</button></details>' : ''}</section>`;
 }
 async function reviewNrPackage() {

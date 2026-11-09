@@ -9004,14 +9004,6 @@ class Window(Adw.ApplicationWindow):
         root._game_id=None
         root._binding=False
         root._accent_class=None
-        root._hovered=False
-        motion=Gtk.EventControllerMotion()
-        def hover(value):
-            root._hovered=value;self.sync_row_check(root)
-        motion.connect('enter',lambda *_:hover(True))
-        motion.connect('leave',lambda *_:hover(False))
-        root.add_controller(motion)
-
         root.connect(
             'notify::width',
             lambda *_:self._column_schedule_height_refresh(),
@@ -9108,13 +9100,9 @@ class Window(Adw.ApplicationWindow):
         self.sync_row_check(root)
 
     def sync_row_check(self,root):
-        """List rows keep the check's space so they never shift on hover."""
+        """Keep the check visible for games that can be selected."""
         game=root._game or {}
-        shown=not game.get('blocked') and bool(
-            getattr(root,'_hovered',False)
-            or root._check.get_active()
-            or self.selected_game_ids
-        )
+        shown=bool(root._game) and not game.get('blocked')
         root._check.set_opacity(1 if shown else 0)
         root._check.set_can_target(shown)
         root._check.set_focusable(shown)
@@ -12590,7 +12578,6 @@ class Window(Adw.ApplicationWindow):
             'meta_row':meta_row,
             'data':game,
             'size':(width,height),
-            'hovered':False,
         };self.cards[game['game']]=entry;self.paint_card(entry)
         self.attach_game_context(card,lambda:entry['data'])
         self.attach_card_selection(entry)
@@ -12745,19 +12732,8 @@ class Window(Adw.ApplicationWindow):
         self._update_selection_summary()
 
     def attach_card_selection(self,entry):
-        """Photos-style selection on a poster or capsule card.
-
-        The check appears on hover and stays on every card while anything
-        is selected; unsupported games never show one. Clicking the check
-        toggles selection, clicking anywhere else opens the game.
-        """
+        """The checkbox selects a game. The rest of the card opens its details."""
         card=entry['widget'];check=entry['check']
-        motion=Gtk.EventControllerMotion()
-        def hover(value):
-            entry['hovered']=value;self.sync_card_check(entry)
-        motion.connect('enter',lambda *_:hover(True))
-        motion.connect('leave',lambda *_:hover(False))
-        card.add_controller(motion)
         click=Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY)
         def released(_gesture,_count,x,y):
             target=card.pick(x,y,Gtk.PickFlags.DEFAULT)
@@ -12773,10 +12749,7 @@ class Window(Adw.ApplicationWindow):
     def sync_card_check(self,entry):
         check=entry.get('check')
         if check is None:return
-        check.set_visible(
-            not entry['data'].get('blocked')
-            and bool(entry.get('hovered') or check.get_active() or self.selected_game_ids)
-        )
+        check.set_visible(not entry['data'].get('blocked'))
 
     def library_game_activated(self,game):
         """A click on a game: its Details, or in presets mode, its presets review."""

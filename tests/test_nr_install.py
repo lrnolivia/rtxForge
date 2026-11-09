@@ -5,6 +5,7 @@ from pathlib import Path
 import struct
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -98,9 +99,62 @@ class NrInstallTests(unittest.TestCase):
 
     def optiscaler(self, mode):
         proxy = self.game / 'dxgi.dll'; proxy.write_bytes(pe(b'OptiScaler'))
-        (self.game / 'OptiScaler.ini').write_text('[Plugins]\nLoadReShade=false\n', encoding='utf-8')
+        (self.game / 'OptiScaler.ini').write_bytes(b'[Plugins]\nLoadReShade=false\n')
         self.engine.baseline = {'status': 'active', 'current': {'provider_id': 'skynizz', 'proxy': 'dxgi.dll',
                                 'feature_mode': mode, 'installed_hashes': {'dxgi.dll': t.digest(proxy)}}}
+
+    def main_review(self):
+        game = SimpleNamespace(root=self.game, target_dir=self.game, exe=self.game / 'Game.exe')
+        projection = {
+            'payload': {'dxgi.dll': pe(b'OptiScaler'), 'OptiScaler.ini': b'[Plugins]\nLoadReShade=false\n'},
+            'remove': [], 'proxy': 'dxgi.dll', 'provider': 'skynizz', 'mode': 'nr-mfg',
+        }
+        return {'operation': 'install', 'engine': self.engine, 'rows': [self.row],
+                'plans': [{'row': self.row, 'game': game, 'package_projection': projection}]}
+
+    def test_pre_install_review_applies_exact_split_render_after_main_package(self):
+        before = self.files()
+        review = self.main_review()
+        choice = {'auto': True, 'model': 'old'}
+        result = nr_install.revise_package_reviews({}, [review], {'revision': 1, 'choice': choice}, 'ada')
+        self.assertEqual(self.files(), before)
+        self.assertEqual(len(result['rows']), 1)
+        self.assertIn('Environment: Skynizz (shared model)', result['rows'][0]['summary'])
+        self.assertIn('Add renodx-dlss.addon64', result['rows'][0]['details'])
+        self.assertNotIn('nvngx_dlssnr.dll', result['rows'][0]['details'])
+        self.optiscaler('nr-mfg')
+        config, plan = review['plans'][0]['split_render']
+        nr_install.apply_after_package(config, plan)
+        self.assertTrue(nr_install.status(self.row)['installed'])
+        self.assertEqual((self.game / 'renodx-dlss.addon64').read_bytes(), self.addons['renodx-dlss.addon64'])
+        self.assertIn('LoadReShade=true', (self.game / 'OptiScaler.ini').read_text(encoding='utf-8'))
+
+    def test_split_render_rejects_main_package_drift_before_writing(self):
+        review = self.main_review()
+        nr_install.revise_package_reviews({}, [review], {'revision': 1, 'choice': {'auto': True, 'model': 'new'}}, 'ada')
+        self.optiscaler('nr-mfg')
+        (self.game / 'OptiScaler.ini').write_text('[Plugins]\nLoadReShade=true\n', encoding='utf-8')
+        before = self.files()
+        with self.assertRaisesRegex(t.Refusal, 'Target drift: OptiScaler.ini'):
+            nr_install.apply_after_package(*review['plans'][0]['split_render'])
+        self.assertEqual(self.files(), before)
+
+    def test_review_includes_skips_for_routes_that_do_not_provide_split_render(self):
+        review = self.main_review()
+        adopt = {'operation': 'adopt', 'rows': [{'name': 'Another Game', 'game': str(self.game / 'another')}]}
+        result = nr_install.revise_package_reviews({}, [review, adopt], {'revision': 1, 'choice': {'auto': True, 'model': 'new'}}, 'ada')
+        self.assertEqual(len(result['rows']), 2)
+        self.assertIn('Character detail', result['rows'][0]['summary'])
+        self.assertIn('unavailable with this main package route', result['rows'][1]['reason'])
+
+    def test_latest_review_clears_split_render_and_stale_choices_cannot_reattach_it(self):
+        review = self.main_review()
+        choice = {'auto': True, 'model': 'new'}
+        nr_install.revise_package_reviews({}, [review], {'revision': 1, 'choice': choice}, 'ada')
+        nr_install.revise_package_reviews({}, [review], {'revision': 3, 'choice': None}, 'ada')
+        with self.assertRaisesRegex(ValueError, 'newer Split Render review'):
+            nr_install.revise_package_reviews({}, [review], {'revision': 2, 'choice': choice}, 'ada')
+        self.assertNotIn('split_render', review['plans'][0])
 
     def test_lecram_never_runs_where_optiscaler_is_installed(self):
         # ReShade reloads Lecram while the game starts; each reload hooks DLSS again and

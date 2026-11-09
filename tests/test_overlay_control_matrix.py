@@ -126,7 +126,7 @@ class NrAddonPanel(unittest.TestCase):
         self.assertIn('id="open-addons"', section[:section.index('</section>')])
         self.assertIn('id="addons-inspector"', rml)
         self.assertIn('nr-addons-save', source('providers/glass-overlay/NrAddonControls.h'))
-        self.assertIn('"NR ADD-ONS"', source('providers/glass-overlay/OverlayController.h'))
+        self.assertIn('"SPLIT RENDER"', source('providers/glass-overlay/OverlayController.h'))
         self.assertIn('c.addons.Flush(c.requestJson)', source('windows/overlay-rmlui/GlassRuntime.cpp'))
 
     def test_addon_settings_ride_inside_hdr_for_installed_bridges(self):

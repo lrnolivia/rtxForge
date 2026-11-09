@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 ALLOWED = frozenset(('hello', 'hardware', 'scan', 'prepare', 'execute', 'cancel', 'discard_operation',
                      'prepare_routes', 'execute_routes', 'cancel_routes', 'discard_routes',
-                     'nr_catalog', 'nr_review',
+                     'nr_catalog', 'nr_review', 'nr_match', 'nr_status', 'nr_check', 'nr_combo_save', 'split_render_routes_review',
                      'prepare_dlss', 'update_dlss', 'packages', 'overview_inspect', 'extras_list', 'extra_review',
                      'extra_restore_review', 'run', 'discard', 'steam_status', 'steam_review',
                      'steam_install', 'steam_remove', 'recoveries', 'recovery_review', 'cleanup_review', 'open_game_folder',
@@ -185,9 +185,11 @@ def main():
         finally:
             host['running'].pop(token, None)
     routes = ReviewedRoutes(prepare, execute_child, host['cancel'], discard_reviews, lambda: media.load_settings(host['service'].config),
-                            defaults=(settings_review, host['METHODS']['run']), prefetch=host['METHODS']['prefetch_install'])
-    host['METHODS'].update(prepare_routes=routes.prepare, execute_routes=routes.execute, cancel_routes=routes.cancel, discard_routes=routes.discard)
-    host['_DOWNLOAD_METHODS'].update(('prepare_routes', 'execute_routes'))
+                            defaults=(settings_review, host['METHODS']['run']), prefetch=host['METHODS']['prefetch_install'],
+                            split_render=host['METHODS']['split_render_review'])
+    host['METHODS'].update(prepare_routes=routes.prepare, execute_routes=routes.execute, cancel_routes=routes.cancel, discard_routes=routes.discard,
+                           split_render_routes_review=routes.split_render)
+    host['_DOWNLOAD_METHODS'].update(('prepare_routes', 'execute_routes', 'split_render_routes_review'))
     host['send']({'event': 'ready', 'adapter': 'existing Windows reviewed host', 'automaticRefresh': False})
     def shutdown():
         routes.shutdown()

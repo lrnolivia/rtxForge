@@ -215,10 +215,11 @@ class ReviewedRoutes:
     DEFAULT_KEYS = {'nr_strength', 'sharpening_strength', 'mfg_multiplier', 'dynamic_mfg',
                     'mfg_saved_mode', 'mfg_saved_multiplier', 'nr_on_launch', 'feature_controls'}
 
-    def __init__(self, prepare, execute, cancel, discard, settings, defaults=None, prefetch=None):
+    def __init__(self, prepare, execute, cancel, discard, settings, defaults=None, prefetch=None, split_render=None):
         self._prepare, self._execute = prepare, execute
         self._cancel, self._discard, self._settings = cancel, discard, settings
         self._defaults, self._prefetch = defaults, prefetch
+        self._split_render = split_render
         self.reviews, self.running = {}, {}
         self._lock = threading.RLock()
         self._closing = False
@@ -254,7 +255,8 @@ class ReviewedRoutes:
             with self._lock:
                 if self._closing:
                     raise ValueError('The application is closing.')
-                self.reviews[token] = {'primary': primary, 'offers': offers, 'defaults': default_review, 'cancel': threading.Event()}
+                self.reviews[token] = {'primary': primary, 'offers': offers, 'defaults': default_review,
+                                       'operation': operation, 'cancel': threading.Event()}
         except Exception:
             self._discard({'tokens': held})
             raise
@@ -268,6 +270,15 @@ class ReviewedRoutes:
                 'trust': '\n'.join(trusts) or None,
                 'supported': [{'token': offer['review']['token'], 'nr': offer['nr'], 'mfg': offer['mfg'],
                                'reason': offer['reason'], 'rows': offer['review']['rows']} for offer in offers]}
+
+    def split_render(self, params):
+        with self._lock:
+            record = self.reviews.get(params['token'])
+            if not record or record['operation'] != 'install' or not self._split_render or self._closing:
+                raise ValueError('The installation review expired. Review the games again.')
+            tokens = [review['token'] for review in record['primary']]
+            tokens.extend(offer['review']['token'] for offer in record['offers'])
+            return self._split_render(dict(params, tokens=tokens))
 
     def execute(self, params):
         token = params['token']

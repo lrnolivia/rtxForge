@@ -3,7 +3,7 @@ using RtxForge.Windows.Models;
 
 namespace RtxForge.Windows.Services;
 
-/// <summary>DLSS5 NR add-ons over win_features.py nr_* methods: Environment and Character slots,
+/// <summary>Split Render over win_features.py nr_* methods: Environment and Character slots,
 /// the Old/New model, and saved combos. Installs and removals come back as an EngineReview.</summary>
 public sealed partial class EngineForgeService
 {
@@ -11,6 +11,18 @@ public sealed partial class EngineForgeService
     public async Task<JsonObject> NrCatalogAsync(Game? game = null) =>
         await CallAsync("nr_catalog", game is null ? null : new JsonObject { ["row"] = Row(game) }) as JsonObject
             ?? throw new InvalidOperationException("Split Render is unavailable.");
+
+    public async Task<JsonArray> PlanSplitRenderAsync(OperationReview review, JsonObject? choice, int revision)
+    {
+        var steps = review.Steps.Count > 0 ? review.Steps : new[] { review }.Where(r => r.Ready.Count > 0);
+        var tokens = new JsonArray(steps.Concat(review.Supported.Select(offer => offer.Review))
+            .Select(step => (JsonNode?)JsonValue.Create(step.Token)).ToArray());
+        var result = await CallAsync("split_render_review", new JsonObject
+        {
+            ["tokens"] = tokens, ["choice"] = choice?.DeepClone(), ["revision"] = revision,
+        });
+        return result?["rows"] as JsonArray ?? throw new InvalidOperationException("Split Render could not be reviewed.");
+    }
 
     public async Task<JsonObject> NrCheckAsync(Game game, JsonObject setup) =>
         await CallAsync("nr_check", new JsonObject { ["row"] = Row(game), ["setup"] = setup.DeepClone() }) as JsonObject

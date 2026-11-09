@@ -286,21 +286,48 @@ def bind(root, send):
     import nr_addons
     import nr_install
 
+    def split_render_review(params):
+        try:
+            children = [reviews[token][0] for token in params['tokens']]
+        except KeyError as error:
+            raise ValueError('The installation review expired. Review the games again.') from error
+        return nr_install.revise_package_reviews(service.config, children, params, service.hardware().get('family') or 'ada')
+
     def nr_review(params):
-        plan = nr_install.prepare_batch(service.config, params['rows'], params['choice'],
-                                        service.hardware().get('family') or 'ada')
-        rows = [{'name': p['name'], 'game': p['game'], 'summary': p['selection'],
-                 'details': nr_install.describe_changes(p)} for p in plan['plans']]
-        def apply(review):
-            return nr_install.apply_batch(service.config, review, lambda name, index, total:
-                                          ui.progress('Installing NR add-ons', game=name, checked=index, total=total))
-        return reviewed('Review NR Add-ons', rows, plan, apply, blocked=plan['blocked'], action='Install NR add-ons')
+        gpu = service.hardware().get('family') or 'ada'
+        if 'rows' in params:
+            plan = nr_install.prepare_batch(service.config, params['rows'], params['choice'], gpu)
+            rows = [{'name': item['name'], 'game': item['game'], 'summary': item['selection'],
+                     'details': nr_install.describe_changes(item)} for item in plan['plans']]
+            def apply_batch(review):
+                return nr_install.apply_batch(service.config, review, lambda name, index, total:
+                                              ui.progress('Installing Split Render', game=name, checked=index, total=total))
+            return reviewed('Review Split Render', rows, plan, apply_batch, blocked=plan['blocked'], action='Install Split Render')
+
+        remove = params.get('remove', False)
+        if type(remove) is not bool:
+            raise ValueError('Choose a Split Render action.')
+        if remove:
+            plan = nr_install.prepare_remove(service.config, params['row'])
+        else:
+            plan = nr_install.prepare(service.config, params['row'], params['setup'], gpu)
+        action = 'Remove Split Render' if remove else 'Install Split Render'
+        rows = [{'name': plan['name'], 'game': plan['game'], 'summary': plan.get('selection') or action,
+                 'details': nr_install.describe_changes(plan)}]
+        return reviewed(action, rows, plan, lambda review: nr_install.apply(service.config, review), action=action)
+
+    def nr_combo_save(params):
+        key = nr_addons.save_combo(service.config, params.get('name'), params.get('combo'))
+        return {'id': key, 'combos': nr_addons.combos(service.config)}
 
     methods = dict(overview_inspect=lambda p: overview_summary.inspect(p["row"], engine_bridge.module(service.config)), overlay_status=overlay_status, hello=lambda _p: {'root': str(root), 'platform': 'Linux'}, hardware=lambda _p: service.hardware(), scan=scan,
                    prepare=prepare, execute=execute, cancel=cancel, discard_operation=discard, discard=discard, run=execute,
                    settings_get=lambda _p: library_media.load_settings(service.config), settings_review=settings_review,
                    packages=lambda _p: {'catalog': package_catalog.catalog(service.hardware())},
-                   nr_catalog=lambda _p: {'install_choices': nr_addons.install_choices(service.config)}, nr_review=nr_review,
+                   nr_catalog=lambda p: nr_addons.catalog_view(service.config, p.get('row')), nr_review=nr_review,
+                   nr_match=lambda p: nr_install.match_batch(service.config, p['rows'], p['choice'], service.hardware().get('family') or 'ada'),
+                   nr_check=lambda p: nr_addons.check(p['row'], p['setup']), nr_status=lambda p: nr_install.status(p['row']),
+                   nr_combo_save=nr_combo_save,
                    extras_list=lambda p: extra_tools.recoveries(service.config, p['row']), extra_review=extra_review,
                    extra_restore_review=extra_restore, prepare_dlss=prepare_dlss, update_dlss=execute, dlss_restore_review=restore_dlss,
                    dlss_inventory=lambda p: runtime_updates.display_inventory(service.config, p['row']), diagnose=lambda p: runtime_diagnostics.inspect(p['row']),
@@ -319,8 +346,9 @@ def bind(root, send):
                    sgdb_artwork=sgdb_artwork, sgdb_download=sgdb_download, media=media, feeder_storage=feeder_storage)
     from review_plan import ReviewedRoutes
     routes = ReviewedRoutes(prepare, execute, cancel, discard, lambda: library_media.load_settings(service.config),
-                            defaults=(settings_review, execute))
-    methods.update(prepare_routes=routes.prepare, execute_routes=routes.execute, cancel_routes=routes.cancel, discard_routes=routes.discard)
+                            defaults=(settings_review, execute), split_render=split_render_review)
+    methods.update(prepare_routes=routes.prepare, execute_routes=routes.execute, cancel_routes=routes.cancel, discard_routes=routes.discard,
+                   split_render_routes_review=routes.split_render)
 
     import activity
     activity_line = activity.Tracker(send)

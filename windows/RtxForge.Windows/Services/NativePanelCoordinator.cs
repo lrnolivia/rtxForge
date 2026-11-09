@@ -173,9 +173,9 @@ internal sealed class NativePanelCoordinator : IDisposable
                 return new JsonObject { ["op"] = action, ["hdr"] = hdrSaved, ["settings"] = SettingsSnapshot(), ["message"] = "HDR preferences saved. Close and restart the game to apply." };
             case "nr-addons-save":
                 var addonsSaved = await engine.NrAddonSettingsAsync(game!, message["changes"] as JsonObject
-                    ?? throw new InvalidOperationException("Choose an NR add-on setting."));
+                    ?? throw new InvalidOperationException("Choose a Split Render setting."));
                 var withHdr = await engine.HdrSettingsAsync(game!); withHdr["nr_addons"] = addonsSaved;
-                return new JsonObject { ["op"] = action, ["hdr"] = withHdr, ["settings"] = SettingsSnapshot(), ["message"] = "NR add-on settings saved. Close and restart the game to apply." };
+                return new JsonObject { ["op"] = action, ["hdr"] = withHdr, ["settings"] = SettingsSnapshot(), ["message"] = "Split Render settings saved. Close and restart the game to apply." };
             case "preset-save":
             case "preset-delete":
             case "preset-list":

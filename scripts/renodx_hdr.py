@@ -173,18 +173,27 @@ def _owned(e, root, path):
     return False
 
 
-def _route(e, exe, arch, selected=None):
+def _route(e, exe, arch, selected=None, *, projection=None):
     directory = exe.parent
     imports = e.pe_imported_dlls(exe)
     t.need(not ((selected or {}).get('mod', {}).get('deploy', {}).get('api') == 'vulkan'
                or ('vulkan-1.dll' in imports and not imports.intersection({'d3d9.dll', 'd3d10.dll', 'd3d11.dll', 'd3d12.dll'}))),
            'This game needs the RenoDX Vulkan layer route, which is not available yet.')
     known_host = HOSTS[arch][1]
+
+    def digest(path):
+        if projection:
+            return projection.digest(path)
+        return t.digest(path) if path.is_file() else None
+
+    def exists(path):
+        return projection.exists(path) if projection else path.exists()
+
     hosts = []
     for name in (*PROXIES, HOSTS[arch][0]):
         path = t.safe(directory / name)
-        if path.is_file() and t.digest(path) == known_host: hosts.append(name)
-    baseline = _managed(e, directory)
+        if digest(path) == known_host: hosts.append(name)
+    baseline = projection.baseline() if projection else _managed(e, directory)
     managed = baseline and baseline.get('status') == 'active'
     if managed:
         current = baseline.get('current') or {}
@@ -193,7 +202,7 @@ def _route(e, exe, arch, selected=None):
         hashes = current.get('installed_hashes') or {}
         if family in ('skynizz', 'y4my', 'dlss-unlocked') and proxy:
             path = t.safe(directory / t.relative(proxy))
-            t.need(path.is_file() and t.digest(path) == hashes.get(proxy), 'Repair the managed OptiScaler loader before adding HDR.')
+            t.need(hashes.get(proxy) and digest(path) == hashes[proxy], 'Repair the managed OptiScaler loader before adding HDR.')
             t.need(arch == 'x64', 'This OptiScaler HDR route requires an x64 game.')
             # An already hooked ReShade must not also be loaded by OptiScaler.
             proxied = [n for n in hosts if n in PROXIES]
@@ -205,7 +214,7 @@ def _route(e, exe, arch, selected=None):
     if proxied:
         t.need(len(proxied) == 1, 'Multiple ReShade hooks are present; review the graphics tools first.')
         return 'existing-reshade', proxied[0], None
-    t.need(not (directory / 'OptiScaler.ini').exists(), 'An unrecognized OptiScaler installation is present. Recognize or repair it before adding HDR.')
+    t.need(not exists(directory / 'OptiScaler.ini'), 'An unrecognized OptiScaler installation is present. Recognize or repair it before adding HDR.')
     if 'd3d9.dll' in imports: proxy = 'd3d9.dll'
     elif 'opengl32.dll' in imports: proxy = 'opengl32.dll'
     elif imports.intersection({'dxgi.dll', 'd3d10.dll', 'd3d11.dll', 'd3d12.dll'}): proxy = 'dxgi.dll'
@@ -217,7 +226,7 @@ def _route(e, exe, arch, selected=None):
         if apis == {'d3d9'}: proxy = 'd3d9.dll'
         elif apis and 'd3d9' not in apis: proxy = 'dxgi.dll'
         else: raise t.Refusal('The graphics API could not be identified safely for automatic ReShade setup.')
-    t.need(not (directory / proxy).exists(), 'Another graphics tool uses ' + proxy + '. Its files have been kept.')
+    t.need(not exists(directory / proxy), 'Another graphics tool uses ' + proxy + '. Its files have been kept.')
     return 'reshade', proxy, None
 
 
@@ -341,11 +350,14 @@ def _record(root, receipt, directory):
     return record
 
 
-def _plan(row, root, writes, *, action, checks=None):
+def _plan(row, root, writes, *, action, checks=None, projection=None):
     changes = []
     for path, data in writes.items():
         path = t.safe(path)
-        before = t.digest(path) if path.exists() else None
+        if projection:
+            before = projection.digest(path)
+        else:
+            before = t.digest(path) if path.exists() else None
         after = t.sha(data) if data is not None else None
         if before == after: continue
         changes.append({'path': path.relative_to(root).as_posix(), 'before': before, 'after': after})
@@ -353,7 +365,7 @@ def _plan(row, root, writes, *, action, checks=None):
             # Binary payloads are frozen outside the game before displaying review.
             changes[-1]['_data'] = data
     return {'game': str(root), 'name': row['name'], 'exe': row['exe'], 'source': row.get('source', 'Folder'),
-            'appid': row.get('appid'), 'kind': 'renodx-hdr', 'action': action, 'listing': t.files(root),
+            'appid': row.get('appid'), 'kind': 'renodx-hdr', 'action': action, 'listing': None if projection else t.files(root),
             'inputs': {}, 'conflicts': [], 'checks': checks or {}, 'changes': changes}
 
 

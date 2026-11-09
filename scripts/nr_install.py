@@ -18,6 +18,7 @@ from __future__ import annotations
 import configparser
 import io
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -35,7 +36,7 @@ import transactions as t
 MODEL = 'nvngx_dlssnr.dll'
 SHADER_DIR = 'reshade-shaders/Shaders'
 SEARCH_PATHS = '.\\reshade-shaders\\Shaders\\**'
-NOTICE = ('Each NR add-on adds a full neural-rendering pass. Expect a large GPU cost, '
+NOTICE = ('Each Split Render pass runs neural rendering. Expect a large GPU cost, '
           'more so with frame generation on.')
 MEMORY_NOTE = ("With Skynizz's NR and multi-frame generation, a second NR pass runs close to the GPU's "
                'video-memory limit on 12 GB cards. Switching windows can stall the game; lower Character '
@@ -159,12 +160,13 @@ def _value(value):
     return str(value)
 
 
-def _target(row, exe, e):
+def _target(row, exe, e, projection=None):
     t.need(not _receipt(row).exists(), 'A Split Render setup is already installed. Remove it before choosing another.')
     arch = hdr.architecture(exe)
-    route, host, optiscaler_ini = hdr._route(e, exe, arch)
+    route, host, optiscaler_ini = hdr._route(e, exe, arch, projection=projection)
     # The game folder, not the library row, says whether OptiScaler is here and runs its own NR.
-    current = (hdr._managed(e, exe.parent) or {}).get('current') or {}
+    baseline = projection.baseline() if projection else hdr._managed(e, exe.parent)
+    current = (baseline or {}).get('current') or {}
     provider = current.get('provider_id') or (current.get('archive') or {}).get('family')
     optiscaler = route == 'optiscaler' or provider in nr_addons.RUNTIME_NAMES
     mode = (current.get('feature_mode') or 'unknown') if optiscaler else None
@@ -201,20 +203,32 @@ def prepare(config, row, setup, gpu='ada', *, adapt=False):
     return _prepare_choice(config, row, {'setup': setup, 'adapt': adapt}, gpu)
 
 
-def _prepare_choice(config, row, choice, gpu):
+def _prepare_choice(config, row, choice, gpu, projection=None):
     root, exe, _, e = hdr._eligible(config, row)
-    game, route, host, optiscaler_ini = _target(row, exe, e)
+    game, route, host, optiscaler_ini = _target(row, exe, e, projection)
+    if projection:
+        t.need(route in ('optiscaler', 'existing-reshade'),
+               'The main package cannot provide a reviewed Split Render loader.')
+    digest = projection.digest if projection else lambda path: t.digest(path) if path.exists() else None
+    read_text = projection.read_text if projection else lambda path: path.read_text(encoding='utf-8-sig')
     receipt = _receipt(row)
     setup, plan, model = _choose(game, choice, gpu)
     directory = exe.parent
     files = _payload(config, plan, model)
     model_build = model[0] if model else None
     writes, checks, owned = {}, {str(exe): t.digest(exe)}, {}
+    if projection:
+        # Confirm the exact reviewed loader and any ReShade hook we are borrowing.
+        proxy = directory / projection.planned['proxy']
+        checks[str(proxy)] = digest(proxy)
+        if route == 'existing-reshade':
+            borrowed_host = directory / host
+            checks[str(borrowed_host)] = digest(borrowed_host)
     for rel, data in files.items():
         path = t.safe(directory / t.relative(rel))
-        if path.exists():
-            t.need(t.digest(path) == t.sha(data), f'Another tool owns {rel}; its file was kept.')
-            checks[str(path)] = t.digest(path)
+        if (before := digest(path)) is not None:
+            t.need(before == t.sha(data), f'Another tool owns {rel}; its file was kept.')
+            checks[str(path)] = before
             continue
         writes[path] = data
         owned[path.relative_to(root).as_posix()] = t.sha(data)
@@ -224,24 +238,26 @@ def _prepare_choice(config, row, choice, gpu):
         # Plain games load ReShade as a proxy; OptiScaler loads ReShade64.dll when LoadReShade is on.
         data = _reshade_host(config, game['arch'])
         path = t.safe(directory / host)
-        if path.exists():
-            t.need(route == 'optiscaler' and t.digest(path) == t.sha(data), 'Another graphics tool uses ' + host + '. Its files have been kept.')
-            checks[str(path)] = t.digest(path)
+        if (before := digest(path)) is not None:
+            t.need(route == 'optiscaler' and before == t.sha(data), 'Another graphics tool uses ' + host + '. Its files have been kept.')
+            checks[str(path)] = before
         else:
             writes[path] = data; owned[path.relative_to(root).as_posix()] = t.sha(data)
     if optiscaler_ini:
-        text = t.safe(optiscaler_ini).read_text(encoding='utf-8-sig')
+        text = read_text(t.safe(optiscaler_ini))
         record['plugin'] = {'path': optiscaler_ini.relative_to(root).as_posix(),
                             'value': t.ini(text).get('Plugins', 'LoadReShade', fallback=None)}
         writes[optiscaler_ini] = t.setvalue(text, 'Plugins', 'LoadReShade', 'true').encode('utf-8')
-        checks[str(optiscaler_ini)] = t.digest(optiscaler_ini)
+        checks[str(optiscaler_ini)] = digest(optiscaler_ini)
     settings = t.safe(directory / 'ReShade.ini')
-    text = settings.read_text(encoding='utf-8-sig') if settings.exists() else ''
-    if settings.exists():
-        checks[str(settings)] = t.digest(settings)
+    if (before := digest(settings)) is not None:
+        text = read_text(settings)
+        checks[str(settings)] = before
     elif any(rel.startswith(SHADER_DIR + '/') for rel in files):
         # Only GITC ships shaders; a search path to a missing folder makes ReShade log warnings.
         text = '[GENERAL]\nEffectSearchPaths=' + SEARCH_PATHS + '\n'
+    else:
+        text = ''
     try:
         parsed = t.ini(text) if text.strip() else None
     except (configparser.Error, ValueError, KeyError) as error:
@@ -263,13 +279,115 @@ def _prepare_choice(config, row, choice, gpu):
     if not checks.get(str(settings)):
         record['settings_created'] = t.sha(writes[settings])
     writes[receipt] = (json.dumps(record, indent=2) + '\n').encode()
-    review = hdr._plan(row, root, writes, action='install', checks=checks)
+    review = hdr._plan(row, root, writes, action='install', checks=checks, projection=projection)
     review.update(kind='nr-addons', route=route, prefix=hdr._prefix_review(config, row, route, host),
                   notes=[NOTICE, *([] if plan['verified'] else ['This pairing has not been verified on a test copy yet.']),
                          *([MEMORY_NOTE] if plan['optiscaler_nr'] else [])],
                   setup=setup, skipped=plan['skipped'],
                   selection=selection(plan, model_build))
+    if projection:
+        review['after_package'] = dict(provider=game.get('runtime_provider'), mode=game.get('optiscaler_mode'), host=host)
     return hdr._freeze(config, review)
+
+
+class PackageProjection:
+    """Read the expected files after the exact main-package review runs."""
+    def __init__(self, directory, planned):
+        self.directory, self.planned = t.safe(directory), planned
+        self.payload = {os.path.normcase(name): data for name, data in planned['payload'].items()}
+        self.removed = {os.path.normcase(name) for name in planned['remove']}
+
+    def key(self, path):
+        return os.path.normcase(path.relative_to(self.directory).as_posix()) if path.is_relative_to(self.directory) else None
+
+    def exists(self, path):
+        key = self.key(path)
+        return key in self.payload or key not in self.removed and path.exists()
+
+    def digest(self, path):
+        path = t.safe(path)
+        key = self.key(path)
+        if key in self.payload:
+            return t.sha(self.payload[key])
+        if key not in self.removed and path.exists():
+            return t.digest(path)
+        return None
+
+    def read_text(self, path):
+        key = self.key(path)
+        if key in self.payload:
+            return self.payload[key].decode('utf-8-sig')
+        t.need(key not in self.removed, 'The main package removes a file needed by Split Render.')
+        return path.read_text(encoding='utf-8-sig')
+
+    def baseline(self):
+        proxy = self.planned['proxy']
+        return {'status': 'active', 'current': {
+            'provider_id': self.planned['provider'], 'feature_mode': self.planned['mode'], 'proxy': proxy,
+            'installed_hashes': {proxy: self.digest(self.directory / proxy)},
+        }}
+
+
+def prepare_after_packages(config, reviews, choice, gpu='ada'):
+    """Freeze Split Render against planned main-package files, before confirmation."""
+    if choice is not None:
+        _validate_choice(choice)
+    staged, summary, seen = [], [], set()
+
+    def visit(review):
+        for item in review.get('plans', ()):
+            staged.append((item, None))
+            projection = item.get('package_projection')
+            if choice is None or projection is None:
+                continue
+            row, game = item['row'], item['game']
+            result = {'game': row['game'], 'name': row['name']}
+            seen.add(row['game'])
+            try:
+                expected = PackageProjection(game.target_dir, projection)
+                target = dict(row, exe=Path(game.exe).relative_to(game.root).as_posix())
+                plan = _prepare_choice(config, target, choice, gpu, expected)
+            except (t.Refusal, OSError, ValueError, configparser.Error) as error:
+                summary.append(dict(result, reason=str(error)))
+            else:
+                staged[-1] = (item, (config, plan))
+                summary.append(dict(result, summary=plan['selection'], details=describe_changes(plan)))
+        for companion in review.get('companions') or ():
+            visit(companion)
+        if choice is not None:
+            for row in review.get('rows', ()):
+                if row.get('game') and row['game'] not in seen:
+                    seen.add(row['game'])
+                    summary.append({'game': row['game'], 'name': row['name'],
+                                    'reason': 'Split Render is unavailable with this main package route.'})
+
+    for review in reviews:
+        visit(review)
+    return staged, summary
+
+
+def attach_after_packages(staged):
+    for item, setup in staged:
+        item.pop('split_render', None)
+        if setup is not None:
+            item['split_render'] = setup
+
+
+def apply_after_package(config, planned):
+    """Apply only the already-reviewed paths and payloads after the main install."""
+    plan = dict(planned)
+    digest = plan.pop('plan_sha256')
+    t.need(digest == t.sha(json.dumps(plan, sort_keys=True).encode()), 'Split Render plan changed since review.')
+    expected = plan.pop('after_package')
+    root, exe, _, e = hdr._eligible(config, plan)
+    game, route, host, _ = _target(plan, exe, e)
+    actual = dict(provider=game.get('runtime_provider'), mode=game.get('optiscaler_mode'), host=host)
+    t.need(route == plan['route'] and actual == expected, 'The installed package differs from the Split Render review.')
+    # The main package changes the directory listing. Every Split Render path
+    # still has to match its projected before hash and its frozen payload.
+    plan['listing'] = t.files(root)
+    plan['plan_sha256'] = t.sha(json.dumps(plan, sort_keys=True).encode())
+    return apply(config, plan)
 
 
 def selection(plan, model_build):
@@ -456,3 +574,18 @@ def apply(config, review):
                 raise
     return {'status': result['status'], 'recovery': str(state),
             'message': 'Split Render removed.' if review['action'] == 'remove' else 'Split Render installed.'}
+
+
+def revise_package_reviews(config, reviews, params, gpu):
+    revision = params.get('revision')
+    if type(revision) is not int or revision < 1:
+        raise ValueError('Choose a valid Split Render review revision.')
+    if not reviews or any(review.get('operation') not in ('install', 'adopt') for review in reviews):
+        raise ValueError('Review the games for installation again.')
+    if any(revision <= review.get('split_render_revision', 0) for review in reviews):
+        raise ValueError('A newer Split Render review has already been prepared.')
+    staged, rows = prepare_after_packages(config, reviews, params.get('choice'), gpu)
+    attach_after_packages(staged)
+    for review in reviews:
+        review['split_render_revision'] = revision
+    return {'rows': rows}

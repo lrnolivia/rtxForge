@@ -938,3 +938,18 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .package-sources .package-options{grid-template-columns:minmax(0,1fr)}
 .dlss-file-card li{flex-wrap:nowrap;align-items:start}
 .dlss-file-card .dll-name{min-width:0;overflow-wrap:anywhere}
+
+.split-layout{display:grid;grid-template-columns:minmax(220px, .75fr) minmax(290px, 1.25fr);gap:24px;margin-block:16px}
+.split-layout h3{display:flex;align-items:center;gap:8px}
+.split-layout h3 .subtle{margin-inline-start:auto;font-size:.82em;font-weight:400}
+.split-picker,.split-results,.split-game-list{display:grid;gap:8px}
+.split-model{display:flex;flex-wrap:wrap;gap:4px 20px;border:0;padding:4px 0;margin:0}
+.split-model legend{font-weight:600}
+.split-search,.split-saved{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-block:10px}
+.split-search input{flex:1;min-width:0}
+.split-game-list{max-block-size:360px;overflow:auto;margin-block:8px}
+.split-game-list .nr-target-choice{display:grid;grid-template-columns:22px 86px minmax(0,1fr);align-items:center;gap:12px;cursor:pointer}
+.split-game-list .nr-target-choice small{display:block;font-size:.85em;margin-top:3px}
+.split-section.inner-card{padding:16px}
+.split-section .split-results:not(:empty){margin-top:14px}
+@media(max-width:700px){.split-layout{grid-template-columns:minmax(0,1fr)}}

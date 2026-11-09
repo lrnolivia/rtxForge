@@ -17,8 +17,7 @@ allowedMethods.add('executable_review');
 allowedMethods.add('cleanup_review');
 allowedMethods.add('open_game_folder');
 allowedMethods.add('overlay_status');
-allowedMethods.add('nr_catalog');
-allowedMethods.add('nr_review');
+for (const method of ['nr_catalog', 'nr_review', 'nr_match', 'nr_check', 'nr_status', 'nr_combo_save', 'split_render_routes_review']) allowedMethods.add(method);
 const root = path.dirname(fileURLToPath(import.meta.url));
 export class EngineClient extends EventEmitter {
   child;

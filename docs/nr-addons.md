@@ -121,6 +121,10 @@ each add-on rtxForge installed, under its role: **Environment · Lecram** and
 installed. Where Skynizz is the world, its NR settings stay in the overlay's own
 Skynizz NR controls.
 
+In a Feeder NR game, **Split Render** opens the same **Pass 2** controls as
+**Pass tuning**. Set **Passes** to at least **2** in Neural rendering and turn
+off **Use main settings** to tune Pass 2 independently.
+
 The add-ons read these settings when the game starts, and ShortFuse writes them
 back while it runs. So, like HDR preferences, a change is saved after the game
 closes and applies at the next launch. A value changed in the add-on's own

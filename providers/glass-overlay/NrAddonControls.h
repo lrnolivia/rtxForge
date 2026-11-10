@@ -2,7 +2,7 @@
 #include "HdrControls.h"
 
 namespace ForgeGlass {
-// The DLSS5 NR add-ons rtxForge installed (Lecram, ShortFuse), grouped by role.
+// The DLSS 5 NR add-ons rtxForge installed (Lecram, ShortFuse), grouped by role.
 // They read ReShade.ini when the game starts, so edits are startup settings:
 // the helper queues them and writes them after the game closes.
 struct NrAddonControls {
@@ -16,7 +16,9 @@ struct NrAddonControls {
     static bool Whole(const HdrField& f) {return f.step>=1;}
     std::string Control(const HdrField& f) {
         const auto id="addon-"+f.key;
-        std::string out="<div class=\"slider-field addon-field\"><div class=\"field-heading\"><label>"+Escape(f.label)+"</label>";
+        const bool choice=f.kind=="choice";
+        std::string out=std::string("<div class=\"slider-field addon-field")+(choice?" addon-choice":"")+
+            "\"><div class=\"field-heading\"><label for=\""+id+"\">"+Escape(f.label)+"</label>";
         if(f.kind!="choice")out+="<span id=\""+id+"-value\"/>";
         out+="</div>";
         if(f.kind=="choice")out+="<select id=\""+id+"\">"+f.options+"</select>";
@@ -24,9 +26,22 @@ struct NrAddonControls {
         return out+"</div>";
     }
     void Build() {
-        std::string markup,section;
-        for(const auto& f:fields){if(f.section!=section){if(!section.empty())markup+="</div>";section=f.section;markup+="<div class=\"option-group\"><h3>"+Escape(section)+"</h3>";}markup+=Control(f);}
-        if(!section.empty())markup+="</div>";
+        std::string markup;
+        const auto rank=[](const std::string& key) {
+            if(key.ends_with("_character_mask"))return 0;
+            if(key.ends_with("_resolution_scale"))return 1;
+            if(key.ends_with("_character"))return 2;
+            return 3;
+        };
+        for(auto first=fields.begin();first!=fields.end();) {
+            const auto end=std::find_if(first,fields.end(),[&](const auto& f){return f.section!=first->section;});
+            markup+="<div class=\"option-group\"><h3>"+Escape(first->section)+"</h3>";
+            for(int priority=0;priority<4;++priority)
+                for(auto field=first;field!=end;++field)
+                    if(rank(field->key)==priority)markup+=Control(*field);
+            markup+="</div>";
+            first=end;
+        }
         E("addons-fields")->SetInnerRML(markup);
     }
     void Set(std::vector<HdrField> next,bool supported,const std::string& message) {
@@ -34,8 +49,8 @@ struct NrAddonControls {
         if(!rebuild)for(size_t i=0;i<fields.size();++i)if(fields[i].key!=next[i].key||fields[i].section!=next[i].section||fields[i].options!=next[i].options||fields[i].minimum!=next[i].minimum||fields[i].maximum!=next[i].maximum){rebuild=true;break;}
         for(auto& f:next)if(pending.contains(f.key)){f.value=pending.at(f.key);f.automatic=false;}
         fields=std::move(next);available=supported&&!fields.empty();
-        E("addons-section")->SetProperty("display",available?"block":"none");
         E("addons-note")->SetInnerRML(Escape(message));
+        E("addons-note")->SetProperty("display",message.empty()?"none":"block");
         if(rebuild)Build();Sync();
     }
     void Sync() {

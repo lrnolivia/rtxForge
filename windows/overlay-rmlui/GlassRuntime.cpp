@@ -219,6 +219,7 @@ struct Runtime {
             const auto message=data.value("message",std::string());if(message.size()>1000)return;
             if(supported&&!Fields(data,false,fields))return;
             controls->addons.Set(std::move(fields),supported,message);
+            controls->RefreshSplitRenderEntry();
         }catch(const nlohmann::json::exception&){}
     }
     // Asked every frame on OptiScaler routes. ReShade stays loaded once it is,
@@ -349,8 +350,23 @@ struct Runtime {
             for(const auto& [id,key]:std::map<std::string,std::string>{{"strength","intensity"},{"render-resolution","work_scale"},{"processing-stage","pre_sr"},{"model-preset","preset"},{"detail","detail"},{"colour","colour"},{"tone","tone"}})c.Disabled(id.c_str(),!current.contains(key));
             c.passesMax=current.contains("__passes_max")?std::clamp(int(current.at("__passes_max")),1,8):3;
             c.Disabled("pass-minus",!current.contains("passes")||c.values["passes"]<=1);c.Disabled("pass-plus",!current.contains("passes")||c.values["passes"]>=c.passesMax);
-            for(const auto* key:{"strength","tone","structure","skin"})c.Disabled((std::string("pass-")+key).c_str(),!current.contains("pass"+std::to_string(c.pass)+"_"+key)||c.values["pass"+std::to_string(c.pass)+"_inherit"]!=0);
-            const bool passesSupported=current.contains("pass2_strength")&&c.values["passes"]>=2;c.Disabled("open-passes",!passesSupported);c.Disabled("nav-passes",!passesSupported);c.Disabled("pass-2",!passesSupported);c.Disabled("pass-3",!current.contains("pass3_strength")||c.values["passes"]<3);c.Disabled("pass-4",!current.contains("pass4_strength")||c.values["passes"]<4);c.Element("pass-4")->SetProperty("display",current.contains("pass4_strength")?"flex":"none");if(c.pass==4&&!current.contains("pass4_strength"))c.pass=2;const auto passPrefix="pass"+std::to_string(c.pass)+"_";c.Disabled("inherit",!current.contains(passPrefix+"inherit"));for(const auto* id:{"pass-style-default","pass-style-natural","pass-style-cinematic"})c.Disabled(id,!current.contains(passPrefix+"style")||c.values[passPrefix+"inherit"]!=0);restartRequired=!snapshot.liveTuning&&(snapshot.nrAvailable||snapshot.fgAvailable);
+            const bool hasPass2=current.contains("pass2_strength");
+            c.SetFeederSplitRender(runtimeKind==2&&snapshot.nrAvailable&&current.contains("passes")&&
+                hasPass2&&current.contains("pass2_inherit")&&current.contains("pass2_skin"));
+            const bool passesSupported=hasPass2&&c.values["passes"]>=2;
+            c.Disabled("open-passes",!passesSupported);c.Disabled("nav-passes",!passesSupported);c.Disabled("pass-2",!passesSupported);
+            c.Disabled("pass-3",!current.contains("pass3_strength")||c.values["passes"]<3);
+            c.Disabled("pass-4",!current.contains("pass4_strength")||c.values["passes"]<4);
+            c.Element("pass-4")->SetProperty("display",current.contains("pass4_strength")?"flex":"none");
+            if(c.pass==4&&!current.contains("pass4_strength"))c.pass=2;
+            const auto passPrefix=c.PassPrefix();
+            const bool inherits=c.values[passPrefix+"inherit"]!=0;
+            for(const auto* key:{"strength","tone","structure","skin"})
+                c.Disabled((std::string("pass-")+key).c_str(),!current.contains(passPrefix+key)||inherits);
+            c.Disabled("inherit",!current.contains(passPrefix+"inherit"));
+            for(const auto* id:{"pass-style-default","pass-style-natural","pass-style-cinematic"})
+                c.Disabled(id,!current.contains(passPrefix+"style")||inherits);
+            restartRequired=!snapshot.liveTuning&&(snapshot.nrAvailable||snapshot.fgAvailable);
             tuningPending=current.contains("__tuning_pending")&&current.at("__tuning_pending")!=0;
             const int nextLive=current.contains("__live_state")?std::clamp(int(current.at("__live_state")),0,2):0;
             if(nextLive==2&&liveState!=2)c.Notify("The game didn’t confirm that change. Check it in the game, then try again.","info");

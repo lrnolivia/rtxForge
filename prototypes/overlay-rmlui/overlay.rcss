@@ -1039,3 +1039,13 @@ select selectbox { opacity: 0; }
 .effect-entry .effect-number { flex: 1 1 auto; min-width: 0; }
 .effect-entry .quiet { flex: 0 0 auto; }
 #effects-section .hint, #addons-section .hint { margin-top: 6dp; }
+#inspector.split-no-reset .inspector-footer,
+#inspector.split-pass-unavailable #pass-edit-controls { display: none; }
+.split-note { margin: 6dp 0 16dp; line-height: 1.4; }
+.split-role { font-size: var(--group-size); font-weight: 600; line-height: 1.3; color: var(--accent-ink); }
+#addons-fields .option-group { margin: 12dp 0 18dp; }
+#addons-fields .option-group h3 { margin-bottom: 12dp; }
+#addons-fields .addon-field { margin-top: 14dp; }
+#addons-fields .addon-choice { display: flex; align-items: center; gap: 12dp; }
+#addons-fields .addon-choice .field-heading { flex: 1; min-width: 0; }
+#addons-fields .addon-choice select { width: 112dp; }

@@ -10,7 +10,7 @@ struct NrAddonControls {
     std::vector<HdrField> fields;
     std::map<std::string,float> pending;
     std::map<std::string,std::pair<float,bool>> livePrevious;
-    bool available{},syncing{},shortFuseLive{};
+    bool available{},syncing{},shortFuseLive{},showMore{};
     static bool ShortFuse(const HdrField& f) {return f.section.ends_with(" · ShortFuse");}
     bool HasShortFuse() const {
         return available&&std::any_of(fields.begin(),fields.end(),ShortFuse);
@@ -44,13 +44,24 @@ struct NrAddonControls {
         else out+="<input id=\""+id+"\" class=\"range\" type=\"range\" min=\""+Number(f.minimum,false)+"\" max=\""+Number(f.maximum,false)+"\" step=\""+Number(f.step,false)+"\"/>";
         return out+"</div>";
     }
+    void ShowMore(bool open) {
+        showMore=open;
+        if(auto* toggle=E("addons-more")) {
+            toggle->SetClass("expanded",open);
+            toggle->SetAttribute("aria-expanded",open?"true":"false");
+            E("addons-more-label")->SetInnerRML(open?"Fewer options":"More options");
+            E("addons-extra")->SetClass("expanded",open);
+        }
+    }
     void Build() {
         std::string markup;
-        const auto rank=[](const std::string& key) {
+        const auto rank=[](const HdrField& field) {
+            const auto& key=field.key;
             if(key.ends_with("_character_mask"))return 0;
             if(key.ends_with("_resolution_scale"))return 1;
             if(key.ends_with("_character"))return 2;
-            return 3;
+            if(key.ends_with("_intensity")||!ShortFuse(field))return 3;
+            return 4;
         };
         for(auto first=fields.begin();first!=fields.end();) {
             const auto end=std::find_if(first,fields.end(),[&](const auto& f){return f.section!=first->section;});
@@ -59,11 +70,21 @@ struct NrAddonControls {
                 glyph+"-light.png\"/><span>"+Escape(first->section)+"</span></h3>";
             for(int priority=0;priority<4;++priority)
                 for(auto field=first;field!=end;++field)
-                    if(rank(field->key)==priority)markup+=Control(*field);
+                    if(rank(*field)==priority)markup+=Control(*field);
+            if(std::any_of(first,end,[&](const auto& field){return rank(field)==4;})) {
+                markup+=R"(<button id="addons-more" class="more-trigger split-more-trigger" aria-controls="addons-extra">
+                    <img class="glyph" src="icons/sliders-horizontal-light.png" />
+                    <span id="addons-more-label">More options</span><span class="chevron" />
+                    </button><div id="addons-extra" class="split-extra-options"><h4>Model and processing</h4>)";
+                for(auto field=first;field!=end;++field)
+                    if(rank(*field)==4)markup+=Control(*field);
+                markup+="</div>";
+            }
             markup+="</div>";
             first=end;
         }
         E("addons-fields")->SetInnerRML(markup);
+        ShowMore(showMore);
     }
     void Set(std::vector<HdrField> next,bool supported,const std::string& message) {
         bool rebuild=fields.size()!=next.size();
@@ -88,6 +109,7 @@ struct NrAddonControls {
         syncing=false;
     }
     bool Event(const std::string& id,Rml::Event& event) {
+        if(id=="addons-more"&&event.GetType()=="click"){ShowMore(!showMore);return true;}
         if(event.GetType()!="change"||syncing||!available||!id.starts_with("addon-"))return false;
         for(auto& f:fields)if(id=="addon-"+f.key){auto* input=dynamic_cast<Rml::ElementFormControl*>(E(id));if(!input||(ShortFuse(f)&&!shortFuseLive))return true;
             try {

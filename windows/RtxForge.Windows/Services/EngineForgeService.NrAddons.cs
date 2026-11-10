@@ -12,6 +12,18 @@ public sealed partial class EngineForgeService
         await CallAsync("nr_catalog", game is null ? null : new JsonObject { ["row"] = Row(game) }) as JsonObject
             ?? throw new InvalidOperationException("Split Render is unavailable.");
 
+    public async Task<JsonObject> SplitPresetCatalogAsync(string package) =>
+        await CallAsync("nr_catalog", new JsonObject { ["package"] = package }) as JsonObject
+            ?? throw new InvalidOperationException("Split Render presets are unavailable.");
+
+    public async Task<JsonObject> CheckSplitPresetAsync(string package, JsonObject setup) =>
+        await CallAsync("nr_check", new JsonObject { ["package"] = package, ["setup"] = setup.DeepClone() }) as JsonObject
+            ?? throw new InvalidOperationException("The Split Render check is unavailable.");
+
+    public async Task<JsonObject> SaveSplitPresetAsync(string package, string name, JsonObject setup) =>
+        await CallAsync("nr_combo_save", new JsonObject { ["package"] = package, ["name"] = name, ["combo"] = setup.DeepClone() }) as JsonObject
+            ?? throw new InvalidOperationException("The preset was not saved.");
+
     public async Task<JsonArray> PlanSplitRenderAsync(OperationReview review, JsonObject? choice, int revision)
     {
         var steps = review.Steps.Count > 0 ? review.Steps : new[] { review }.Where(r => r.Ready.Count > 0);

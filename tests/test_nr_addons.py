@@ -168,6 +168,22 @@ class NrAddonTests(unittest.TestCase):
         for key in plan['ini']['RENODX-DLSS']:
             self.assertTrue(re.fullmatch(r'DirectNeuralRendering[A-Za-z]+', key), key)
 
+    def test_preset_editor_uses_the_package_to_choose_roles_and_providers(self):
+        from unittest import mock
+        with mock.patch.object(nr, 'saved_combos', return_value={}):
+            native = nr.preset_catalog({}, 'native')
+            self.assertIsNone(native['runtime_nr'])
+            self.assertIn('lecram', {addon['id'] for addon in native['addons']})
+            skynizz = nr.preset_catalog({}, 'skynizz')
+            self.assertEqual(skynizz['runtime_nr']['name'], 'Skynizz')
+            self.assertEqual({addon['id'] for addon in skynizz['addons']}, {'shortfuse'})
+            self.assertEqual(skynizz['combos']['characters-and-world']['environment'], {'addon': 'optiscaler'})
+            mfg = nr.preset_catalog({}, 'skynizz-mfg')
+            self.assertIsNone(mfg['runtime_nr'])
+            self.assertNotIn('lecram', {addon['id'] for addon in mfg['addons']})
+            self.assertFalse(nr.preset_check('skynizz-mfg', {'environment': {'addon': 'lecram'}})['ok'])
+            self.assertIn('Character mask', nr.preset_catalog({}, 'feeder')['blocked'])
+
     def test_saved_combos_are_shared_validated_and_deletable(self):
         import tempfile
         from unittest import mock

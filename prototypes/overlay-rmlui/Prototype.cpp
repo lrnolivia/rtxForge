@@ -370,6 +370,8 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
     c.Layout("centered");
     c.addons.Set({{"character_resolution_scale","Resolution scale","Character detail · ShortFuse",
         "slider","","%",25,100,1,100,74,false,false},
+        {"character_local_tone","Local tone","Character detail · ShortFuse",
+        "slider","","",0,2,.01f,1,1,false,false},
         {"environment_character_mask","Character mask","Environment · Lecram",
         "choice","<option value=\"0\">Off</option><option value=\"1\">On</option>","",0,1,1,1,1,false,false}},
         true,"Environment changes apply at next launch.");
@@ -396,6 +398,19 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
     Require(c.addons.Flush([](const std::string& message){
         return message=="{\"op\":\"nr-addons-save\",\"changes\":{\"environment_character_mask\":0}}";
     }),"Environment startup settings were not queued");
+    Require(c.Element("addon-character_local_tone")->IsVisible(true)&&!c.Element("addons-more")->IsVisible(true),
+        "Advanced hid secondary ShortFuse controls");
+    for(const auto* layout:{"floating","bar"}) {
+        c.Layout(layout);
+        c.Page("nav-neural");
+        activate("open-addons");
+        Require(!c.Element("addon-character_local_tone")->IsVisible(true),"Streamlined view exposed secondary controls by default");
+        activate("addons-more");
+        Require(c.Element("addon-character_local_tone")->IsVisible(true),"More options did not reveal the secondary controls");
+        activate("addons-more");
+        Require(!c.Element("addon-character_local_tone")->IsVisible(true),"Fewer options did not hide the secondary controls");
+    }
+    c.Layout("centered");
     c.addons.SetShortFuseLive(false);
     c.addons.Set({},false,"");
     c.RefreshSplitRenderEntry();
@@ -592,7 +607,7 @@ static void TestController(Controller& c,Rml::Context* context)
 int wmain(int argc,wchar_t** argv)
 {
     try {
-        fs::path assets,background,output,font,gameCatalog,preferencesPath,posterPath;DWORD parentProcess=0;int onboardingMenus=1;int width=2560,height=1440,appearance=4,requestedCopy=22,requestedScale=100;bool onboardingScroll=false,onboardingNative=false,longDropdown=false,dropdownOpen=false,colorSpectrumOpen=false,colorPickerOpen=false,benchmark=false;bool gameCapture=false,thumbnail=false,desktopPreview=false,feederSplitPreview=false,shortFusePreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=10,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedAccentMode="adaptive";std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
+        fs::path assets,background,output,font,gameCatalog,preferencesPath,posterPath;DWORD parentProcess=0;int onboardingMenus=1;int width=2560,height=1440,appearance=4,requestedCopy=22,requestedScale=100;bool onboardingScroll=false,onboardingNative=false,longDropdown=false,dropdownOpen=false,colorSpectrumOpen=false,colorPickerOpen=false,benchmark=false;bool gameCapture=false,thumbnail=false,desktopPreview=false,feederSplitPreview=false,shortFusePreview=false,shortFuseMore=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=10,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedAccentMode="adaptive";std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
         for(int i=1;i<argc;++i) {
             const std::wstring arg=argv[i];
             const auto next=[&] {Require(i+1<argc,"Missing argument value");return std::wstring(argv[++i]);};
@@ -606,6 +621,7 @@ int wmain(int argc,wchar_t** argv)
             else if(arg==L"--desktop-preview"){desktopPreview=productionUI=true;}
             else if(arg==L"--feeder-split-render"){feederSplitPreview=desktopPreview=productionUI=true;}
             else if(arg==L"--shortfuse-split-render"){shortFusePreview=desktopPreview=productionUI=true;}
+            else if(arg==L"--shortfuse-more-options"){shortFuseMore=shortFusePreview=desktopPreview=productionUI=true;}
             else if(arg==L"--game-title")gameTitle=Utf8(next());
             else if(arg==L"--game-catalog")gameCatalog=next();
             else if(arg==L"--parent-process")parentProcess=std::stoul(next());
@@ -715,9 +731,14 @@ int wmain(int argc,wchar_t** argv)
                 {"character_character_mask","Character mask","Character detail · ShortFuse","choice",
                     "<option value=\"0\">Off</option><option value=\"1\">On</option>","",0,1,1,1,1,false,false},
                 {"character_resolution_scale","Resolution scale","Character detail · ShortFuse","slider","","%",25,100,1,100,74,false,false},
-                {"character_character","Skin detail","Character detail · ShortFuse","slider","","",0,1,.01f,.5f,.5f,false,false},
+                {"character_character","Skin detail","Character detail · ShortFuse","slider","","",0,2,.01f,.5f,.5f,false,false},
                 {"character_intensity","Strength","Character detail · ShortFuse","slider","","",0,2,.01f,1,1,false,false},
+                {"character_style","Style","Character detail · ShortFuse","slider","","",0,2,1,0,1,false,false},
+                {"character_local_tone","Local tone","Character detail · ShortFuse","slider","","",0,2,.01f,1,1,false,false},
+                {"character_structure","Structure","Character detail · ShortFuse","slider","","",0,2,.01f,1,1,false,false},
+                {"character_passes","Passes","Character detail · ShortFuse","slider","","",1,4,1,1,1,false,false},
             },true,"");
+            controller.addons.ShowMore(shortFuseMore);
             controller.addons.SetShortFuseLive(true);
             controller.addons.LiveMessage("Preview · Live controls in game");
             controller.RefreshSplitRenderEntry();

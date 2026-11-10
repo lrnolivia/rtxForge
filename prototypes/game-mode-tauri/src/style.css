@@ -951,6 +951,9 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .split-game-list .nr-target-choice{display:grid;grid-template-columns:22px 86px minmax(0,1fr);align-items:center;gap:12px;cursor:pointer}
 .split-game-list .nr-target-choice small{display:block;font-size:.85em;margin-top:3px}
 .split-section.inner-card{padding:16px}
+.split-presets .field{min-height:56px;padding:8px 0;margin:0;max-width:none}
+.split-presets .split-saved{align-items:end}
+.split-presets .split-saved label{display:grid;gap:6px;min-width:min(220px,100%)}
 .split-section .split-results:not(:empty){margin-top:14px}
 @media(max-width:700px){.split-layout{grid-template-columns:minmax(0,1fr)}}
 

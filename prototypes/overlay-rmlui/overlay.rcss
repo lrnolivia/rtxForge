@@ -1054,3 +1054,8 @@ select selectbox { opacity: 0; }
 #addons-fields .addon-choice { display: flex; align-items: center; gap: 12dp; }
 #addons-fields .addon-choice .field-heading { flex: 1; min-width: 0; }
 #addons-fields .addon-choice select { width: 112dp; }
+#addons-fields .split-more-trigger { width: 100%; margin-top: 14dp; }
+.split-extra-options { display: none; margin-top: 16dp; }
+.split-extra-options.expanded, .layout-centered .split-extra-options { display: block; }
+.layout-centered #addons-fields .split-more-trigger { display: none; }
+.split-extra-options h4 { font-size: var(--group-size); font-weight: 600; color: var(--accent-ink); }

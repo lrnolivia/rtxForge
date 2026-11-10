@@ -245,10 +245,13 @@ def _store(config, saved):
     t.atomic_file(_combo_file(config), json.dumps({'schema': 1, 'combos': saved}, indent=2).encode(), 0o600)
 
 
-def save_combo(config, name, combo):
+def save_combo(config, name, combo, package=None):
     name = str(name or '').strip()
     t.need(0 < len(name) <= 60, 'Name the combo (up to 60 characters).')
     t.need(isinstance(combo, dict), 'Choose the add-ons for the combo.')
+    if package is not None:
+        checked = preset_check(package, combo)
+        t.need(checked['ok'], checked.get('reason', 'Choose a compatible setup.'))
     combo = {slot: combo[slot] for slot in SLOTS if combo.get(slot)}
     if (combo.get('environment') or {}).get('addon') == RUNTIME:
         combo.pop('environment')  # the game's own world: saved as no Environment add-on
@@ -351,6 +354,42 @@ def catalog_view(config, game=None):
             'combos': found,
             'runtime_nr': runtime_nr(game) if game is not None else None,
             'blocked': split_render_block(game) if game is not None else None}
+
+
+PRESET_PACKAGES = {
+    'skynizz': ('Skynizz NR', 'nr-only'),
+    'skynizz-mfg': ('Skynizz MFG Only', 'mfg-only'),
+    'native': ('Native DLSS', None),
+    'feeder': ('Feeder NR', None),
+}
+
+
+def _preset_game(package):
+    t.need(package in PRESET_PACKAGES, 'Choose a Split Render package.')
+    return {'native_dlss': True, 'arch': 'x64', 'runtime_provider': 'skynizz',
+            'optiscaler_mode': PRESET_PACKAGES[package][1]}
+
+
+def preset_check(package, setup):
+    if package == 'feeder':
+        return {'ok': False, 'reason': FEEDER_SPLIT_RENDER_BLOCK}
+    return check(_preset_game(package), setup)
+
+
+def preset_catalog(config, package):
+    game = _preset_game(package)
+    result = catalog_view(config, game)
+    result['preset_packages'] = [{'id': key, 'label': spec[0]} for key, spec in PRESET_PACKAGES.items()]
+    if package == 'feeder':
+        return dict(result, blocked=FEEDER_SPLIT_RENDER_BLOCK, addons=[], combos={})
+    mode = optiscaler_mode(game)
+    if mode:
+        allowed = [key for key, addon in catalog()['addons'].items()
+                   if (addon.get('beside_optiscaler') or {}).get('allowed', True)
+                   and (mode not in OPTISCALER_NR or (addon.get('beside_optiscaler') or {}).get('with_optiscaler_nr'))]
+        result['addons'] = [addon for addon in result['addons'] if addon['id'] in allowed]
+    result['combos'] = {key: combo for key, combo in result['combos'].items() if preset_check(package, combo)['ok']}
+    return result
 
 
 def install_choices(config):

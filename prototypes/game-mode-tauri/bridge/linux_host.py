@@ -318,19 +318,21 @@ def bind(root, send):
         return reviewed(action, rows, plan, lambda review: nr_install.apply(service.config, review), action=action)
 
     def nr_combo_save(params):
-        key = nr_addons.save_combo(service.config, params.get('name'), params.get('combo'))
+        key = nr_addons.save_combo(service.config, params.get('name'), params.get('combo'), params.get('package'))
         return {'id': key, 'combos': nr_addons.combos(service.config)}
 
     methods = dict(overview_inspect=lambda p: overview_summary.inspect(p["row"], engine_bridge.module(service.config)), overlay_status=overlay_status, hello=lambda _p: {'root': str(root), 'platform': 'Linux'}, hardware=lambda _p: service.hardware(), scan=scan,
                    prepare=prepare, execute=execute, cancel=cancel, discard_operation=discard, discard=discard, run=execute,
                    settings_get=lambda _p: library_media.load_settings(service.config), settings_review=settings_review,
                    packages=lambda _p: {'catalog': package_catalog.catalog(service.hardware())},
-                   nr_catalog=lambda p: nr_install.catalog_view(service.config, p.get('row')), nr_review=nr_review,
+                   nr_catalog=lambda p: nr_addons.preset_catalog(service.config, p['package']) if 'package' in p
+                   else nr_install.catalog_view(service.config, p.get('row')), nr_review=nr_review,
                    feeder_character_apply=lambda p: feeder_character.apply(
                        service.config, p['row'], p.get('stamp'), p.get('skin'),
                        p.get('pass_number', 2), p.get('character', True)),
                    nr_match=lambda p: nr_install.match_batch(service.config, p['rows'], p['choice'], service.hardware().get('family') or 'ada'),
-                   nr_check=lambda p: nr_addons.check(p['row'], p['setup']), nr_status=lambda p: nr_install.status(p['row']),
+                   nr_check=lambda p: nr_addons.preset_check(p['package'], p['setup']) if 'package' in p
+                   else nr_addons.check(p['row'], p['setup']), nr_status=lambda p: nr_install.status(p['row']),
                    nr_combo_save=nr_combo_save,
                    extras_list=lambda p: extra_tools.recoveries(service.config, p['row']), extra_review=extra_review,
                    extra_restore_review=extra_restore, prepare_dlss=prepare_dlss, update_dlss=execute, dlss_restore_review=restore_dlss,

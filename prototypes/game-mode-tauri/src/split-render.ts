@@ -16,6 +16,7 @@ export type Catalog = {
   combos: Record<string, Combo>;
   runtime_nr?: { id: string; name: string } | null;
   blocked?: string | null;
+  preset_packages?: { id: string; label: string }[];
   feeder_character?: FeederCharacter;
 };
 export type Choice = { auto: true; model: string } | { setup: Setup & { beside_runtime_nr?: Setup }; adapt: boolean };
@@ -63,6 +64,14 @@ export function changePicker(catalog: Catalog, picker: Picker, key: string, valu
     const slot = picker.manual[role];
     if (slot) slot.build = value;
   }
+}
+
+export function splitPresetSelect(catalog: Catalog, picker: Picker) {
+  return `<div class="split-picker" data-split-picker="tools"><label class="field"><span><strong>Preset</strong>
+    <small>Create and customize setups in Presets.</small></span><select id="split-tools-preset" data-split-field="preset">
+    <option value="" ${picker.preset ? '' : 'selected'}>Recommended for this game</option>
+    ${Object.entries(catalog.combos).map(([id, combo]) => `<option value="${e(id)}" ${id === picker.preset ? 'selected' : ''}>${e(combo.name)}</option>`).join('')}
+    </select></label></div>`;
 }
 
 export function splitPicker(catalog: Catalog, picker: Picker, scope: string, single = false) {

@@ -43,6 +43,7 @@
             <img class="glyph" src="icons/sliders-horizontal-light.png" /><span class="button-label">Look &amp; detail</span></button>
           <button id="nav-passes">
             <img class="glyph" src="icons/stack-light.png" /><span class="button-label">Pass tuning</span></button>
+          <button id="nav-addons" style="display: none"><img class="glyph" src="icons/stack-light.png" /><span class="button-label">Split Render</span></button>
           <button id="nav-frame">
             <img class="glyph" src="icons/film-strip-light.png" /><span class="button-label">Frame generation</span></button>
           <button id="nav-effects" style="display: none"><img class="glyph" src="icons/stack-light.png"/><span class="button-label">Effects</span></button>
@@ -276,7 +277,7 @@
                 <div class="section-heading">
                   <h2><img class="glyph" src="icons/stack-light.png" /><span>SPLIT RENDER</span></h2>
                 </div>
-                <p class="hint">DLSS 5 NR passes rtxForge installed in this game. Changes apply after a restart.</p>
+                <p id="split-render-description" class="hint" />
                 <div class="inspector-links">
                   <button id="open-addons" class="text-link">
                     <img class="glyph" src="icons/sliders-horizontal-light.png" /><span class="button-label">Adjust Split Render</span><span class="chevron" />
@@ -329,60 +330,66 @@
         <div id="settings-modal-host" style="display: none"/>
         <div id="effects-inspector" style="display: none"><p id="effects-note" class="hint"/><p id="effects-result" class="hint" style="display: none"/><div id="effects-fields"/></div>
         <div id="hdr-inspector" style="display: none"><p id="hdr-popup-note" class="hint"/><div id="hdr-popup-fields"/></div>
-        <div id="addons-inspector" style="display: none"><p id="addons-note" class="hint"/><div id="addons-fields"/></div>
+        <div id="addons-inspector" style="display: none"><p id="addons-note" class="hint split-note"/><div id="addons-fields"/></div>
         <div id="pass-inspector">
-          <div class="segments pass-tabs">
+          <div id="feeder-split-context" style="display: none">
+            <h3 class="split-role">Character detail · Feeder NR</h3>
+            <p id="feeder-split-note" class="hint split-note" />
+          </div>
+          <div id="pass-tabs" class="segments pass-tabs">
             <button id="pass-2" class="selected"><span class="button-label">Pass 2</span></button>
             <button id="pass-3"><span class="button-label">Pass 3</span></button>
             <button id="pass-4"><span class="button-label">Pass 4</span></button>
           </div>
-          <div class="inherit-row">
-            <label>Use main settings</label>
-            <button id="inherit" class="switch">
-              <span />
-            </button>
-          </div>
-          <div id="pass-fields">
-            <div class="option-group">
-              <h3>MODEL</h3>
-              <div class="field-heading">
-                <label data-control="style">Style</label>
-              </div>
-              <div class="segments" id="pass-style">
-                <button id="pass-style-default" class="selected"><span class="button-label">Default</span></button>
-                <button id="pass-style-natural"><span class="button-label">Natural</span></button>
-                <button id="pass-style-cinematic"><span class="button-label">Cinematic</span></button>
-              </div>
-              <div class="slider-field">
-                <div class="field-heading">
-                  <label data-control="pass2_strength">Strength</label>
-                  <span id="pass-strength-value">0.65</span>
-                </div>
-                <input id="pass-strength" class="range" type="range" min="0" max="2" step="0.01" value="0.65" />
-              </div>
+          <div id="pass-edit-controls">
+            <div class="inherit-row">
+              <label>Use main settings</label>
+              <button id="inherit" class="switch" aria-label="Use main settings">
+                <span />
+              </button>
             </div>
-            <div class="option-group">
-              <h3>DETAIL</h3>
-              <div class="slider-field">
+            <div id="pass-fields">
+              <div class="option-group">
+                <h3>MODEL</h3>
                 <div class="field-heading">
-                  <label data-control="tone">Local tone</label>
-                  <span id="pass-tone-value">0.80</span>
+                  <label data-control="style">Style</label>
                 </div>
-                <input id="pass-tone" class="range" type="range" min="0" max="2" step="0.01" value="0.8" />
+                <div class="segments" id="pass-style">
+                  <button id="pass-style-default" class="selected"><span class="button-label">Default</span></button>
+                  <button id="pass-style-natural"><span class="button-label">Natural</span></button>
+                  <button id="pass-style-cinematic"><span class="button-label">Cinematic</span></button>
+                </div>
+                <div class="slider-field">
+                  <div class="field-heading">
+                    <label data-control="pass2_strength">Strength</label>
+                    <span id="pass-strength-value">0.65</span>
+                  </div>
+                  <input id="pass-strength" class="range" type="range" min="0" max="2" step="0.01" value="0.65" />
+                </div>
               </div>
-              <div class="slider-field">
-                <div class="field-heading">
-                  <label data-control="structure">Texture detail</label>
-                  <span id="pass-structure-value">1.00</span>
+              <div class="option-group">
+                <h3>DETAIL</h3>
+                <div class="slider-field">
+                  <div class="field-heading">
+                    <label data-control="tone">Local tone</label>
+                    <span id="pass-tone-value">0.80</span>
+                  </div>
+                  <input id="pass-tone" class="range" type="range" min="0" max="2" step="0.01" value="0.8" />
                 </div>
-                <input id="pass-structure" class="range" type="range" min="0" max="2" step="0.01" value="1" />
-              </div>
-              <div class="slider-field">
-                <div class="field-heading">
-                  <label data-control="skin">Skin detail</label>
-                  <span id="pass-skin-value">0.50</span>
+                <div class="slider-field">
+                  <div class="field-heading">
+                    <label data-control="structure">Texture detail</label>
+                    <span id="pass-structure-value">1.00</span>
+                  </div>
+                  <input id="pass-structure" class="range" type="range" min="0" max="2" step="0.01" value="1" />
                 </div>
-                <input id="pass-skin" class="range" type="range" min="-1" max="2" step="0.01" value="0.5" />
+                <div class="slider-field">
+                  <div class="field-heading">
+                    <label data-control="skin">Skin detail</label>
+                    <span id="pass-skin-value">0.50</span>
+                  </div>
+                  <input id="pass-skin" class="range" type="range" min="-1" max="2" step="0.01" value="0.5" />
+                </div>
               </div>
             </div>
           </div>

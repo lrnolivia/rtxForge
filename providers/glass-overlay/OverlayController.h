@@ -128,7 +128,7 @@ struct Controller : Rml::EventListener
     double layoutPickerDismiss=0;
     Rml::Element* statusHome=nullptr;Rml::Element* compactLiveHome=nullptr;
     void UpdateBack() {auto* back=Element("window-back");if(settingsOpen||activeNavigation!="nav-overview"||!navigationHistory.empty())back->RemoveProperty("display");else back->SetProperty("display","none");}
-    void Navigation(const std::string& selected) {if(selected!=activeNavigation&&!navigatingBack)navigationHistory.push_back(activeNavigation);activeNavigation=selected;for(const auto* id:{"nav-overview","nav-frame","nav-neural","nav-look","nav-settings","nav-passes","nav-effects","nav-hdr"})Element(id)->SetClass("selected",selected==id);UpdateBack();}
+    void Navigation(const std::string& selected) {if(selected!=activeNavigation&&!navigatingBack)navigationHistory.push_back(activeNavigation);activeNavigation=selected;for(const auto* id:{"nav-overview","nav-frame","nav-neural","nav-look","nav-settings","nav-passes","nav-addons","nav-effects","nav-hdr"})Element(id)->SetClass("selected",selected==id);UpdateBack();}
     void Back() {if(settingsOpen){Settings(false);return;}const auto previous=navigationHistory.empty()?"nav-overview":navigationHistory.back();if(!navigationHistory.empty())navigationHistory.pop_back();navigatingBack=true;Page(previous);navigatingBack=false;UpdateBack();}
     void QuickLayouts(bool show) {
         layoutPickerDismiss=0;Visible("tooltip",false);auto* picker=Element("layout-picker");if(show&&picker->IsVisible())return;document->SetClass("quick-layout-open",show);if(!show){picker->SetProperty("display","none");return;}
@@ -177,9 +177,11 @@ struct Controller : Rml::EventListener
         Element("setting-original-labels")->SetClass("on",originalLabels);
     }
     void Page(const std::string& id) {
+        if(id=="nav-addons"&&!SplitRenderAvailable()){Page(nrAvailable?"nav-neural":"nav-overview");return;}
         Navigation(id);Visible("overview",true);Visible("inspector",false);
         for(const auto* page:{"overview","frame","neural","hdr"})document->SetClass(std::string(page)+"-page",id=="nav-"+std::string(page));
         Element("overview")->SetScrollTop(0);
+        if(id=="nav-addons")Open("addons");
         if(id=="nav-look"||id=="nav-passes"||id=="nav-effects")Open(id=="nav-look"?"look":id=="nav-effects"?"effects":"passes");
     }
     void InstallExtraControls() {
@@ -218,6 +220,39 @@ struct Controller : Rml::EventListener
     // The connected runtime reports its own pass ceiling (Feeder NR allows 4,
     // OptiScaler 3); the preview keeps OptiScaler's.
     int pass=2,passesMax=3;
+    bool feederSplitSupported{};
+    bool SplitRenderAvailable() const {return feederSplitSupported||addons.available;}
+    bool FeederSplitActive() const {return feederSplitSupported&&inspectorPanel=="addons";}
+    std::string PassPrefix() const {return "pass"+std::to_string(FeederSplitActive()?2:pass)+"_";}
+
+    void RefreshSplitRenderEntry() {
+        Visible("addons-section",SplitRenderAvailable());
+        auto* nav=Element("nav-addons");
+        if(SplitRenderAvailable())nav->RemoveProperty("display");else nav->SetProperty("display","none");
+        Element("split-render-description")->SetInnerRML(feederSplitSupported?
+            "Tune character detail in Feeder NR’s second pass.":"Tune the installed Split Render passes. Changes apply after a restart.");
+        if(!SplitRenderAvailable()&&!settingsOpen&&inspectorPanel=="addons"&&Element("inspector")->IsVisible()) {
+            if(layout=="centered")Page(nrAvailable?"nav-neural":"nav-overview");
+            else Visible("inspector",false);
+        }
+    }
+    void ShowPassInspector() {
+        const bool feeder=FeederSplitActive();
+        Visible("pass-inspector",inspectorPanel=="passes"||feeder);
+        Visible("addons-inspector",inspectorPanel=="addons"&&!feeder);
+        Visible("feeder-split-context",feeder);
+        auto* tabs=Element("pass-tabs");
+        if(feeder)tabs->SetProperty("display","none");else tabs->RemoveProperty("display");
+    }
+    void SetFeederSplitRender(bool supported) {
+        if(feederSplitSupported==supported)return;
+        feederSplitSupported=supported;
+        RefreshSplitRenderEntry();
+        if(!settingsOpen&&inspectorPanel=="addons"&&Element("inspector")->IsVisible()) {
+            ShowPassInspector();
+            Sync();
+        }
+    }
     int appearance=4;
     std::array<float,3> accent{.19f,.46f,.80f};
     std::string accentMode="adaptive",customAccent;
@@ -667,7 +702,18 @@ struct Controller : Rml::EventListener
         const int passCount=int(values.at("passes"));
         Element("pass-count")->SetInnerRML(std::to_string(passCount)+(passCount==1?" pass":" passes"));
         Disabled("pass-minus",passCount<=1);Disabled("pass-plus",passCount>=passesMax);if(pass>passCount)pass=2;
-        const auto prefix="pass"+std::to_string(pass)+"_";
+        const auto prefix=PassPrefix();
+        const bool feederSplit=FeederSplitActive();
+        Element("inspector")->SetClass("split-no-reset",inspectorPanel=="addons"&&(!feederSplit||passCount<2));
+        Element("inspector")->SetClass("split-pass-unavailable",feederSplit&&passCount<2);
+        if(feederSplit) {
+            auto* note=Element("feeder-split-note");
+            const auto message=passCount<2?
+                "Set Passes to 2 in Neural rendering to tune character detail.":
+                values[prefix+"inherit"]!=0?"Pass 2 follows the main settings. Turn off Use main settings to tune it separately.":
+                "Pass 2 uses its own settings.";
+            if(note->GetInnerRML()!=message)note->SetInnerRML(message);
+        }
         for(const auto* key : {"strength","tone","structure","skin"})range((std::string("pass-")+key).c_str(),prefix+key);
         Element("inherit")->SetClass("on",values[prefix+"inherit"]!=0);Element("pass-fields")->SetProperty("opacity",values[prefix+"inherit"] ? ".35":"1");
         for(const auto* key : {"strength","tone","structure","skin"})dynamic_cast<Rml::ElementFormControl*>(Element((std::string("pass-")+key).c_str()))->SetDisabled(values[prefix+"inherit"]!=0);
@@ -692,16 +738,18 @@ struct Controller : Rml::EventListener
             if(values.contains(key))dynamic_cast<Rml::ElementFormControl*>(Element(id.c_str()))->SetValue(std::to_string(int(values[key])));
         for(const auto& [id,control]:extraFields) {const float value=values.at(control->key);auto* e=Element(id.c_str());if(std::string(control->kind)=="toggle")e->SetClass("on",value!=0);else {dynamic_cast<Rml::ElementFormControl*>(e)->SetValue(std::string(control->kind)=="choice"?std::to_string(int(value)):std::to_string(value));if(std::string(control->kind)!="choice"){char text[48];std::snprintf(text,sizeof(text),std::string(control->key)=="interval"?(value==1?"Every frame":"Every %.0f frames"):std::string(control->key)=="work_scale"?"%.0f%%":control->step>=1?"%.0f":"%.2f",std::string(control->key)=="work_scale"?value*100:value);Element((id+"-value").c_str())->SetInnerRML(std::string(control->key)=="work_scale"?RenderResolutionText():text);}}}
         for(const auto& [id,control]:extraFields)if(std::string(control->key)=="interval"){auto* field=Element(id.c_str());dynamic_cast<Rml::ElementFormControl*>(field)->SetDisabled(values.at("cache")==0||!nrAvailable);field->GetParentNode()->SetClass("inactive-dependent",values.at("cache")==0);}
-        auto* passLabel=Element("pass-strength-value")->GetParentNode()->QuerySelector("label");passLabel->SetAttribute("data-control","pass"+std::to_string(pass)+"_strength");
+        auto* passLabel=Element("pass-strength-value")->GetParentNode()->QuerySelector("label");passLabel->SetAttribute("data-control",prefix+"strength");
         Labels();syncing=false;
     }
     void Open(const std::string& panel) {
+        if(panel=="addons"&&!SplitRenderAvailable())return;
         if(BarSettings())Settings(false);
         if(layout=="bar"&&inspectorAnchored&&Element("inspector")->IsVisible()&&inspectorPanel==panel){Visible("inspector",false);inspectorAnchored=false;return;}
         inspectorPanel=panel;Element("inspector")->SetProperty("margin-left","0px");Element("inspector")->SetProperty("margin-top","0px");
         Element("inspector")->SetScrollTop(0);
         Element("inspector")->SetClass("opening",true);
-        Visible("inspector",true);Visible("pass-inspector",panel=="passes");Visible("look-inspector",panel=="look");Visible("extra-processing",panel=="processing");Visible("extra-frame-popup",panel=="frame");Visible("popup-metadata",panel=="overview");Visible("hdr-inspector",panel=="hdr");Visible("effects-inspector",panel=="effects");Visible("addons-inspector",panel=="addons");Element("inspector")->SetClass("session-inspector",panel=="overview");
+        Visible("inspector",true);ShowPassInspector();Visible("look-inspector",panel=="look");Visible("extra-processing",panel=="processing");Visible("extra-frame-popup",panel=="frame");Visible("popup-metadata",panel=="overview");Visible("hdr-inspector",panel=="hdr");Visible("effects-inspector",panel=="effects");Element("inspector")->SetClass("session-inspector",panel=="overview");
+        Sync();
         const auto icon=panel=="effects"||panel=="addons"?"stack":panel=="hdr"?"sun":panel=="overview"?"gauge":panel=="passes"?"stack":panel=="look"?"sliders-horizontal":panel=="frame"?"film-strip":"cpu";
         const auto title=panel=="effects"?"EFFECTS":panel=="addons"?"SPLIT RENDER":panel=="hdr"?"HDR":panel=="overview"?"SESSION":panel=="processing"?"NEURAL RENDERING":panel=="passes"?"PASS TUNING":panel=="look"?"LOOK &amp; DETAIL":panel=="frame"?"FRAME GENERATION":"PROCESSING";
         Element("inspector-title")->SetInnerRML(std::string("<img class=\"glyph\" src=\"icons/")+icon+"-light.png\"/><span>"+title+"</span>");
@@ -828,7 +876,7 @@ struct Controller : Rml::EventListener
             if(id=="render-resolution"){Put("work_scale",std::stof(field->GetValue())/100.f);Sync();return;}
             const auto mapping=std::map<std::string,std::string>{{"strength","intensity"},{"detail","detail"},{"colour","colour"},{"tone","tone"},{"model-preset","preset"},{"processing-stage","pre_sr"}};
             if(const auto found=mapping.find(id);found!=mapping.end())Put(found->second,std::stof(field->GetValue()));
-            else if(id.rfind("pass-",0)==0)Put("pass"+std::to_string(pass)+"_"+id.substr(5),std::stof(field->GetValue()));
+            else if(id.rfind("pass-",0)==0)Put(PassPrefix()+id.substr(5),std::stof(field->GetValue()));
             else if(id=="presets") {
                 const auto name=field->GetValue();auto before=values;
                 if(presets.contains(name))values=presets.at(name);
@@ -889,7 +937,7 @@ struct Controller : Rml::EventListener
             else if(id=="side-left"||id=="side-right")PanelSide(id.substr(5));
             else if(id=="bar-top"||id=="bar-bottom")BarEdge(id.substr(4));
             else if(id.rfind("layout-",0)==0)Layout(id.substr(7));
-            else if(id=="nav-overview"||id=="nav-frame"||id=="nav-neural"||id=="nav-hdr"||id=="nav-effects"||id=="nav-look"||id=="nav-passes") {Settings(false);Page(id);}
+            else if(id=="nav-overview"||id=="nav-frame"||id=="nav-neural"||id=="nav-hdr"||id=="nav-effects"||id=="nav-look"||id=="nav-passes"||id=="nav-addons") {Settings(false);Page(id);}
             else if(id=="open-addons")Open("addons");
             else if(id=="open-effects"){if(layout=="centered"){Settings(false);Page("nav-effects");}else Open("effects");}
             else if(id=="open-hdr"){if(layout=="centered"){Settings(false);Page("nav-hdr");}else Open("hdr");}
@@ -901,9 +949,9 @@ struct Controller : Rml::EventListener
             else if(id=="open-passes")Open("passes");else if(id=="open-look")Open("look");
             else if(id=="open-session")Open("overview");
             else if(id=="open-processing")Open("processing");else if(id=="open-frame-options")Open("frame");
-            else if(id=="inspector-close") {Visible("inspector",false);Visible("overview",true);if(layout=="centered")Page(inspectorPanel=="look"||inspectorPanel=="passes"?"nav-neural":"nav-overview");Element("inspector")->SetClass("opening",false);}
+            else if(id=="inspector-close") {Visible("inspector",false);Visible("overview",true);if(layout=="centered")Page(inspectorPanel=="look"||inspectorPanel=="passes"||inspectorPanel=="addons"?"nav-neural":"nav-overview");Element("inspector")->SetClass("opening",false);}
             else if(id=="pass-2" || id=="pass-3" || id=="pass-4")pass=id.back()-'0';
-            else if(id=="inherit")Put("pass"+std::to_string(pass)+"_inherit",values["pass"+std::to_string(pass)+"_inherit"] ? 0.f:1.f);
+            else if(id=="inherit"){const auto key=PassPrefix()+"inherit";Put(key,values[key]?0.f:1.f);}
             else if(id=="nr-toggle") {Put("enabled",values["enabled"] ? 0.f:1.f);Notify(values["enabled"]?(preview?"Neural rendering on · Preview":"Neural rendering on"):(preview?"Neural rendering off · Preview":"Neural rendering off"),"cpu");}
             else if(id=="mfg-toggle")Put("mfg_enabled",values["mfg_enabled"] ? 0.f:1.f);
             else if(id=="undo")values=edits.Undo(values);else if(id=="redo")values=edits.Redo(values);
@@ -914,9 +962,21 @@ struct Controller : Rml::EventListener
             else if(id=="save-confirm"&&savePreset){const auto name=dynamic_cast<Rml::ElementFormControl*>(Element("preset-name"))->GetValue();if(name.empty()||name.size()>60)Message(name.empty()?"Name your preset.":"Use a shorter preset name.");else if(savePreset(name)){Visible("save-sheet",false);Message("Saving preset…");}else Message("The helper is busy. Try saving again.");}
             else if(id=="save") {const auto name=dynamic_cast<Rml::ElementFormControl*>(Element("presets"))->GetValue();presets[name]=values;edits.saved=values;Message("Session preset saved in memory · game settings unchanged");Notify("Preset saved · Preview","floppy-disk");}
             else if(id=="reset-inspector" && inspectorPanel=="hdr"){if(hdr.available)hdr.Reset();}
-            else if(id=="reset-inspector") {auto before=values;for(auto& [key,value]:values){bool reset=inspectorPanel=="look"?(key=="detail"||key=="colour"||key=="tone"):inspectorPanel=="passes" && key.rfind("pass"+std::to_string(pass)+"_",0)==0;for(const auto& control:ExtraControls)if(key==control.key && std::string(control.page)==(inspectorPanel=="processing"?"neural":inspectorPanel=="frame"?"frame":inspectorPanel=="look"?"look":""))reset=true;if(reset)value=defaults.at(key);}edits.Record(before,values);}
+            else if(id=="reset-inspector") {
+                const auto before=values;
+                const auto passPrefix=PassPrefix();
+                const bool resetPass=inspectorPanel=="passes"||(FeederSplitActive()&&values["passes"]>=2);
+                const std::string page=inspectorPanel=="processing"?"neural":inspectorPanel=="frame"?"frame":inspectorPanel=="look"?"look":"";
+                for(auto& [key,value]:values) {
+                    bool reset=inspectorPanel=="look"&&(key=="detail"||key=="colour"||key=="tone");
+                    reset|=resetPass&&key.starts_with(passPrefix);
+                    for(const auto& control:ExtraControls)if(key==control.key&&page==control.page)reset=true;
+                    if(reset)value=defaults.at(key);
+                }
+                edits.Record(before,values);
+            }
             else if(id.rfind("style-",0)==0)Put("style",id=="style-default" ? 0.f:id=="style-natural" ? 1.f:2.f);
-            else if(id.rfind("pass-style-",0)==0)Put("pass"+std::to_string(pass)+"_style",id=="pass-style-default" ? 0.f:id=="pass-style-natural" ? 1.f:2.f);
+            else if(id.rfind("pass-style-",0)==0)Put(PassPrefix()+"style",id=="pass-style-default" ? 0.f:id=="pass-style-natural" ? 1.f:2.f);
             else if(id.rfind("ratio-",0)==0)Put("multiplier",float(std::stoi(id.substr(6))));
             else if(id.rfind("status-",0)==0)Message("Sample status indicators · no live game telemetry");
             else if(id.rfind("mode-",0)==0) {auto before=values;values["multiplier"]=id=="mode-auto" ? -1.f:2.f;values["dynamic_mfg"]=id=="mode-dynamic" ? 1.f:0.f;edits.Record(before,values);}

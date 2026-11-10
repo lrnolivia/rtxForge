@@ -338,6 +338,71 @@ static void TestLayout(Controller& c,Rml::Context* context)
     c.overlayScale=originalScale;c.copySize=originalCopy;c.values=originalValues;context->SetDimensions(originalView);c.Typography();c.Layout("floating");c.Sync();c.Visible("welcome",false);settle();
     std::cout<<"native_layout_matrix_checks=passed cases=54\n";
 }
+static void TestSplitRender(Controller& c,Rml::Context* context)
+{
+    const auto savedValues=c.values;
+    const auto savedEdits=c.edits;
+    const auto savedPass=c.pass;
+    const auto savedLayout=c.layout;
+    const auto savedNavigation=c.activeNavigation;
+    const auto savedHistory=c.navigationHistory;
+    auto activate=[&](const char* id) {
+        auto* element=c.Element(id);
+        context->Update();
+        if(!element->IsVisible(true))throw std::runtime_error(std::string("Split Render control is hidden: ")+id);
+        element->DispatchEvent("click",{});
+        context->Update();
+    };
+    c.Layout("centered");
+    c.addons.Set({{"character_resolution_scale","Resolution scale","Character detail · ShortFuse",
+        "slider","","%",25,100,1,100,74,false,false}},true,"Changes apply after the game restarts.");
+    c.RefreshSplitRenderEntry();
+    activate("nav-addons");
+    Require(c.Element("addon-character_resolution_scale")->IsVisible(true)&&!c.Element("reset-inspector")->IsVisible(true),
+        "Advanced Split Render did not open the installed add-on settings");
+    c.addons.Set({},false,"");
+    c.RefreshSplitRenderEntry();
+    context->Update();
+    Require(!c.Element("nav-addons")->IsVisible(true),"An unsupported game exposed Split Render");
+
+    c.values["passes"]=1;
+    c.SetFeederSplitRender(true);
+    activate("nav-addons");
+    Require(c.Element("feeder-split-context")->IsVisible(true)&&!c.Element("pass-fields")->IsVisible(true),
+        "A one-pass Feeder session did not show the setup guidance");
+    c.values["passes"]=3;
+    c.values["pass2_inherit"]=1;
+    c.pass=3;
+    c.Sync();
+    context->Update();
+    Require(c.Element("pass-fields")->IsVisible(true)&&!c.Element("pass-tabs")->IsVisible(true)&&c.PassPrefix()=="pass2_",
+        "Feeder Split Render did not focus on Pass 2");
+    auto* skin=dynamic_cast<Rml::ElementFormControl*>(c.Element("pass-skin"));
+    Require(skin->IsDisabled(),"Pass 2 ignored Use main settings");
+    activate("inherit");
+    skin->SetValue("0.75");
+    skin->DispatchEvent("change",{});
+    Require(c.values["pass2_inherit"]==0&&c.values["pass2_skin"]==.75f&&c.values["pass3_skin"]==savedValues.at("pass3_skin"),
+        "Split Render did not edit the same independent Pass 2 values");
+    activate("nav-passes");
+    Require(c.Element("pass-tabs")->IsVisible(true)&&c.PassPrefix()=="pass3_","Pass tuning lost its prior selection");
+    for(const auto* mode:{"floating","bar"}) {
+        c.Layout(mode);
+        c.Page("nav-neural");
+        activate("open-addons");
+        Require(c.FeederSplitActive()&&c.Element("pass-inspector")->IsVisible(true),"Feeder Split Render entry did not open");
+        Require(c.inspectorAnchored==(c.layout=="bar"),"Bar Split Render did not attach to its entry");
+    }
+    c.SetFeederSplitRender(false);
+    c.values=savedValues;
+    c.edits=savedEdits;
+    c.pass=savedPass;
+    c.Layout(savedLayout);
+    c.Page(savedNavigation);
+    c.navigationHistory=savedHistory;
+    c.Sync();
+    std::cout<<"native_split_render_routes=passed\n";
+}
 static void TestController(Controller& c,Rml::Context* context)
 {
     for(const auto& scene:ScenePresets){const auto a=PreviewSession(c,scene.app,2560,1440,0),b=PreviewSession(c,scene.app,2560,1440,1);Require(a.nrRunning&&a.fgRunning&&a.framesKnown&&a.nrWidth>0&&a.nrHeight>0&&a.displayedFps>a.gameFps&&a.gameFps!=b.gameFps,"A preview scene lost its animated sample activity");}
@@ -629,7 +694,10 @@ int wmain(int argc,wchar_t** argv)
             if(closed)break;if(window && controller.prefsDirty && system.GetElapsedTime()-lastPreferences>.5){controller.SavePreferences();lastPreferences=system.GetElapsedTime();}
             if(window && system.GetElapsedTime()>nextStyleCheck) {nextStyleCheck=system.GetElapsedTime()+.5;const auto stamp=fs::last_write_time(assets/L"overlay.rcss");if(stamp!=lastStyle){document->ReloadStyleSheet();lastStyle=stamp;}}
             if(!output.empty())system.frameTime=frames/60.;
-            if((layoutTest||selfTest)&&frames==8)TestLayout(controller,context);
+            if((layoutTest||selfTest)&&frames==8){
+                TestLayout(controller,context);
+                TestSplitRender(controller,context);
+            }
             if(selfTest && frames==8){TestPreviewPicker(controller,context);TestController(controller,context);TestPreviewWindow(document);}
             controller.PollColorPick();
             if(controller.sceneRequest>=0&&!library.names.empty()){library.Choose(controller.sceneRequest);controller.sceneRequest=-1;document->QuerySelector(".preview-label")->SetInnerRML("Loading…");}

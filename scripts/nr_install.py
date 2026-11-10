@@ -64,6 +64,14 @@ def _read_receipt(root, path):
     return record
 
 
+def catalog_view(config, row=None):
+    catalog = nr_addons.catalog_view(config, row)
+    if catalog.get('blocked') == nr_addons.FEEDER_SPLIT_RENDER_BLOCK:
+        import feeder_character
+        catalog['feeder_character'] = feeder_character.snapshot(config, row)
+    return catalog
+
+
 def status(row):
     try:
         root = t.safe(row['game']); path = _receipt(row)

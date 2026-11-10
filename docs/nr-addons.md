@@ -80,6 +80,10 @@ verified before use.
   so it cannot use the inputs Feeder supplies to its own RenoDX renderer. For
   a second pass in a Feeder game, open the in-game NR panel and set **Passes**
   to 2. Open **Pass 2**, turn off **Use main settings**, and adjust **Skin detail**.
+  On a verified Feeder installation, **Tools → Split Render** shows the main
+  and character passes and prefills Skin detail. **Apply character detail**
+  saves those settings for the next launch. The main pass keeps its tuning,
+  and setups with more than two passes keep their pass count.
 - **Another tool's files are kept.** rtxForge refuses the install rather than
   replace them.
 

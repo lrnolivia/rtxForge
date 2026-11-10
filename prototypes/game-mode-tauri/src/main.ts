@@ -90,7 +90,7 @@ let splitPackageOpen = false, splitQuery = '', splitMatchRevision = 0, splitMatc
 const splitSelected = new Set<string>();
 let splitMatches = new Map<string, { row: EngineRow; summary: string }>();
 let splitTool: { game: string; row: EngineRow; catalog: Catalog; picker: Picker; installed: boolean; installedText: string;
-  checked: boolean; reason: string; verdict: string; revision: number; name: string; busy: boolean } | undefined;
+  checked: boolean; reason: string; verdict: string; revision: number; name: string; busy: boolean; feederSkin?: number; feederMessage?: string } | undefined;
 let splitToolError = '';
 let libraryFilter = 'all', libraryChecking = false, libraryMode: string | undefined;
 
@@ -841,13 +841,55 @@ async function reviewNrPackage() {
   if (!splitMatching && choice && rows.length && view === 'packages')
     await withOperation('Review Split Render', 'nr_review', { rows, choice });
 }
+function feederCharacterCard(tool: NonNullable<typeof splitTool>) {
+  const settings = tool.catalog.feeder_character;
+  if (!settings?.available) return `<p role="status">${e(tool.catalog.blocked)} ${e(settings?.reason || '')}</p>`;
+  const proposed = tool.feederSkin ?? settings.target_skin;
+  const canApply = !tool.busy && !settings.reason && (settings.changes || settings.skin === null || Math.abs(proposed - settings.skin) > .005);
+  const passes = settings.passes === settings.target_passes ? settings.passes : `${settings.passes} → ${settings.target_passes}`;
+  const notice = settings.nr_enabled ? 'Saves to ReShade.ini for the next launch.' :
+    'Saves for the next launch. Enable NR in the in-game Feeder panel to see the effect.';
+  return `<p>ShortFuse requires native DLSS. Use Feeder NR’s second pass to tune character detail with the existing setup.</p>
+    <ol class="feeder-passes">
+      <li><strong>Pass 1 · Environment</strong><small>Keeps the main pass and its current tuning.</small></li>
+      <li><strong>Pass 2 · Character detail</strong><small>Passes · ${e(passes)}. Use main settings · ${settings.inherit ? 'On → Off' : 'Off'}.</small></li>
+    </ol>
+    <label class="field feeder-skin" for="feeder-skin"><span><strong>Skin detail</strong>
+      <small>Current · ${settings.skin === null ? 'Default' : e(settings.skin.toFixed(2))} / Proposed · <output id="feeder-skin-output">${e(proposed.toFixed(2))}</output></small></span>
+      <input id="feeder-skin" type="range" min="-1" max="1" step=".01" value="${e(proposed)}" ${tool.busy ? 'disabled' : ''}></label>
+    <p class="subtle" role="status">${e(tool.feederMessage || settings.reason || notice)}</p>
+    <button class="primary" data-action="feeder-character-apply" ${canApply ? '' : 'disabled'}>Apply character detail</button>`;
+}
+async function applyFeederCharacter() {
+  const tool = splitTool, settings = tool?.catalog.feeder_character;
+  if (!tool || !settings?.available || tool.busy || settings.reason) return;
+  tool.busy = true;
+  tool.feederMessage = 'Saving Pass 2…';
+  render();
+  try {
+    const result = await engineRequest<{message: string}>('feeder_character_apply', {
+      row: tool.row, stamp: settings.stamp, skin: tool.feederSkin ?? settings.target_skin,
+    });
+    const game = selectedGame();
+    if (view === 'details' && detailsSection === 'tools' && game?.id === tool.game) {
+      await loadSplitTool(game);
+      if (splitTool?.game === tool.game) splitTool.feederMessage = result.message;
+    }
+    announce(result.message);
+  } catch (problem) {
+    tool.feederMessage = problem instanceof Error ? problem.message : 'Could not save character detail.';
+  } finally {
+    tool.busy = false;
+    if (view === 'details' && detailsSection === 'tools' && selectedId === tool.game) render();
+  }
+}
 function splitToolCard(game: Game) {
   const tool = splitTool?.game === game.id ? splitTool : undefined;
   return `<section class="glass-section split-section"><h2>${icon('sliders')} Split Render</h2><p>${e(splitRenderDescription)}</p>
     ${!backend.enabled ? '' : !tool ? `<p role="status">${e(splitToolError || 'Checking this game…')}</p>` :
       tool.installed ? `<p role="status">${e(tool.installedText)}</p>
       <button class="quiet" data-action="split-tool-remove" ${tool.busy ? 'disabled' : ''}>Remove Split Render</button>` :
-      tool.catalog.blocked ? `<p role="status">${e(tool.catalog.blocked)}</p>` :
+      tool.catalog.blocked ? feederCharacterCard(tool) :
       `<p class="subtle">Not installed in this game.</p>${splitPicker(tool.catalog, tool.picker, 'tools', true)}
       <p role="status">${e(tool.reason || (tool.checked ? tool.verdict : 'Checking compatibility…'))}</p>
       <div class="operation-actions"><button class="primary" data-action="split-tool-install" ${tool.checked && !tool.reason && !tool.busy ? '' : 'disabled'}>Review Split Render</button>
@@ -1243,6 +1285,16 @@ function bindSplitRender() {
     else splitSelected.delete(id);
     render();
   }));
+  app.querySelector<HTMLInputElement>('#feeder-skin')?.addEventListener('input', event => {
+    const tool = splitTool, settings = tool?.catalog.feeder_character;
+    if (!tool || !settings?.available) return;
+    tool.feederSkin = (event.target as HTMLInputElement).valueAsNumber;
+    const output = app.querySelector<HTMLOutputElement>('#feeder-skin-output');
+    if (output) output.value = tool.feederSkin.toFixed(2);
+    const apply = app.querySelector<HTMLButtonElement>('[data-action="feeder-character-apply"]');
+    if (apply) apply.disabled = tool.busy || !!settings.reason ||
+      (!settings.changes && settings.skin !== null && Math.abs(tool.feederSkin - settings.skin) <= .005);
+  });
   app.querySelector<HTMLInputElement>('#split-preset-name')?.addEventListener('input', event => {
     if (splitTool) splitTool.name = (event.target as HTMLInputElement).value;
   });
@@ -1444,6 +1496,7 @@ function action(name: string) {
   if (name === 'split-select-all') { for (const game of visibleSplitGames()) splitSelected.add(game.id); render(); }
   if (name === 'split-clear') { splitSelected.clear(); render(); }
   if (name.startsWith('split-tool-')) void applySplitTool(name);
+  if (name === 'feeder-character-apply') void applyFeederCharacter();
   if (name === 'operation-back') { const origin = operation?.origin || 'details'; operation = null; pendingInstall=null; setView(origin); }
   if (name === 'discard-review') void discardReview();
   if (name === 'cancel-operation' && operation?.review){const state=operation;state.cancelRequested=true;render();void engineRequest(state.execute==='execute_routes'?'cancel_routes':'cancel',{token:state.review!.token}).then(()=>announce('Cancellation requested. The engine will stop at a safe boundary.')).catch(problem=>{state.cancelRequested=false;render();announce(String(problem));});}

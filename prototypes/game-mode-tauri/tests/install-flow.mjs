@@ -3,7 +3,7 @@ import {chromium,expect} from '@playwright/test';
 const browser=await chromium.launch({...(process.env.RTXFORGE_BROWSER?{channel:process.env.RTXFORGE_BROWSER}:{}),headless:true});
 const page=await browser.newPage({viewport:{width:1440,height:990},reducedMotion:'reduce'}),calls=[],errors=[];
 page.on('pageerror',error=>errors.push(error.message));
-let source,prepareRelease,executeRelease,splitRelease,progressId,mode='ready',installed=false,splitInstalled=false;
+let source,prepareRelease,executeRelease,splitRelease,progressId,mode='ready',installed=false,splitInstalled=false,feederMode=false,feederSaved=false;
 await page.addInitScript(()=>{window.fixtureEvents=[];window.EventSource=class{constructor(){window.fixtureEvents.push(this);queueMicrotask(()=>this.onopen?.());}close(){this.onmessage=null;}};});
 await page.route('**/api/snapshot',async route=>{const response=await route.fetch();source=process.env.RTXFORGE_UI_FIXTURE?libraryFixture():await response.json();source.games=source.games.slice(0,3);source.defaults.runtime_provider='skynizz';source.defaults.default_profile='nr-mfg';await route.fulfill({json:source});});
 await page.route('**/api/engine/status',route=>route.fulfill({json:{enabled:true,reason:'Fixture only; no files changed.'}}));
@@ -14,8 +14,13 @@ await page.route('**/api/engine',async route=>{
   addons:[{id:'lecram',name:'Lecram',builds:[{id:'10.8',label:'10.8',default:true}]},{id:'shortfuse',name:'ShortFuse',builds:[{id:'1.0',label:'1.0',default:true},{id:'2.0',label:'2.0'}]}],
   models:[{id:'old',label:'Old DLSS 5 (310.8)'},{id:'new',label:'New DLSS 5 (310.9.16)'}],
   combos:{'characters-and-world':{name:'Characters + world',builtin:true,character:{addon:'shortfuse',model:'new'}}},
-  runtime_nr:request.params.row?{id:'optiscaler',name:'Skynizz'}:null
+  runtime_nr:request.params.row&&!feederMode?{id:'optiscaler',name:'Skynizz'}:null,
+  ...(feederMode&&request.params.row?{blocked:'Feeder NR provides the environment.',feeder_character:{
+    available:true,stamp:'fixture-ini-stamp',passes:feederSaved?2:1,target_passes:2,inherit:!feederSaved,
+    skin:feederSaved ? .5 : null,target_skin:.5,nr_enabled:true,changes:!feederSaved
+  }}:{})
  };
+ else if(request.method==='feeder_character_apply'){feederSaved=true;result={message:'Character detail saved for the next launch.'};}
  else if(request.method==='nr_match')result=request.params.choice.model==='old'?[]:request.params.rows.slice(0,2).map((_,index)=>({index,summary:'Environment: Lecram · Model: 310.9.16'}));
  else if(request.method==='nr_status')result={installed:splitInstalled,setup:splitInstalled?{environment:{addon:'optiscaler'},character:{addon:'shortfuse'}}:undefined};
  else if(request.method==='nr_check')result={ok:true,verified:true};
@@ -104,7 +109,14 @@ try{
  await expect(page.getByText('Installed · Environment: Skynizz · Character detail: ShortFuse · DLSS 5 model shared with Skynizz')).toBeVisible();
  await click('Remove Split Render');await expect(page.getByRole('heading',{name:'Remove Split Render',exact:true})).toBeVisible();
  expect(calls.filter(c=>c.method==='nr_review').at(-1).params.remove).toBe(true);await click('Back');
+ splitInstalled=false;feederMode=true;await click('Overview');await click('Tools');
+ await expect(page.getByText('Pass 2 · Character detail',{exact:true})).toBeVisible();
+ await expect(page.locator('#feeder-skin')).toHaveValue('0.5');
+ await click('Apply character detail');
+ expect(calls.find(c=>c.method==='feeder_character_apply').params).toMatchObject({row:{game:source.games[0].path},stamp:'fixture-ini-stamp',skin:.5});
+ await expect(page.getByRole('button',{name:'Apply character detail',exact:true})).toBeDisabled();
+ await expect(page.locator('.operation-modal')).toHaveCount(0);
  mode='ready';installed=true;await page.reload();await page.locator('.game-card').first().click();await click('Restore Original Files');await expect(page.getByRole('button',{name:'Restore files',exact:true})).toBeVisible();await screenshot('restore');await click('Back');
  await expect.poll(()=>calls.filter(c=>c.method==='discard_routes').at(-1)?.params.tokens).toEqual(['exact-install-review']);
- expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['startup before preparation','original runtime units and exact targets','responsive startup controls','checking/progress/results with artwork','real progress events preserve Cancel focus','trust gates and explicit supported subsets','exact cancel/discard tokens','honest cancellation and failure','Split Render reviewed before one install run','compatibility filtering and bulk controls in Packages','per-game Tools review without selection checkboxes','restore review','fixture-only no game mutation']}));
+ expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['startup before preparation','original runtime units and exact targets','responsive startup controls','checking/progress/results with artwork','real progress events preserve Cancel focus','trust gates and explicit supported subsets','exact cancel/discard tokens','honest cancellation and failure','Split Render reviewed before one install run','compatibility filtering and bulk controls in Packages','per-game Tools review without selection checkboxes','prefilled Feeder Pass 2 applies in one click','restore review','fixture-only no game mutation']}));
 }finally{prepareRelease?.();executeRelease?.();splitRelease?.();await browser.close();}

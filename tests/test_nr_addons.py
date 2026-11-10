@@ -95,7 +95,7 @@ class NrAddonTests(unittest.TestCase):
         result = nr.check(game, setup)
         self.assertFalse(result['ok'])
         self.assertIn('ShortFuse requires native DLSS hooks', result['reason'])
-        self.assertIn('Passes to 2', result['reason'])
+        self.assertIn('any of its four full-frame passes', result['reason'])
 
     def test_feeder_guidance_uses_live_hooks_even_when_the_library_row_is_stale(self):
         from unittest import mock
@@ -109,7 +109,7 @@ class NrAddonTests(unittest.TestCase):
             result = nr.check(row, nr.builtin_combos()['characters-and-world'])
             self.assertFalse(result['ok'])
             self.assertEqual(result['reason'], catalog['blocked'])
-            for instruction in ('Passes to 2', 'Pass 2', 'Use main settings', 'Skin detail'):
+            for instruction in ('native DLSS hooks', 'Character mask', 'four full-frame passes'):
                 self.assertIn(instruction, result['reason'])
 
     def test_picker_refuses_an_occupied_addon_before_install_review(self):
@@ -167,6 +167,22 @@ class NrAddonTests(unittest.TestCase):
         self.assertEqual(plan['ini']['RENODX-DLSS'], {'DirectNeuralRenderingIntensity': 1.0})
         for key in plan['ini']['RENODX-DLSS']:
             self.assertTrue(re.fullmatch(r'DirectNeuralRendering[A-Za-z]+', key), key)
+
+    def test_preset_editor_uses_the_package_to_choose_roles_and_providers(self):
+        from unittest import mock
+        with mock.patch.object(nr, 'saved_combos', return_value={}):
+            native = nr.preset_catalog({}, 'native')
+            self.assertIsNone(native['runtime_nr'])
+            self.assertIn('lecram', {addon['id'] for addon in native['addons']})
+            skynizz = nr.preset_catalog({}, 'skynizz')
+            self.assertEqual(skynizz['runtime_nr']['name'], 'Skynizz')
+            self.assertEqual({addon['id'] for addon in skynizz['addons']}, {'shortfuse'})
+            self.assertEqual(skynizz['combos']['characters-and-world']['environment'], {'addon': 'optiscaler'})
+            mfg = nr.preset_catalog({}, 'skynizz-mfg')
+            self.assertIsNone(mfg['runtime_nr'])
+            self.assertNotIn('lecram', {addon['id'] for addon in mfg['addons']})
+            self.assertFalse(nr.preset_check('skynizz-mfg', {'environment': {'addon': 'lecram'}})['ok'])
+            self.assertIn('Character mask', nr.preset_catalog({}, 'feeder')['blocked'])
 
     def test_saved_combos_are_shared_validated_and_deletable(self):
         import tempfile

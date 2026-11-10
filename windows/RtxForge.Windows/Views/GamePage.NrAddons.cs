@@ -7,75 +7,102 @@ using RtxForge.Windows.Services;
 
 namespace RtxForge.Windows.Views;
 
-/// <summary>Tools › Split Render: Environment and Character each take the add-on the user picks
-/// (Lecram, ShortFuse or GITC Uplift), a pinned build and the Old or New model. Where Skynizz runs
-/// NR, Skynizz is the Environment. Combos fill both slots; every change is checked against this
-/// game before Install is offered.</summary>
+/// <summary>Review and install a Split Render preset for this game, or adjust its Feeder pass roles.</summary>
 public sealed partial class GamePage
 {
-    void ShowFeederCharacter(Game g, EngineForgeService engine, PreferencesGroup group, Border status,
-        JsonObject settings, string guide)
+    void ShowFeederCharacter(Game g, EngineForgeService engine, PreferencesGroup group, JsonObject settings)
     {
+        var passes = new PreferencesGroup("Feeder NR passes",
+            "Each pass processes the whole frame. Character turns on the mask so Skin detail can affect detected people.");
+        group.Root.Children.Clear();
+        group.Root.Children.Add(passes.Root);
         if (settings["available"]?.GetValue<bool>() != true)
         {
-            SetSubtitle(status, guide + "\n" + settings["reason"]?.GetValue<string>());
+            passes.Add(Prefs.Row("Pass roles", settings["reason"]?.GetValue<string>() ?? ""));
             return;
         }
 
-        SetSubtitle(status, "ShortFuse requires native DLSS. Use Feeder NR’s second pass to tune character detail with the existing setup.");
-        group.Add(Prefs.Row("Pass 1 · Environment", "Feeder NR keeps the main pass and its current tuning.", glyph: "\uE81E"));
-        var passes = settings["passes"]!.GetValue<int>();
-        var target = settings["target_passes"]!.GetValue<int>();
-        group.Add(Prefs.Row("Pass 2 · Character detail", passes == target ? $"Passes · {passes}"
-            : $"Passes · {passes} → {target}", glyph: "\uE77B"));
-        var inherit = settings["inherit"]!.GetValue<bool>();
-        group.Add(Prefs.Row("Use main settings", inherit ? "On → Off · Tune Pass 2 independently." : "Off · Pass 2 has its own settings."));
-        var savedSkin = settings["skin"]?.GetValue<double>();
-        var slider = new Slider { Minimum = -1, Maximum = 1, StepFrequency = .01, MinWidth = 180,
-            Value = settings["target_skin"]!.GetValue<double>(), IsEnabled = !shell.Service.IsPreview };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, "Pass 2 Skin detail");
-        var skin = group.Add(Prefs.Row("Skin detail", "", slider));
+        var current = settings["passes"]!.GetValue<int>();
+        var options = ((JsonArray)settings["options"]!).OfType<JsonObject>().ToArray();
+        var (passRow, passChoice) = Prefs.ComboRow("Pass", $"{current} of {options.Length} full-frame passes configured.",
+            options.Select(option => $"Pass {option["number"]!.GetValue<int>()}").ToArray(), 0);
+        var (roleRow, roleChoice) = Prefs.ComboRow("Role", "", ["Standard", "Character"], 0);
+        var slider = new Slider { Minimum = -1, Maximum = 1, StepFrequency = .01, MinWidth = 180 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, "Skin detail for the selected pass");
+        var skinRow = Prefs.Row("Skin detail", "", slider);
+        passes.Add(passRow);
+        passes.Add(roleRow);
+        passes.Add(skinRow);
+
         var blocked = settings["reason"]?.GetValue<string>();
-        var needsChanges = settings["changes"]!.GetValue<bool>();
         var busy = false;
-        var note = settings["nr_enabled"]!.GetValue<bool>() ? "Saves to ReShade.ini for the next launch."
-            : "Saves for the next launch. NR is off in the saved setup. Enable it in the in-game Feeder panel.";
         var apply = new Button
         {
-            Content = "Apply character detail", Style = Prefs.GetStyle("AccentButtonStyle"),
+            Content = "Save pass role", Style = Prefs.GetStyle("AccentButtonStyle"),
             HorizontalAlignment = HorizontalAlignment.Right, MinHeight = 32, Padding = new Thickness(12, 6, 12, 6),
         };
-        var action = group.Add(Prefs.Row("Save character detail", blocked ?? note, apply, "\uE74E"));
+        var action = passes.Add(Prefs.Row("Apply next launch", "", apply, "\uE74E"));
+        JsonObject Selected() => options[passChoice.SelectedIndex];
+        double Skin() => slider.Value < 0 ? -1 : slider.Value;
+        bool Changed(JsonObject option, int number, bool character) => number > current ||
+            character != option["character"]!.GetValue<bool>() ||
+            (character && Math.Abs(Skin() - option["skin"]!.GetValue<double>()) > .005);
+
+        void Refresh()
+        {
+            var option = Selected();
+            var number = option["number"]!.GetValue<int>();
+            var character = roleChoice.SelectedIndex == 1;
+            var available = !busy && !shell.Busy && !shell.Service.IsPreview && blocked is null;
+            var roleChanged = character != option["character"]!.GetValue<bool>();
+            var skinChanged = character && Math.Abs(Skin() - option["skin"]!.GetValue<double>()) > .005;
+            SetSubtitle(roleRow, option["inherited"]!.GetValue<bool>() && (roleChanged || skinChanged)
+                ? "Copies the main pass’s model settings before assigning this pass its own settings."
+                : number == 1 ? "Passes that follow the main settings also use this role." : "");
+            SetSubtitle(skinRow, Skin() < 0 ? "Stock" : $"Selected · {Skin():0.00}");
+            skinRow.Visibility = character ? Visibility.Visible : Visibility.Collapsed;
+            SetSubtitle(action, blocked ?? (number > current
+                ? $"Full-frame passes · {current} → {number}. Extra passes can lower frame rate."
+                : "Saves the selected pass settings for the next launch."));
+            passChoice.IsEnabled = roleChoice.IsEnabled = slider.IsEnabled = available;
+            apply.IsEnabled = available && Changed(option, number, character);
+        }
+        void SelectPass()
+        {
+            var option = Selected();
+            roleChoice.SelectedIndex = option["character"]!.GetValue<bool>() ? 1 : 0;
+            slider.Value = option["skin"]!.GetValue<double>();
+            Refresh();
+        }
+        passChoice.SelectionChanged += (_, _) => SelectPass();
+        roleChoice.SelectionChanged += (_, _) => Refresh();
+        slider.ValueChanged += (_, _) => Refresh();
         apply.Click += async (_, _) =>
         {
             if (busy || shell.Busy) return;
+            var number = Selected()["number"]!.GetValue<int>();
+            var character = roleChoice.SelectedIndex == 1;
             busy = true;
             Refresh();
-            SetSubtitle(action, "Saving Pass 2…");
+            SetSubtitle(action, $"Saving Pass {number}…");
             try
             {
-                var result = await engine.ApplyFeederCharacterAsync(g, settings["stamp"]!.GetValue<string>(), slider.Value);
+                var result = await engine.ApplyFeederCharacterAsync(g, settings["stamp"]!.GetValue<string>(),
+                    number, character, character ? Skin() : null);
                 shell.ShowToast(result);
                 if (g == game && section == "Tools") Build("Tools");
             }
             catch (Exception error) when (error is IOException or InvalidOperationException or UnauthorizedAccessException)
             {
+                busy = false;
+                Refresh();
                 SetSubtitle(action, error.Message);
             }
-            finally { busy = false; Refresh(); }
+            finally { busy = false; }
         };
-        void Refresh()
-        {
-            SetSubtitle(skin, $"Current · {(savedSkin is double value ? value.ToString("0.00") : "Default")}   /   Proposed · {slider.Value:0.00}");
-            slider.IsEnabled = !busy && !shell.Service.IsPreview;
-            apply.IsEnabled = !busy && !shell.Busy && !shell.Service.IsPreview && blocked is null
-                && (needsChanges || savedSkin is not double before || Math.Abs(before - slider.Value) > .005);
-        }
-        slider.ValueChanged += (_, _) => Refresh();
-        Refresh();
+        SelectPass();
     }
 
-    sealed record NrSlot(ComboBox Addon, ComboBox Build, Border BuildRow, List<JsonObject> Choices, bool Optional);
 
     UIElement NrAddonsGroup(Game g)
     {
@@ -131,167 +158,51 @@ public sealed partial class GamePage
         if (catalog["blocked"]?.GetValue<string>() is { Length: > 0 } reason)
         {
             if (catalog["feeder_character"] is JsonObject feeder && shell.Service is EngineForgeService engine)
-                ShowFeederCharacter(g, engine, group, status, feeder, reason);
+                ShowFeederCharacter(g, engine, group, feeder);
             else
                 SetSubtitle(status, reason);
             return;
         }
 
-        var combos = (catalog["combos"] as JsonObject ?? []).Select(kv => (Id: kv.Key, Combo: kv.Value as JsonObject)).Where(c => c.Combo is not null).ToList();
-        var (comboRow, comboBox) = Prefs.ComboRow("Preset", "Fill both roles from a saved or built-in preset.",
-            ["Choose manually", .. combos.Select(c => (string?)c.Combo!["name"] ?? c.Id)], 0, "");
-        group.Add(comboRow);
-
-        NrSlot MakeSlot(string title, List<JsonObject> choices, bool optional, string glyph)
-        {
-            var (row, addon) = Prefs.ComboRow(title, null, [.. (optional ? new[] { "None" } : []), .. choices.Select(a => (string?)a["name"] ?? "")], 0, glyph);
-            addon.IsEnabled = optional || choices.Count > 1;
-            var build = new ComboBox { MinWidth = 180 };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(build, title + " build");
-            group.Add(row);
-            var buildRow = group.Add(Prefs.Row(title + " build", null, build));
-            return new NrSlot(addon, build, buildRow, choices, optional);
-        }
-        var environment = runtime is null
-            ? MakeSlot("Environment", addons, optional: true, "")
-            : MakeSlot("Environment", [new JsonObject { ["id"] = RuntimeId, ["name"] = world, ["builds"] = new JsonArray() }], optional: false, "");
-        var character = MakeSlot("Character detail", addons, optional: true, "");
-        int ModelIndex(string id) => Math.Max(0, models.FindIndex(item => (string?)item["id"] == id));
-        var model = new RadioButtons { ItemsSource = models.Select(NrSetupPicker.ModelLabel).ToArray(),
-            SelectedIndex = ModelIndex("new"), MaxColumns = 2 };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(model, "DLSS 5 model");
-        group.Add(runtime is null
-            ? Prefs.Row("DLSS 5 model", "Both passes share this model.", model)
-            : Prefs.Row("DLSS 5 model", $"The character pass shares the model installed by {world}."));
-
-        JsonObject? AddonAt(NrSlot slot)
-        {
-            var index = slot.Addon.SelectedIndex - (slot.Optional ? 1 : 0);
-            return index >= 0 && index < slot.Choices.Count ? slot.Choices[index] : null;
-        }
-        int IndexOf(NrSlot slot, string? id)
-        {
-            var index = slot.Choices.FindIndex(a => (string?)a["id"] == id);
-            return index < 0 ? 0 : index + (slot.Optional ? 1 : 0);
-        }
-        void FillBuilds(NrSlot slot, string? selectBuild = null)
-        {
-            var builds = (AddonAt(slot)?["builds"] as JsonArray ?? []).OfType<JsonObject>().ToList();
-            slot.Build.ItemsSource = builds.Select(b => (string?)b["label"] ?? "").ToList();
-            slot.Build.SelectedIndex = Math.Max(0, builds.FindIndex(b => selectBuild is not null ? (string?)b["id"] == selectBuild : b["default"]?.GetValue<bool>() == true));
-            slot.BuildRow.Visibility = builds.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        }
-        JsonObject? Spec(NrSlot slot, JsonObject? values)
-        {
-            var addon = AddonAt(slot);
-            if (addon is null) return null;
-            if ((string?)addon["id"] == RuntimeId) return new JsonObject { ["addon"] = RuntimeId };  // Skynizz brings its own model
-            var builds = (addon["builds"] as JsonArray ?? []).OfType<JsonObject>().ToList();
-            var spec = new JsonObject
-            {
-                ["addon"] = (string?)addon["id"],
-                ["build"] = slot.Build.SelectedIndex >= 0 && slot.Build.SelectedIndex < builds.Count ? (string?)builds[slot.Build.SelectedIndex]["id"] : null,
-                ["model"] = model.SelectedIndex >= 0 ? (string?)models[model.SelectedIndex]["id"] : "new",
-            };
-            if (values is not null) spec["values"] = values.DeepClone();
-            return spec;
-        }
-
-        // Settings carried by the chosen combo, kept only while its add-on stays selected in that slot.
-        JsonObject? envValues = null, charValues = null;
-        string? envValuesFor = null, charValuesFor = null;
+        var combos = (catalog["combos"] as JsonObject ?? []).Select(kv => (Id: kv.Key, Combo: kv.Value as JsonObject))
+            .Where(c => c.Combo is not null).ToList();
+        var (presetRow, preset) = Prefs.ComboRow("Preset", "Create and customize setups in Presets.",
+            ["Recommended for this game", .. combos.Select(c => (string?)c.Combo!["name"] ?? c.Id)], 0, "");
+        group.Add(presetRow);
         JsonObject Setup()
         {
+            var chosen = preset.SelectedIndex > 0 ? combos[preset.SelectedIndex - 1].Combo : current["default"] as JsonObject;
             var setup = new JsonObject();
-            if (Spec(environment, (string?)AddonAt(environment)?["id"] == envValuesFor ? envValues : null) is { } env) setup["environment"] = env;
-            if (Spec(character, (string?)AddonAt(character)?["id"] == charValuesFor ? charValues : null) is { } c) setup["character"] = c;
+            foreach (var role in new[] { "environment", "character" })
+                if (chosen?[role] is JsonObject slot) setup[role] = slot.DeepClone();
             return setup;
         }
 
-        var verdict = group.Add(Prefs.Row("Compatibility", "Choose the passes for this game.", null, ""));
-        var install = Prefs.ActionButton("Review installation", async (_, _) => { await shell.ChangeNrAsync(g, Setup()); Build("Tools"); }, accent: true);
-        var save = Prefs.ActionButton("Save preset…", async (_, _) => await SaveNrComboAsync(Setup()));
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
-        actions.Children.Add(save); actions.Children.Add(install);
-        group.Add(Prefs.Row("Apply to this game", "Review the exact files before anything changes.", actions, ""));
-        install.IsEnabled = false;
-        save.IsEnabled = !shell.Service.IsPreview;
-
+        var install = Prefs.ActionButton("Review installation", async (_, _) =>
+        {
+            await shell.ChangeNrAsync(g, Setup());
+            Build("Tools");
+        }, accent: true);
+        group.Add(Prefs.Row("Install Split Render", "Review what this game will use before installing.", install, ""));
         var checking = 0;
         async Task CheckAsync()
         {
             var ticket = ++checking;
             install.IsEnabled = false;
+            SetSubtitle(status, "Checking compatibility…");
             try
             {
                 var result = await shell.Service.NrCheckAsync(g, Setup());
                 if (ticket != checking || g != game) return;
                 var ok = result["ok"]?.GetValue<bool>() == true;
-                var text = ok
-                    ? (result["optiscaler_nr"]?.GetValue<bool>() == true ? $"{world} covers the environment. " : "")
-                      + (result["verified"]?.GetValue<bool>() == true ? "Available to review." : "Available to review · this pairing is not verified on a test copy yet.")
-                      + ((result["skipped"] as JsonArray ?? []).Count > 0 ? " Some settings aren't verified for this add-on and are left out." : "")
-                    : (string?)result["reason"] ?? "Not available for this game.";
-                SetSubtitle(verdict, text);
+                SetSubtitle(status, ok
+                    ? (result["verified"]?.GetValue<bool>() == true ? "Available to review." : "Available to review · pairing unverified.")
+                    : (string?)result["reason"] ?? "Not available for this game.");
                 install.IsEnabled = ok && !shell.Busy && !shell.Service.IsPreview;
             }
-            catch (InvalidOperationException error) { if (ticket == checking) SetSubtitle(verdict, error.Message); }
+            catch (InvalidOperationException error) { if (ticket == checking) SetSubtitle(status, error.Message); }
         }
-
-        var filling = false;
-        void Changed() { if (!filling) { comboBox.SelectedIndex = 0; _ = CheckAsync(); } }
-        environment.Addon.SelectionChanged += (_, _) => { FillBuilds(environment); Changed(); };
-        character.Addon.SelectionChanged += (_, _) => { FillBuilds(character); Changed(); };
-        foreach (var box in new[] { environment.Build, character.Build })
-            box.SelectionChanged += (_, _) => Changed();
-        model.SelectionChanged += (_, _) => Changed();
-        comboBox.SelectionChanged += (_, _) =>
-        {
-            if (comboBox.SelectedIndex <= 0) return;
-            var combo = combos[comboBox.SelectedIndex - 1].Combo!;
-            filling = true;
-            // The combo as it applies to this game: beside Skynizz, Skynizz is its world.
-            void Apply(NrSlot slot, JsonObject? spec, Action<JsonObject?, string?> keep)
-            {
-                var id = (string?)spec?["addon"];
-                slot.Addon.SelectedIndex = IndexOf(slot, id);
-                FillBuilds(slot, (string?)spec?["build"]);
-                keep(spec?["values"] as JsonObject, id);
-            }
-            Apply(environment, combo["environment"] as JsonObject, (v, id) => { envValues = v; envValuesFor = id; });
-            Apply(character, combo["character"] as JsonObject, (v, id) => { charValues = v; charValuesFor = id; });
-            model.SelectedIndex = ModelIndex((string?)combo["environment"]?["model"] ?? (string?)combo["character"]?["model"] ?? "new");
-            filling = false;
-            _ = CheckAsync();
-        };
-        filling = true;
-        // Starts on Lecram for the environment, or Skynizz with ShortFuse for characters where Skynizz runs NR.
-        var start = current["default"] as JsonObject;
-        foreach (var (slot, key) in new[] { (environment, "environment"), (character, "character") })
-        {
-            slot.Addon.SelectedIndex = IndexOf(slot, (string?)start?[key]?["addon"]);
-            FillBuilds(slot);
-        }
-        filling = false;
-        SetSubtitle(status, "Not installed in this game.");
-        _ = CheckAsync();
-    }
-
-    async Task SaveNrComboAsync(JsonObject setup)
-    {
-        var name = new TextBox { PlaceholderText = "Preset name", MaxLength = 60 };
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot, Title = "Save preset", Content = name, PrimaryButtonText = "Save", CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-        };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(name.Text)) return;
-        try
-        {
-            await shell.Service.SaveNrComboAsync(name.Text.Trim(), setup);
-            shell.ShowToast("Preset saved. It's available for every game.");
-            Build("Tools");
-        }
-        catch (InvalidOperationException error) { shell.ShowToast(error.Message); }
+        preset.SelectionChanged += (_, _) => _ = CheckAsync();
+        await CheckAsync();
     }
 }

@@ -897,7 +897,10 @@ def _run_hdr(plan):
 
 def nr_catalog(params):
     """The add-on catalog; for a row, its combos as they apply there and the world Skynizz provides."""
-    row = (params or {}).get('row')
+    params = params or {}
+    if 'package' in params:
+        return nr_addons.preset_catalog(_config(), params['package'])
+    row = params.get('row')
     catalog = nr_install.catalog_view(_config(), row)
     if row is None:
         catalog['install_choices'] = nr_addons.install_choices(_config())
@@ -906,6 +909,8 @@ def nr_catalog(params):
 
 def nr_check(params):
     """Whether this setup works in this game, without changing anything."""
+    if 'package' in params:
+        return nr_addons.preset_check(params['package'], params['setup'])
     return nr_addons.check(params['row'], params['setup'])
 
 
@@ -917,7 +922,8 @@ def nr_match(params):
 
 def feeder_character_apply(params):
     import feeder_character
-    return feeder_character.apply(_config(), params['row'], params.get('stamp'), params.get('skin'))
+    return feeder_character.apply(_config(), params['row'], params.get('stamp'), params.get('skin'),
+                                  params.get('pass_number', 2), params.get('character', True))
 
 
 def nr_status(params):
@@ -961,7 +967,7 @@ def _run_nr_batch(plan):
 
 
 def nr_combo_save(params):
-    key = nr_addons.save_combo(_config(), params.get('name'), params.get('combo'))
+    key = nr_addons.save_combo(_config(), params.get('name'), params.get('combo'), params.get('package'))
     return {'id': key, 'combos': nr_addons.combos(_config())}
 
 

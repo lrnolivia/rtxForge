@@ -366,28 +366,37 @@ class FeederCharacterTests(unittest.TestCase):
         self.ini.write_bytes(('[RenoDX.DLSS5]\nNeuralUplift=0\nNRIntensity=1.25\nNRStyle=1\n'
                               f'NRPasses={passes}\n{extra}[OTHER]\nKeep=yes\n').encode())
 
-    def test_default_is_prefilled_and_only_pass_two_settings_change(self):
+    def test_main_pass_mask_does_not_add_a_pass_or_prefill_skin(self):
         self.write()
         before = self.ini.read_bytes()
         preview = character.snapshot({}, self.row)
         self.assertEqual(self.ini.read_bytes(), before)
-        self.assertEqual((preview['passes'], preview['target_passes'], preview['target_skin']), (1, 2, .5))
-        character.apply({}, self.row, preview['stamp'], preview['target_skin'])
+        self.assertEqual([option['number'] for option in preview['options']], [1, 2, 3, 4])
+        self.assertEqual(preview['options'][0], {'number': 1, 'inherited': False, 'character': False, 'skin': -1.0})
+        character.apply({}, self.row, preview['stamp'], None, 1, True)
         saved = t.ini(self.ini.read_text(encoding='utf-8'))
         self.assertEqual(dict(saved['RenoDX.DLSS5']), {
-            'NeuralUplift': '0', 'NRIntensity': '1.25', 'NRStyle': '1',
-            'NRPasses': '2', 'NRPass2FollowPass1': '0', 'NRPass2Skin': '0.50',
+            'NeuralUplift': '0', 'NRIntensity': '1.25', 'NRStyle': '1', 'NRPasses': '1', 'NRAutoMask': '1',
         })
         self.assertEqual(saved['OTHER']['Keep'], 'yes')
-        self.assertFalse(character.snapshot({}, self.row)['changes'])
 
-    def test_keeps_extra_passes_and_existing_skin_tuning(self):
-        self.write(4, 'NRPass2FollowPass1=1\nNRPass2Skin=0.72\nNRPass3Skin=0.85\n')
+    def test_pass_four_mask_keeps_inherited_steering_and_other_passes(self):
+        self.write(2, 'NRLocalTone=0.8\nNRLocalStructure=1.1\nNRSkinStructure=0.72\nNRUICorrection=1\nNRPass2Skin=0.85\n')
         preview = character.snapshot({}, self.row)
-        self.assertEqual((preview['target_passes'], preview['target_skin']), (4, .72))
-        character.apply({}, self.row, preview['stamp'], preview['target_skin'])
+        self.assertEqual(preview['options'][3], {'number': 4, 'inherited': True, 'character': False, 'skin': .72})
+        character.apply({}, self.row, preview['stamp'], None, 4, True)
         saved = t.ini(self.ini.read_text(encoding='utf-8'))['RenoDX.DLSS5']
-        self.assertEqual((saved['NRPasses'], saved['NRPass2Skin'], saved['NRPass3Skin']), ('4', '0.72', '0.85'))
+        self.assertEqual(saved['NRPasses'], '4')
+        self.assertEqual(saved['NRPass2Skin'], '0.85')
+        self.assertNotIn('NRAutoMask', saved)
+        self.assertEqual({key: saved[key] for key in saved if key.startswith('NRPass4')}, {
+            'NRPass4Style': '1', 'NRPass4LocalTone': '0.8', 'NRPass4Structure': '1.1',
+            'NRPass4Skin': '0.72', 'NRPass4UICorrection': '1', 'NRPass4FollowPass1': '0', 'NRPass4AutoMask': '1',
+        })
+        preview = character.snapshot({}, self.row)
+        character.apply({}, self.row, preview['stamp'], None, 4, False)
+        saved = t.ini(self.ini.read_text(encoding='utf-8'))['RenoDX.DLSS5']
+        self.assertEqual((saved['NRPasses'], saved['NRPass4AutoMask'], saved['NRPass4Skin']), ('4', '0', '0.72'))
 
     def test_stale_preview_and_running_game_are_refused_without_writes(self):
         self.write()

@@ -9,7 +9,7 @@ import { bindArtworkFailures, hydrateArtwork, clearArtworkCache, prioritizeArtwo
 // Artwork sources remain exact library identities.
 import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type OverviewCard, type Snapshot, type View } from './model';
 import { operationFlow,operationStep,flowGame,reviewRow } from './operation-ui';
-import { activeSetup, changePicker, newPicker, splitChoice, splitPicker, splitRenderDescription, type Catalog, type Picker, type Setup } from './split-render';
+import { activeSetup, changePicker, newPicker, splitChoice, splitPicker, splitPresetSelect, splitRenderDescription, type Catalog, type Picker, type Setup } from './split-render';
 import { installInput } from './input';
 import { setupLibraryLayout } from './library-layout';
 import { heroCrop, analyzeHeroFocus } from './hero-focus';
@@ -90,8 +90,10 @@ let splitPackageOpen = false, splitQuery = '', splitMatchRevision = 0, splitMatc
 const splitSelected = new Set<string>();
 let splitMatches = new Map<string, { row: EngineRow; summary: string }>();
 let splitTool: { game: string; row: EngineRow; catalog: Catalog; picker: Picker; installed: boolean; installedText: string;
-  checked: boolean; reason: string; verdict: string; revision: number; name: string; busy: boolean; feederSkin?: number; feederMessage?: string } | undefined;
+  checked: boolean; reason: string; verdict: string; revision: number; busy: boolean; feederPass?: number; feederRole?: boolean; feederSkin?: number; feederMessage?: string } | undefined;
 let splitToolError = '';
+let splitPresetPackage = '', splitPresetRequest = 0, splitPresetError = '';
+let splitPresetEditor: { catalog: Catalog; picker: Picker; name: string; checked: boolean; reason: string; revision: number; busy: boolean } | undefined;
 let libraryFilter = 'all', libraryChecking = false, libraryMode: string | undefined;
 
 function announce(message: string) {
@@ -186,6 +188,7 @@ function setView(next: View, focus = true) {
       if(origin.focus)app.querySelector<HTMLElement>(origin.focus)?.focus({preventScroll:true});
     }
   }
+  if (next === 'presets' && backend.enabled) void loadSplitPresets();
   if (next === 'settings' && backend.enabled && !sharedPreferences) void loadPreferences();
   if (next === 'packages' && backend.enabled) void loadSplitCatalog().then(() => { if (view === 'packages') { render(); if (splitPackageOpen) void matchSplitGames(); } })
     .catch(problem => announce(problem.message));
@@ -297,10 +300,77 @@ function presets() {
   const values = presetValues();
   const segments = (key: string, options: [string,string][]) => `<div class="preset-segments" role="group" aria-label="${key === 'mfg_mode' ? 'MFG mode' : 'MFG multiplier'}">${options.map(([value,label])=>`<button data-preset-key="${key}" data-preset-value="${value}" aria-pressed="${values[key as keyof typeof values] === value}" ${!backend.enabled || values.mfg_enabled === 'false' || key === 'mfg_mode' && value === '2' && values.provider !== 'skynizz' ? 'disabled' : ''}>${label}</button>`).join('')}</div>`;
   const card = (title: string, fields: string, extra = '') => `<section class="glass-section preset-pod"><h2>${title}</h2>${extra}<div class="inner-card">${fields}</div></section>`;
-  return heading('Presets','Your defaults for new installs. Review games to apply them to existing packages.') +
+  return heading('Presets','Your defaults for new installs. Review games to apply them to existing packages.') + splitPresetsCard() +
     `<section class="glass-section preset-mfg"><div class="section-heading"><h2>Multi-Frame Generation</h2><label class="sr-only" for="preset-mfg-enabled">Multi-Frame Generation</label><select id="preset-mfg-enabled" data-preset-key="mfg_enabled" ${!backend.enabled ? 'disabled' : ''}><option value="true" ${values.mfg_enabled === 'true' ? 'selected' : ''}>On</option><option value="false" ${values.mfg_enabled === 'false' ? 'selected' : ''}>Off</option></select></div>${segments('mfg_mode',[['0','Automatic'],['1','Custom'],['2','Dynamic']])}${values.mfg_mode !== '0' && values.mfg_enabled !== 'false' ? `<p class="subtle">${values.mfg_mode === '2' ? 'Maximum multiplier' : 'Multiplier'}</p>${segments('multiplier',[2,3,4,5,6].map(value=>[String(value),value+'×']))}` : ''}</section>`+
     `<div class="preset-columns"><div>${card('Neural rendering',presetFields(['enabled','style','intensity','preset','passes']))}${card('DLSS presets',presetFields(['dlss_preset','rr_preset']),'<p>Applies when the game next starts DLSS. Game default keeps the game’s own choice.</p>')}</div><div>${card('Image tuning',presetFields(['detail','colour'])+`<details><summary>Fine tuning</summary>${presetFields(['structure','tone','skin','auto_mask'])}</details>`)}${card('Sharpening',presetFields(['sharpen','sharpen_shader','sharp_override','sharpness'])+`<details><summary>Motion sharpening</summary>${presetFields(['motion_sharpen','motion_sharpness'])}</details>`)}${card('Performance',presetFields(snapshot?.controlSchema?.controls.filter(control=>control.group==='Performance').map(control=>control.key)||[]))}</div></div>`+
     `<footer class="preset-footer glass-section"><span>${!backend.enabled ? 'Read-only preview · preset changes disabled.' : drafts.has(presetId) ? 'Unsaved changes.' : 'Library presets.'}</span><div class="operation-actions"><button class="quiet" data-action="reset-presets" ${!backend.enabled || !drafts.has(presetId) ? 'disabled' : ''}>Reset</button><button class="quiet" data-action="select-preset-games" ${!backend.enabled ? 'disabled' : ''}>Select games</button><button class="primary" data-action="apply-presets" ${!backend.enabled ? 'disabled' : ''}>Apply to all</button></div></footer>`;
+}
+function splitPresetsCard() {
+  const editor = splitPresetEditor;
+  return `<section class="glass-section split-section split-presets"><h2>${icon('sliders')} Split Render Presets</h2>
+    <p>Set the environment, character and DLSS 5 model for a package. Use saved presets in installation reviews.</p>
+    ${!backend.enabled ? '<p>Available in the installed app.</p>' : !editor ? `<p role="status">${e(splitPresetError || 'Loading Split Render presets…')}</p>` :
+    `<label class="field"><span><strong>Package</strong></span><select id="split-preset-package" ${editor.busy ? 'disabled' : ''}>
+      ${(editor.catalog.preset_packages || []).map(pkg => `<option value="${e(pkg.id)}" ${pkg.id === splitPresetPackage ? 'selected' : ''}>${e(pkg.label)}</option>`).join('')}
+      </select></label>
+      ${editor.catalog.blocked ? `<p role="status">${e(editor.catalog.blocked)} Open a Feeder game’s Tools to assign pass roles.</p>` :
+      `${splitPicker(editor.catalog, editor.picker, 'presets', true)}
+      <p role="status">${e(editor.reason || (editor.checked ? 'Ready to save.' : 'Checking setup…'))}</p>
+      <div class="split-saved"><label>Preset name <input type="text" id="split-preset-name" maxlength="60" value="${e(editor.name)}"></label>
+      <button class="primary" data-action="save-split-preset" ${editor.checked && !editor.reason && !editor.busy && editor.name.trim() ? '' : 'disabled'}>Save preset</button></div>`}`}</section>`;
+}
+async function loadSplitPresets(packageId = splitPresetPackage || (snapshot?.defaults.runtime_provider === 'skynizz' ? 'skynizz' : 'native')) {
+  const request = ++splitPresetRequest;
+  splitPresetError = '';
+  try {
+    const catalog = await engineRequest<Catalog>('nr_catalog', { package: packageId });
+    if (request !== splitPresetRequest || view !== 'presets') return;
+    if (!catalog.preset_packages?.length || !catalog.combos) throw new Error('Split Render presets are unavailable.');
+    splitPresetPackage = packageId;
+    splitPresetEditor = { catalog, picker: newPicker(), name: '', checked: false, reason: '', revision: 0, busy: false };
+    if (catalog.blocked) render();
+    else await checkSplitPreset();
+  } catch (problem) {
+    if (request !== splitPresetRequest || view !== 'presets') return;
+    splitPresetEditor = undefined;
+    splitPresetError = problem instanceof Error ? problem.message : 'Split Render presets are unavailable.';
+    render();
+  }
+}
+async function checkSplitPreset() {
+  const editor = splitPresetEditor;
+  if (!editor) return;
+  const ticket = ++editor.revision;
+  editor.checked = false;
+  editor.reason = '';
+  render();
+  try {
+    const result = await engineRequest<{ok: boolean; reason?: string}>('nr_check',
+      { package: splitPresetPackage, setup: activeSetup(editor.catalog, editor.picker) });
+    if (editor.revision !== ticket) return;
+    editor.reason = result.ok ? '' : result.reason || 'Choose a compatible setup.';
+  } catch (problem) {
+    if (editor.revision !== ticket) return;
+    editor.reason = problem instanceof Error ? problem.message : 'The setup could not be checked.';
+  }
+  if (splitPresetEditor === editor && view === 'presets') { editor.checked = true; render(); }
+}
+async function saveSplitPreset() {
+  const editor = splitPresetEditor;
+  if (!editor?.checked || editor.reason || editor.busy || !editor.name.trim()) return;
+  editor.busy = true;
+  render();
+  try {
+    await engineRequest('nr_combo_save', { package: splitPresetPackage, name: editor.name.trim(),
+      combo: activeSetup(editor.catalog, editor.picker) });
+    announce('Split Render preset saved.');
+    if (view === 'presets') await loadSplitPresets();
+  } catch (problem) {
+    editor.reason = problem instanceof Error ? problem.message : 'The preset could not be saved.';
+  } finally {
+    editor.busy = false;
+    if (splitPresetEditor === editor && view === 'presets') render();
+  }
 }
 async function applyPresets(selected: boolean) {
   if (!backend.enabled) return;
@@ -841,43 +911,72 @@ async function reviewNrPackage() {
   if (!splitMatching && choice && rows.length && view === 'packages')
     await withOperation('Review Split Render', 'nr_review', { rows, choice });
 }
-function feederCharacterCard(tool: NonNullable<typeof splitTool>) {
+function feederSelection(tool: NonNullable<typeof splitTool>) {
   const settings = tool.catalog.feeder_character;
-  if (!settings?.available) return `<p role="status">${e(tool.catalog.blocked)} ${e(settings?.reason || '')}</p>`;
-  const proposed = tool.feederSkin ?? settings.target_skin;
-  const canApply = !tool.busy && !settings.reason && (settings.changes || settings.skin === null || Math.abs(proposed - settings.skin) > .005);
-  const passes = settings.passes === settings.target_passes ? settings.passes : `${settings.passes} → ${settings.target_passes}`;
-  const notice = settings.nr_enabled ? 'Saves to ReShade.ini for the next launch.' :
-    'Saves for the next launch. Enable NR in the in-game Feeder panel to see the effect.';
-  return `<p>ShortFuse requires native DLSS. Use Feeder NR’s second pass to tune character detail with the existing setup.</p>
-    <ol class="feeder-passes">
-      <li><strong>Pass 1 · Environment</strong><small>Keeps the main pass and its current tuning.</small></li>
-      <li><strong>Pass 2 · Character detail</strong><small>Passes · ${e(passes)}. Use main settings · ${settings.inherit ? 'On → Off' : 'Off'}.</small></li>
-    </ol>
-    <label class="field feeder-skin" for="feeder-skin"><span><strong>Skin detail</strong>
-      <small>Current · ${settings.skin === null ? 'Default' : e(settings.skin.toFixed(2))} / Proposed · <output id="feeder-skin-output">${e(proposed.toFixed(2))}</output></small></span>
-      <input id="feeder-skin" type="range" min="-1" max="1" step=".01" value="${e(proposed)}" ${tool.busy ? 'disabled' : ''}></label>
+  if (!settings?.available) return;
+  const pass = settings.options.find(option => option.number === tool.feederPass) ?? settings.options[0];
+  if (!pass) return;
+  const character = tool.feederRole ?? pass.character;
+  const inputSkin = tool.feederSkin ?? pass.skin;
+  const skin = inputSkin < 0 ? -1 : inputSkin;
+  const tuningChanged = character !== pass.character || (character && Math.abs(skin - pass.skin) > .005);
+  return { settings, pass, character, inputSkin, skin, tuningChanged,
+    changed: tuningChanged || pass.number > settings.passes };
+}
+function feederCharacterCard(tool: NonNullable<typeof splitTool>) {
+  const chosen = feederSelection(tool);
+  return `<section class="glass-section split-section"><h2>${icon('cpu')} Feeder NR passes</h2>
+    <p>Each pass processes the whole frame. Character enables the mask so Skin detail can affect detected people.</p>
+    ${chosen ? feederPassEditor(tool, chosen) : `<p role="status">${e(tool.catalog.feeder_character?.reason || '')}</p>`}</section>`;
+}
+function feederPassEditor(tool: NonNullable<typeof splitTool>, chosen: NonNullable<ReturnType<typeof feederSelection>>) {
+  const { settings, pass, character, inputSkin, skin, tuningChanged, changed } = chosen;
+  const extra = pass.number > settings.passes;
+  const locked = tool.busy || !!settings.reason;
+  const notice = extra ? `Full-frame passes · ${settings.passes} → ${pass.number}. Extra passes can lower frame rate.` :
+    settings.nr_enabled ? 'Saves for the next launch.' : 'Saves for the next launch. Enable NR in the in-game Feeder panel to see the effect.';
+  const inheritance = pass.inherited && tuningChanged ? 'Copies the main pass’s model settings before assigning this pass its own settings.' :
+    pass.number === 1 ? 'Passes that follow the main settings also use this role.' : '';
+  return `<fieldset class="feeder-choices"><legend>Pass · ${settings.passes} of ${settings.options.length} configured</legend>
+    <div class="feeder-passes">${settings.options.map(option => `<button type="button" data-feeder-pass="${option.number}"
+      aria-pressed="${option.number === pass.number}" ${locked ? 'disabled' : ''}>
+      <span>${icon(option.character ? 'eye' : 'cpu')} Pass ${option.number}</span>
+      <small>${option.character ? 'Character' : 'Standard'}${option.number > settings.passes ? ' · Inactive' : ''}</small></button>`).join('')}</div>
+    </fieldset>
+    <fieldset class="feeder-choices"><legend>Role</legend><div class="feeder-roles">
+      <button type="button" data-feeder-role="standard" aria-pressed="${!character}" ${locked ? 'disabled' : ''}>${icon('cpu')} Standard</button>
+      <button type="button" data-feeder-role="character" aria-pressed="${character}" ${locked ? 'disabled' : ''}>${icon('eye')} Character</button>
+    </div></fieldset>
+    ${inheritance ? `<p class="subtle">${e(inheritance)}</p>` : ''}
+    ${character ? `<label class="field feeder-skin" for="feeder-skin"><span><strong>${icon('sliders')} Skin detail</strong>
+      <small>Selected · <output id="feeder-skin-output">${skin < 0 ? 'Stock' : e(skin.toFixed(2))}</output></small></span>
+      <input id="feeder-skin" type="range" min="-1" max="1" step=".01" value="${e(inputSkin)}" ${locked ? 'disabled' : ''}></label>` : ''}
     <p class="subtle" role="status">${e(tool.feederMessage || settings.reason || notice)}</p>
-    <button class="primary" data-action="feeder-character-apply" ${canApply ? '' : 'disabled'}>Apply character detail</button>`;
+    <button class="primary" data-action="feeder-character-apply" ${!locked && changed ? '' : 'disabled'}>${icon('check')} Save pass role</button>`;
 }
 async function applyFeederCharacter() {
-  const tool = splitTool, settings = tool?.catalog.feeder_character;
-  if (!tool || !settings?.available || tool.busy || settings.reason) return;
+  const tool = splitTool;
+  const chosen = tool && feederSelection(tool);
+  if (!tool || !chosen || tool.busy || chosen.settings.reason || !chosen.changed) return;
+  const { settings, pass, character, skin } = chosen;
   tool.busy = true;
-  tool.feederMessage = 'Saving Pass 2…';
+  tool.feederMessage = `Saving Pass ${pass.number}…`;
   render();
   try {
     const result = await engineRequest<{message: string}>('feeder_character_apply', {
-      row: tool.row, stamp: settings.stamp, skin: tool.feederSkin ?? settings.target_skin,
+      row: tool.row, stamp: settings.stamp, pass_number: pass.number, character, skin: character ? skin : null,
     });
     const game = selectedGame();
     if (view === 'details' && detailsSection === 'tools' && game?.id === tool.game) {
       await loadSplitTool(game);
-      if (splitTool?.game === tool.game) splitTool.feederMessage = result.message;
+      if (splitTool?.game === tool.game) {
+        splitTool.feederPass = pass.number;
+        splitTool.feederMessage = result.message;
+      }
     }
     announce(result.message);
   } catch (problem) {
-    tool.feederMessage = problem instanceof Error ? problem.message : 'Could not save character detail.';
+    tool.feederMessage = problem instanceof Error ? problem.message : 'Could not save the Feeder NR pass role.';
   } finally {
     tool.busy = false;
     if (view === 'details' && detailsSection === 'tools' && selectedId === tool.game) render();
@@ -885,18 +984,17 @@ async function applyFeederCharacter() {
 }
 function splitToolCard(game: Game) {
   const tool = splitTool?.game === game.id ? splitTool : undefined;
+  if (tool?.catalog.feeder_character && !tool.installed) return feederCharacterCard(tool);
   return `<section class="glass-section split-section"><h2>${icon('sliders')} Split Render</h2><p>${e(splitRenderDescription)}</p>
     ${!backend.enabled ? '' : !tool ? `<p role="status">${e(splitToolError || 'Checking this game…')}</p>` :
       tool.installed ? `<p role="status">${e(tool.installedText)}</p>
       <button class="quiet" data-action="split-tool-remove" ${tool.busy ? 'disabled' : ''}>Remove Split Render</button>` :
-      tool.catalog.blocked ? feederCharacterCard(tool) :
-      `<p class="subtle">Not installed in this game.</p>${splitPicker(tool.catalog, tool.picker, 'tools', true)}
+      tool.catalog.blocked ? `<p role="status">${e(tool.catalog.blocked)}</p>` :
+      `<p class="subtle">Not installed in this game.</p>${splitPresetSelect(tool.catalog, tool.picker)}
       <p role="status">${e(tool.reason || (tool.checked ? tool.verdict : 'Checking compatibility…'))}</p>
       <div class="operation-actions"><button class="primary" data-action="split-tool-install" ${tool.checked && !tool.reason && !tool.busy ? '' : 'disabled'}>Review Split Render</button>
       </div>
-      <div class="split-saved"><label>Preset name <input type="text" id="split-preset-name" maxlength="60" value="${e(tool.name)}"></label>
-      <button class="quiet" data-action="split-tool-save" ${tool.checked && !tool.reason && !tool.busy ? '' : 'disabled'}>Save preset</button>
-      </div>`}</section>`;
+`}</section>`;
 }
 async function loadSplitTool(game: Game) {
   splitToolError = '';
@@ -921,7 +1019,7 @@ async function loadSplitTool(game: Game) {
       catalog.models.find(model => model.id === installedModel)?.label || installedModel);
     if (status.changed?.length) parts.push(`${status.changed.length} file(s) changed since install`);
     splitTool = { game: game.id, row, catalog, picker, installed: status.installed, installedText: 'Installed · ' + parts.join(' · '),
-      checked: false, reason: '', verdict: '', revision: 0, name: '', busy: false };
+      checked: false, reason: '', verdict: '', revision: 0, busy: false };
     if (status.installed || catalog.blocked) render();
     else await checkSplitTool();
   } catch (problem) {
@@ -961,29 +1059,9 @@ async function applySplitTool(action: string) {
   const tool = splitTool;
   if (!tool || tool.busy) return;
   const setup = activeSetup(tool.catalog, tool.picker);
-  if (action === 'split-tool-install' || action === 'split-tool-remove') {
-    const remove = action === 'split-tool-remove';
-    if (remove ? !tool.installed : !tool.checked || !!tool.reason) return;
-    await withOperation(remove ? 'Remove Split Render' : 'Review Split Render', 'nr_review', { row: tool.row, setup, remove });
-    return;
-  }
-  if (action === 'split-tool-save' && (!tool.name.trim() || !tool.checked || tool.reason)) {
-    announce('Enter a name for this compatible setup.');
-    return;
-  }
-  tool.busy = true;
-  render();
-  try {
-    const saved = await engineRequest<{id: string}>('nr_combo_save', {name: tool.name.trim(), combo: setup});
-    tool.picker.preset = saved.id;
-    const game = selectedGame();
-    if (game?.id === tool.game && view === 'details' && detailsSection === 'tools') await loadSplitTool(game);
-  } catch (problem) {
-    announce(problem instanceof Error ? problem.message : 'The preset could not be updated.');
-  } finally {
-    tool.busy = false;
-    if (view === 'details' && selectedId === tool.game && detailsSection === 'tools') render();
-  }
+  const remove = action === 'split-tool-remove';
+  if (remove ? !tool.installed : !tool.checked || !!tool.reason) return;
+  await withOperation(remove ? 'Remove Split Render' : 'Review Split Render', 'nr_review', { row: tool.row, setup, remove });
 }
 async function getEngineRows(target?: Game) {
   if (!backend.enabled) throw new Error(backend.reason);
@@ -1270,6 +1348,14 @@ function bindSplitRender() {
     } else if (scope === 'packages' && splitCatalog) {
       changePicker(splitCatalog, packagePicker, key, field.value);
       void matchSplitGames();
+    } else if (scope === 'presets' && splitPresetEditor) {
+      const editor = splitPresetEditor;
+      changePicker(editor.catalog, editor.picker, key, field.value, true);
+      if (key === 'preset') {
+        const preset = editor.catalog.combos[field.value];
+        editor.name = preset && !preset.builtin ? preset.name : '';
+      }
+      void checkSplitPreset();
     } else if (scope === 'tools' && splitTool) {
       changePicker(splitTool.catalog, splitTool.picker, key, field.value, true);
       void checkSplitTool();
@@ -1285,18 +1371,40 @@ function bindSplitRender() {
     else splitSelected.delete(id);
     render();
   }));
-  app.querySelector<HTMLInputElement>('#feeder-skin')?.addEventListener('input', event => {
-    const tool = splitTool, settings = tool?.catalog.feeder_character;
-    if (!tool || !settings?.available) return;
-    tool.feederSkin = (event.target as HTMLInputElement).valueAsNumber;
-    const output = app.querySelector<HTMLOutputElement>('#feeder-skin-output');
-    if (output) output.value = tool.feederSkin.toFixed(2);
-    const apply = app.querySelector<HTMLButtonElement>('[data-action="feeder-character-apply"]');
-    if (apply) apply.disabled = tool.busy || !!settings.reason ||
-      (!settings.changes && settings.skin !== null && Math.abs(tool.feederSkin - settings.skin) <= .005);
+  app.querySelectorAll<HTMLButtonElement>('[data-feeder-pass], [data-feeder-role]').forEach(button => {
+    button.addEventListener('click', () => {
+      if (!splitTool || splitTool.busy) return;
+      const { feederPass, feederRole } = button.dataset;
+      if (feederPass) {
+        splitTool.feederPass = Number(feederPass);
+        splitTool.feederRole = undefined;
+        splitTool.feederSkin = undefined;
+      } else splitTool.feederRole = feederRole === 'character';
+      splitTool.feederMessage = undefined;
+      render();
+      const choice = feederPass ? `[data-feeder-pass="${feederPass}"]` : `[data-feeder-role="${feederRole}"]`;
+      app.querySelector<HTMLButtonElement>(choice)?.focus();
+    });
   });
+  app.querySelector<HTMLInputElement>('#feeder-skin')?.addEventListener('input', event => {
+    const tool = splitTool;
+    if (!tool) return;
+    tool.feederSkin = (event.target as HTMLInputElement).valueAsNumber;
+    const chosen = feederSelection(tool);
+    if (!chosen) return;
+    const output = app.querySelector<HTMLOutputElement>('#feeder-skin-output');
+    if (output) output.value = chosen.skin < 0 ? 'Stock' : chosen.skin.toFixed(2);
+    const apply = app.querySelector<HTMLButtonElement>('[data-action="feeder-character-apply"]');
+    if (apply) apply.disabled = tool.busy || !!chosen.settings.reason || !chosen.changed;
+  });
+  app.querySelector<HTMLSelectElement>('#split-preset-package')?.addEventListener('change', event =>
+    void loadSplitPresets((event.target as HTMLSelectElement).value));
   app.querySelector<HTMLInputElement>('#split-preset-name')?.addEventListener('input', event => {
-    if (splitTool) splitTool.name = (event.target as HTMLInputElement).value;
+    const editor = splitPresetEditor;
+    if (!editor) return;
+    editor.name = (event.target as HTMLInputElement).value;
+    const save = app.querySelector<HTMLButtonElement>('[data-action="save-split-preset"]');
+    if (save) save.disabled = !editor.checked || !!editor.reason || editor.busy || !editor.name.trim();
   });
 }
 function bind() {
@@ -1495,6 +1603,7 @@ function action(name: string) {
   if (name === 'review-nr-addons') void reviewNrPackage().catch(problem => announce(problem.message));
   if (name === 'split-select-all') { for (const game of visibleSplitGames()) splitSelected.add(game.id); render(); }
   if (name === 'split-clear') { splitSelected.clear(); render(); }
+  if (name === 'save-split-preset') { void saveSplitPreset(); return; }
   if (name.startsWith('split-tool-')) void applySplitTool(name);
   if (name === 'feeder-character-apply') void applyFeederCharacter();
   if (name === 'operation-back') { const origin = operation?.origin || 'details'; operation = null; pendingInstall=null; setView(origin); }

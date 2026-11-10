@@ -127,7 +127,12 @@ struct Controller : Rml::EventListener
     }
     double layoutPickerDismiss=0;
     Rml::Element* statusHome=nullptr;Rml::Element* compactLiveHome=nullptr;
-    void UpdateBack() {auto* back=Element("window-back");if(settingsOpen||activeNavigation!="nav-overview"||!navigationHistory.empty())back->RemoveProperty("display");else back->SetProperty("display","none");}
+    void UpdateBack() {
+        auto* back=Element("window-back");
+        const bool hasDestination=(settingsOpen&&!BarSettings()) ||
+            (layout=="centered"&&activeNavigation!="nav-overview");
+        if(hasDestination)back->RemoveProperty("display");else back->SetProperty("display","none");
+    }
     void Navigation(const std::string& selected) {if(selected!=activeNavigation&&!navigatingBack)navigationHistory.push_back(activeNavigation);activeNavigation=selected;for(const auto* id:{"nav-overview","nav-frame","nav-neural","nav-look","nav-settings","nav-passes","nav-addons","nav-effects","nav-hdr"})Element(id)->SetClass("selected",selected==id);UpdateBack();}
     void Back() {if(settingsOpen){Settings(false);return;}const auto previous=navigationHistory.empty()?"nav-overview":navigationHistory.back();if(!navigationHistory.empty())navigationHistory.pop_back();navigatingBack=true;Page(previous);navigatingBack=false;UpdateBack();}
     void QuickLayouts(bool show) {
@@ -223,14 +228,19 @@ struct Controller : Rml::EventListener
     bool feederSplitSupported{};
     bool SplitRenderAvailable() const {return feederSplitSupported||addons.available;}
     bool FeederSplitActive() const {return feederSplitSupported&&inspectorPanel=="addons";}
-    std::string PassPrefix() const {return "pass"+std::to_string(FeederSplitActive()?2:pass)+"_";}
+    std::string PassPrefix() const {return "pass"+std::to_string(pass)+"_";}
 
     void RefreshSplitRenderEntry() {
         Visible("addons-section",SplitRenderAvailable());
         auto* nav=Element("nav-addons");
         if(SplitRenderAvailable())nav->RemoveProperty("display");else nav->SetProperty("display","none");
+        const auto label=feederSplitSupported?"Feeder NR passes":"Split Render";
+        nav->QuerySelector(".button-label")->SetInnerRML(label);
+        Element("split-render-title")->SetInnerRML(feederSplitSupported?"FEEDER NR PASSES":"SPLIT RENDER");
+        Element("open-addons")->QuerySelector(".button-label")->SetInnerRML(feederSplitSupported?"Adjust Feeder NR passes":"Adjust Split Render");
         Element("split-render-description")->SetInnerRML(feederSplitSupported?
-            "Tune character detail in Feeder NR’s second pass.":"Tune the installed Split Render passes. Changes apply after a restart.");
+            "Tune active full-frame passes. Assign Character roles in the game’s Tools.":
+            "Tune the installed environment and character settings.");
         if(!SplitRenderAvailable()&&!settingsOpen&&inspectorPanel=="addons"&&Element("inspector")->IsVisible()) {
             if(layout=="centered")Page(nrAvailable?"nav-neural":"nav-overview");
             else Visible("inspector",false);
@@ -241,8 +251,6 @@ struct Controller : Rml::EventListener
         Visible("pass-inspector",inspectorPanel=="passes"||feeder);
         Visible("addons-inspector",inspectorPanel=="addons"&&!feeder);
         Visible("feeder-split-context",feeder);
-        auto* tabs=Element("pass-tabs");
-        if(feeder)tabs->SetProperty("display","none");else tabs->RemoveProperty("display");
     }
     void SetFeederSplitRender(bool supported) {
         if(feederSplitSupported==supported)return;
@@ -708,10 +716,13 @@ struct Controller : Rml::EventListener
         Element("inspector")->SetClass("split-pass-unavailable",feederSplit&&passCount<2);
         if(feederSplit) {
             auto* note=Element("feeder-split-note");
+            auto* title=Element("feeder-pass-title");
+            const auto heading="Pass "+std::to_string(passCount==1?1:pass)+" · Full frame";
+            if(title->GetInnerRML()!=heading)title->SetInnerRML(heading);
             const auto message=passCount<2?
-                "Set Passes to 2 in Neural rendering to tune character detail.":
-                values[prefix+"inherit"]!=0?"Pass 2 follows the main settings. Turn off Use main settings to tune it separately.":
-                "Pass 2 uses its own settings.";
+                "Pass 1 can use the Character mask. Use the game’s Tools to assign its role.":
+                values[prefix+"inherit"]!=0?"This pass follows the main settings. Turn off Use main settings to tune it separately.":
+                "This pass processes the whole frame. Its Character mask guides Skin detail to detected skin.";
             if(note->GetInnerRML()!=message)note->SetInnerRML(message);
         }
         for(const auto* key : {"strength","tone","structure","skin"})range((std::string("pass-")+key).c_str(),prefix+key);
@@ -751,7 +762,7 @@ struct Controller : Rml::EventListener
         Visible("inspector",true);ShowPassInspector();Visible("look-inspector",panel=="look");Visible("extra-processing",panel=="processing");Visible("extra-frame-popup",panel=="frame");Visible("popup-metadata",panel=="overview");Visible("hdr-inspector",panel=="hdr");Visible("effects-inspector",panel=="effects");Element("inspector")->SetClass("session-inspector",panel=="overview");
         Sync();
         const auto icon=panel=="effects"||panel=="addons"?"stack":panel=="hdr"?"sun":panel=="overview"?"gauge":panel=="passes"?"stack":panel=="look"?"sliders-horizontal":panel=="frame"?"film-strip":"cpu";
-        const auto title=panel=="effects"?"EFFECTS":panel=="addons"?"SPLIT RENDER":panel=="hdr"?"HDR":panel=="overview"?"SESSION":panel=="processing"?"NEURAL RENDERING":panel=="passes"?"PASS TUNING":panel=="look"?"LOOK &amp; DETAIL":panel=="frame"?"FRAME GENERATION":"PROCESSING";
+        const auto title=panel=="effects"?"EFFECTS":panel=="addons"?(FeederSplitActive()?"FEEDER NR PASSES":"SPLIT RENDER"):panel=="hdr"?"HDR":panel=="overview"?"SESSION":panel=="processing"?"NEURAL RENDERING":panel=="passes"?"PASS TUNING":panel=="look"?"LOOK &amp; DETAIL":panel=="frame"?"FRAME GENERATION":"PROCESSING";
         Element("inspector-title")->SetInnerRML(std::string("<img class=\"glyph\" src=\"icons/")+icon+"-light.png\"/><span>"+title+"</span>");
         if(layout=="centered")Visible("overview",false);
         Reflow();Raise("inspector");Enter("inspector");inspectorAnchored=layout=="bar";Element("inspector")->SetClass("anchored",inspectorAnchored);

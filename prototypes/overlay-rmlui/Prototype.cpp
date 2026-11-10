@@ -353,13 +353,65 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
         element->DispatchEvent("click",{});
         context->Update();
     };
+    for(const auto* layout:{"floating","centered","bar"}) {
+        c.Layout(layout);
+        context->Update();
+        Require(!c.Element("window-back")->IsVisible(true),"Root header exposed Back");
+        c.Page("nav-neural");
+        context->Update();
+        Require(c.Element("window-back")->IsVisible(true)==(c.layout=="centered"),"Back did not follow the layout");
+        if(c.layout=="centered")activate("window-back");
+        Require(c.layout!="centered"||c.activeNavigation=="nav-overview","Advanced Back did not return to Overview");
+        c.Settings(true);
+        context->Update();
+        Require(c.Element("window-back")->IsVisible(true)==(c.layout!="bar"),"Settings Back did not follow the layout");
+        c.Settings(false);
+    }
     c.Layout("centered");
     c.addons.Set({{"character_resolution_scale","Resolution scale","Character detail · ShortFuse",
-        "slider","","%",25,100,1,100,74,false,false}},true,"Changes apply after the game restarts.");
+        "slider","","%",25,100,1,100,74,false,false},
+        {"character_local_tone","Local tone","Character detail · ShortFuse",
+        "slider","","",0,2,.01f,1,1,false,false},
+        {"environment_character_mask","Character mask","Environment · Lecram",
+        "choice","<option value=\"0\">Off</option><option value=\"1\">On</option>","",0,1,1,1,1,false,false}},
+        true,"Environment changes apply at next launch.");
     c.RefreshSplitRenderEntry();
     activate("nav-addons");
     Require(c.Element("addon-character_resolution_scale")->IsVisible(true)&&!c.Element("reset-inspector")->IsVisible(true),
         "Advanced Split Render did not open the installed add-on settings");
+    auto* scale=dynamic_cast<Rml::ElementFormControl*>(c.Element("addon-character_resolution_scale"));
+    Require(scale->IsDisabled(),"Unverified ShortFuse offered edits");
+    c.addons.SetShortFuseLive(true);
+    scale->SetValue("82");
+    scale->DispatchEvent("change",{});
+    Require(!c.addons.Flush([](const std::string&){return true;}),"ShortFuse was queued for startup");
+    Require(c.addons.FlushLive([](const ForgeGlass::HdrField& f,float value){
+        return f.key=="character_resolution_scale"&&value==82;
+    }),"ShortFuse live setter did not receive the whole percent");
+    scale->SetValue("90");
+    scale->DispatchEvent("change",{});
+    Require(!c.addons.FlushLive([](const ForgeGlass::HdrField&,float){return false;})&&std::stof(scale->GetValue())==82,
+        "A refused ShortFuse change remained displayed");
+    auto* environment=dynamic_cast<Rml::ElementFormControl*>(c.Element("addon-environment_character_mask"));
+    environment->SetValue("0");
+    environment->DispatchEvent("change",{});
+    Require(c.addons.Flush([](const std::string& message){
+        return message=="{\"op\":\"nr-addons-save\",\"changes\":{\"environment_character_mask\":0}}";
+    }),"Environment startup settings were not queued");
+    Require(c.Element("addon-character_local_tone")->IsVisible(true)&&!c.Element("addons-more")->IsVisible(true),
+        "Advanced hid secondary ShortFuse controls");
+    for(const auto* layout:{"floating","bar"}) {
+        c.Layout(layout);
+        c.Page("nav-neural");
+        activate("open-addons");
+        Require(!c.Element("addon-character_local_tone")->IsVisible(true),"Streamlined view exposed secondary controls by default");
+        activate("addons-more");
+        Require(c.Element("addon-character_local_tone")->IsVisible(true),"More options did not reveal the secondary controls");
+        activate("addons-more");
+        Require(!c.Element("addon-character_local_tone")->IsVisible(true),"Fewer options did not hide the secondary controls");
+    }
+    c.Layout("centered");
+    c.addons.SetShortFuseLive(false);
     c.addons.Set({},false,"");
     c.RefreshSplitRenderEntry();
     context->Update();
@@ -372,11 +424,11 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
         "A one-pass Feeder session did not show the setup guidance");
     c.values["passes"]=3;
     c.values["pass2_inherit"]=1;
-    c.pass=3;
+    c.pass=2;
     c.Sync();
     context->Update();
-    Require(c.Element("pass-fields")->IsVisible(true)&&!c.Element("pass-tabs")->IsVisible(true)&&c.PassPrefix()=="pass2_",
-        "Feeder Split Render did not focus on Pass 2");
+    Require(c.Element("pass-fields")->IsVisible(true)&&c.Element("pass-tabs")->IsVisible(true)&&c.PassPrefix()=="pass2_",
+        "Feeder did not offer the active full-frame passes");
     auto* skin=dynamic_cast<Rml::ElementFormControl*>(c.Element("pass-skin"));
     Require(skin->IsDisabled(),"Pass 2 ignored Use main settings");
     activate("inherit");
@@ -384,6 +436,8 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
     skin->DispatchEvent("change",{});
     Require(c.values["pass2_inherit"]==0&&c.values["pass2_skin"]==.75f&&c.values["pass3_skin"]==savedValues.at("pass3_skin"),
         "Split Render did not edit the same independent Pass 2 values");
+    activate("pass-3");
+    Require(c.Element("feeder-pass-title")->GetInnerRML()=="Pass 3 · Full frame","Feeder showed the wrong full-frame pass");
     activate("nav-passes");
     Require(c.Element("pass-tabs")->IsVisible(true)&&c.PassPrefix()=="pass3_","Pass tuning lost its prior selection");
     for(const auto* mode:{"floating","bar"}) {
@@ -498,9 +552,6 @@ static void TestController(Controller& c,Rml::Context* context)
     auto* hdrGame=dynamic_cast<Rml::ElementFormControl*>(c.Element("hdr-main-ToneMapGameNits"));hdrGame->SetValue("250");hdrGame->DispatchEvent("change",{});Require(c.hdr.pending.at("ToneMapGameNits")==250,"HDR changes were not captured");
     c.hdr.Reset();Require(c.hdr.pending.at("ToneMapGameNits")==203,"HDR reset lost the source default");Require(!c.hdr.pending.contains("ToneMapPeakNits"),"HDR reset must preserve calibrated peak brightness");
     Require(c.hdr.Flush([](const std::string& request){return request.find("hdr-save")!=std::string::npos;}),"HDR save request was not sent");
-    {std::vector<ForgeGlass::HdrField> nr{{"character_resolution_scale","Resolution scale","Character detail · ShortFuse","slider","","%",25,100,1,100,82,false,false},{"environment_character_mask","Character mask","Environment · Lecram","choice","<option value=\"0\">Off</option><option value=\"1\">On</option>","",0,1,1,1,1,false,true}};c.addons.Set(std::move(nr),true,"Preview NR add-on settings.");Require(c.addons.available&&c.Element("addon-character_resolution_scale")&&c.Element("addon-environment_character_mask"),"NR add-on settings did not build");
-    auto* scale=dynamic_cast<Rml::ElementFormControl*>(c.Element("addon-character_resolution_scale"));scale->SetValue("74");scale->DispatchEvent("change",{});Require(c.addons.pending.at("character_resolution_scale")==74,"NR add-on changes were not captured");
-    Require(c.addons.Flush([](const std::string& request){return request.find("\"nr-addons-save\"")!=std::string::npos&&request.find("\"character_resolution_scale\":74")!=std::string::npos;}),"NR add-on save must send a whole percent");Require(c.addons.pending.empty(),"Sent NR add-on changes stayed pending");}
     click("window-back");Require(c.activeNavigation=="nav-passes","Universal back did not restore Advanced navigation history");c.Layout("centered");Require(c.Element("feature-status")->IsVisible(true),"Advanced lost its status lights");
     c.Layout("bar");click("open-hdr");Require(c.inspectorPanel=="hdr"&&c.inspectorAnchored,"Bar HDR needs an attached popout");context->Update();c.pendingEntrance.clear();c.entrances.clear();c.Reflow();context->Update();const auto stable=c.Element("inspector")->GetAbsoluteOffset(Rml::BoxArea::Border);for(int frame=0;frame<90;++frame){c.Reflow();context->Update();const auto at=c.Element("inspector")->GetAbsoluteOffset(Rml::BoxArea::Border);if(std::fabs(at.x-stable.x)>=.25f||std::fabs(at.y-stable.y)>=.25f)throw std::runtime_error("Anchored Bar popup vibrates at rest: frame="+std::to_string(frame)+" at="+std::to_string(at.x)+","+std::to_string(at.y)+" initial="+std::to_string(stable.x)+","+std::to_string(stable.y)+" height="+std::to_string(c.Element("inspector")->GetBox().GetSize(Rml::BoxArea::Border).y)+" source="+std::to_string(c.Element("open-hdr")->GetAbsoluteOffset(Rml::BoxArea::Border).y));}
     c.Layout("bar");c.Session(live);context->Update();Require(c.Element("feature-status")->IsVisible(true)&&c.Element("bar-live")->IsVisible(true),"Bar lost status or inline telemetry");Require(c.Element("compact-live")->GetParentNode()==c.Element("bar-live")&&c.Element("compact-live")->IsVisible(true),"Bar must reuse the compact live cards");Require(c.Element("compact-frame-time")->GetInnerRML()=="Frame 16.67 ms"&&c.Element("compact-neural")->GetInnerRML()=="2.34 ms","Bar cards do not match session data");click("open-passes");Require(c.inspectorAnchored,"Bar inspectors should attach to their source");c.Settings(true);context->Update();Require(c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y>=0,"Bottom Bar settings moved above the viewport");c.Settings(false);c.Layout("floating");context->Update();Require(c.Element("compact-live")->IsVisible()&&c.Element("compact-live")->GetParentNode()==c.Element("open-session"),"Sidebar must retain its compact live cards");
@@ -556,7 +607,7 @@ static void TestController(Controller& c,Rml::Context* context)
 int wmain(int argc,wchar_t** argv)
 {
     try {
-        fs::path assets,background,output,font,gameCatalog,preferencesPath,posterPath;DWORD parentProcess=0;int onboardingMenus=1;int width=2560,height=1440,appearance=4,requestedCopy=22,requestedScale=100;bool onboardingScroll=false,onboardingNative=false,longDropdown=false,dropdownOpen=false,colorSpectrumOpen=false,colorPickerOpen=false,benchmark=false;bool gameCapture=false,thumbnail=false,desktopPreview=false,feederSplitPreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=10,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedAccentMode="adaptive";std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
+        fs::path assets,background,output,font,gameCatalog,preferencesPath,posterPath;DWORD parentProcess=0;int onboardingMenus=1;int width=2560,height=1440,appearance=4,requestedCopy=22,requestedScale=100;bool onboardingScroll=false,onboardingNative=false,longDropdown=false,dropdownOpen=false,colorSpectrumOpen=false,colorPickerOpen=false,benchmark=false;bool gameCapture=false,thumbnail=false,desktopPreview=false,feederSplitPreview=false,shortFusePreview=false,shortFuseMore=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=10,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedAccentMode="adaptive";std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
         for(int i=1;i<argc;++i) {
             const std::wstring arg=argv[i];
             const auto next=[&] {Require(i+1<argc,"Missing argument value");return std::wstring(argv[++i]);};
@@ -569,6 +620,8 @@ int wmain(int argc,wchar_t** argv)
             else if(arg==L"--page")requestedPage=Utf8(next());
             else if(arg==L"--desktop-preview"){desktopPreview=productionUI=true;}
             else if(arg==L"--feeder-split-render"){feederSplitPreview=desktopPreview=productionUI=true;}
+            else if(arg==L"--shortfuse-split-render"){shortFusePreview=desktopPreview=productionUI=true;}
+            else if(arg==L"--shortfuse-more-options"){shortFuseMore=shortFusePreview=desktopPreview=productionUI=true;}
             else if(arg==L"--game-title")gameTitle=Utf8(next());
             else if(arg==L"--game-catalog")gameCatalog=next();
             else if(arg==L"--parent-process")parentProcess=std::stoul(next());
@@ -623,13 +676,13 @@ int wmain(int argc,wchar_t** argv)
         Require(Rml::LoadFontFace(Utf8(inter)),"Inter could not load");
         auto* context=Rml::CreateContext("overlay",{width,height});Require(context!=nullptr,"RmlUi context could not be created");inputContext=context;
         auto* document=context->LoadDocument(Utf8(assets/L"overlay.rml"));Require(document!=nullptr,"Overlay document could not load");
-        Controller controller;controller.document=document;controller.preview=!productionUI;controller.appearance=appearance;controller.accent=accent;controller.accentMode=requestedAccentMode;controller.UseTheme(appearance);if(appearance==4){controller.accentCharacter=requestedCharacter;controller.accentOpacity=100*MaterialColor::AccentOpacity(requestedCharacter);controller.accentSaturation=requestedSaturation;}if((window||desktopPreview)&&!feederSplitPreview)controller.LoadPreferences(false,preferencesPath);
+        Controller controller;controller.document=document;controller.preview=!productionUI;controller.appearance=appearance;controller.accent=accent;controller.accentMode=requestedAccentMode;controller.UseTheme(appearance);if(appearance==4){controller.accentCharacter=requestedCharacter;controller.accentOpacity=100*MaterialColor::AccentOpacity(requestedCharacter);controller.accentSaturation=requestedSaturation;}if((window||desktopPreview)&&!feederSplitPreview&&!shortFusePreview)controller.LoadPreferences(false,preferencesPath);
         if(desktopPreview){controller.preferences.clear();controller.setupComplete=true;controller.closePreview=[]{closed=true;};controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("desktop-preview",true);if(library.names.empty())document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");else document->QuerySelector(".preview-label")->SetInnerRML("Game");if(window){SetWindowTextW(window,L"rtxForge · Overlay preview");controller.Element("preview-chrome")->SetProperty("display","block");}}
         Image posterImage{};
         const auto changePoster=[&](const fs::path& path){posterImage={};controller.Poster("");if(!path.empty())try{posterImage=LoadImage(path);controller.Poster(Utf8(path));}catch(const std::exception&){};};
         changePoster(posterPath);controller.samplePoster=[&](float x,float y){if(posterImage.rgba.empty())return std::string();const auto px=std::clamp(int(x*posterImage.width),0,int(posterImage.width)-1),py=std::clamp(int(y*posterImage.height),0,int(posterImage.height)-1);const auto i=(size_t(py)*posterImage.width+px)*4;return Controller::Hex(posterImage.rgba[i]/255.f,posterImage.rgba[i+1]/255.f,posterImage.rgba[i+2]/255.f).substr(0,7);};
         if(!gameTitle.empty())controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("preview-thumbnail",thumbnail);
-        if(feederSplitPreview||(!window&&!desktopPreview)){controller.copySize=requestedCopy;controller.overlayScale=requestedScale;}if(customMfg)controller.values["multiplier"]=3;
+        if(feederSplitPreview||shortFusePreview||(!window&&!desktopPreview)){controller.copySize=requestedCopy;controller.overlayScale=requestedScale;}if(customMfg)controller.values["multiplier"]=3;
         controller.monitorPreviewFocus=window!=nullptr;controller.InstallExtraControls();
         std::vector<ForgeGlass::HdrField> hdrPreview;for(const auto& f:PreviewHdrFields)hdrPreview.push_back({f.key,f.label,f.section,f.kind,f.options,f.unit,f.minimum,f.maximum,f.step,f.initial,f.initial,f.reset,!f.reset});
         if(!desktopPreview)controller.hdr.Set(std::move(hdrPreview),true,true,"Preview HDR preferences. These sample controls do not change a game; connected controls save startup preferences for verified add-on builds.");
@@ -669,6 +722,36 @@ int wmain(int argc,wchar_t** argv)
             controller.Message("Preview · changes stay in this window.");
             context->Update();
             Require(controller.Element("feeder-split-context")->IsVisible(true),"Feeder Split Render preview did not open");
+        }
+        if(shortFusePreview) {
+            controller.values["passes"]=1;
+            controller.passesMax=8;
+            controller.Layout(requestedLayout);
+            controller.addons.Set({
+                {"character_character_mask","Character mask","Character detail · ShortFuse","choice",
+                    "<option value=\"0\">Off</option><option value=\"1\">On</option>","",0,1,1,1,1,false,false},
+                {"character_resolution_scale","Resolution scale","Character detail · ShortFuse","slider","","%",25,100,1,100,74,false,false},
+                {"character_character","Skin detail","Character detail · ShortFuse","slider","","",0,2,.01f,.5f,.5f,false,false},
+                {"character_intensity","Strength","Character detail · ShortFuse","slider","","",0,2,.01f,1,1,false,false},
+                {"character_style","Style","Character detail · ShortFuse","slider","","",0,2,1,0,1,false,false},
+                {"character_local_tone","Local tone","Character detail · ShortFuse","slider","","",0,2,.01f,1,1,false,false},
+                {"character_structure","Structure","Character detail · ShortFuse","slider","","",0,2,.01f,1,1,false,false},
+                {"character_passes","Passes","Character detail · ShortFuse","slider","","",1,4,1,1,1,false,false},
+            },true,"");
+            controller.addons.ShowMore(shortFuseMore);
+            controller.addons.SetShortFuseLive(true);
+            controller.addons.LiveMessage("Preview · Live controls in game");
+            controller.RefreshSplitRenderEntry();
+            if(controller.layout=="centered")controller.Page("nav-addons");
+            else {
+                controller.Page("nav-neural");
+                context->Update();
+                controller.Element("open-addons")->ScrollIntoView(false);
+                controller.Open("addons");
+            }
+            controller.Message("Preview · changes stay in this window.");
+            context->Update();
+            Require(controller.Element("addons-inspector")->IsVisible(true),"ShortFuse preview did not open");
         }
         if(onboarding){controller.nativeShortcuts.clear();if(onboardingMenus>0)controller.nativeShortcuts.push_back({"OptiScaler","Insert",true});if(onboardingMenus>1)controller.nativeShortcuts.push_back({"ReShade","Ctrl+Shift+Home",true});controller.BeginSetup();if(onboardingNative){controller.setupStep=2;controller.UpdateSetup();}}
         if(thumbnail&&controller.layout=="centered")controller.Page("nav-neural");

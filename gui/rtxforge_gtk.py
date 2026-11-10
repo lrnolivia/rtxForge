@@ -5689,6 +5689,130 @@ class Window(Adw.ApplicationWindow):
         scroll.get_hadjustment().connect('notify::page-size',resized)
         return scroll
 
+    def build_split_presets(self):
+        import nr_addons
+        group=Adw.PreferencesGroup(title='Split Render Presets',
+            description='Set the environment, character and DLSS 5 model for a package. Use saved presets in installation reviews.')
+        if self.options.demo:
+            group.add(row('Split Render presets','Available in the installed app.'))
+            return group
+        packages=list(nr_addons.PRESET_PACKAGES)
+        selected='skynizz' if self.settings.get('runtime_provider')=='skynizz' else 'native'
+        picker=safe_combo_row(title='Package',model=Gtk.StringList.new([nr_addons.PRESET_PACKAGES[key][0] for key in packages]),
+                              selected=packages.index(selected))
+        group.add(picker)
+        body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
+        group.add(body)
+        def refresh(*_):
+            while child:=body.get_first_child():body.remove(child)
+            package=packages[picker.get_selected()]
+            editor=Adw.PreferencesGroup()
+            body.append(editor)
+            try:catalog=nr_addons.preset_catalog(self.service.config,package)
+            except Exception as error:editor.add(row('Split Render presets',str(error)));return
+            if reason:=catalog.get('blocked'):
+                editor.add(row('Pass roles',reason+' Open a Feeder game’s Tools to assign pass roles.'))
+                return
+            self.populate_split_preset_editor(editor,catalog,package,refresh)
+        picker.connect('notify::selected',refresh);refresh()
+        return group
+
+    def populate_split_preset_editor(self,group,catalog,package,refresh):
+        import nr_addons
+        addons=catalog['addons'];models=catalog['models']
+        runtime=catalog.get('runtime_nr')
+        world=(runtime or {}).get('name') or 'Skynizz'
+        combos=[(key,value) for key,value in catalog['combos'].items()]
+        combo_row=safe_combo_row(title='Preset',subtitle='Choose a saved setup or create your own.',
+                                 model=Gtk.StringList.new(['Choose manually']+[value.get('name',key) for key,value in combos]),selected=0)
+        group.add(combo_row)
+        slots={}
+        world_choice=[{'id':nr_addons.RUNTIME,'name':world,'builds':[]}]
+        for slot,optional,title,choices in (('environment',not runtime,'Environment',world_choice if runtime else addons),
+                                            ('character',True,'Character detail',addons)):
+            names=(['None'] if optional else [])+[a['name'] for a in choices]
+            addon=safe_combo_row(title=title,model=Gtk.StringList.new(names),selected=0)
+            addon.set_sensitive(optional or len(choices)>1)
+            build=safe_combo_row(title=title+' build',model=Gtk.StringList.new([]),selected=0)
+            group.add(addon);group.add(build)
+            slots[slot]={'optional':optional,'choices':choices,'addon':addon,'build':build,'builds':[],'values':None,'values_for':None}
+        if runtime:
+            group.add(row('DLSS 5 model',f'The character pass shares the model installed by {world}.'))
+            model_buttons={}
+        else:
+            model_row,model_buttons=self.nr_model_row(models,'Both passes share this model.')
+            group.add(model_row)
+        def chosen(slot):
+            s=slots[slot];index=s['addon'].get_selected()-(1 if s['optional'] else 0)
+            return s['choices'][index] if 0<=index<len(s['choices']) else None
+        def position(slot,key):
+            s=slots[slot];found=next((i for i,a in enumerate(s['choices']) if a['id']==key),None)
+            return 0 if found is None else found+(1 if s['optional'] else 0)
+        def fill_builds(slot,select=None):
+            s=slots[slot];builds=(chosen(slot) or {}).get('builds',[])
+            s['builds']=builds;s['build'].set_model(Gtk.StringList.new([b['label'] for b in builds]))
+            pick=next((i for i,b in enumerate(builds) if (b['id']==select if select else b['default'])),0)
+            if builds:s['build'].set_selected(pick)
+            s['build'].set_visible(bool(builds))
+        def setup():
+            result={}
+            model=next((key for key,button in model_buttons.items() if button.get_active()),'new')
+            for slot,s in slots.items():
+                addon=chosen(slot)
+                if not addon:continue
+                if addon['id']==nr_addons.RUNTIME:result[slot]={'addon':addon['id']};continue  # Skynizz brings its own model
+                index=s['build'].get_selected()
+                spec={'addon':addon['id'],'build':s['builds'][index]['id'] if index<len(s['builds']) else None,'model':model}
+                if s['values'] is not None and s['values_for']==addon['id']:spec['values']=dict(s['values'])
+                result[slot]=spec
+            return result
+        verdict=row('Compatibility','Choose the passes for this package.');group.add(verdict)
+        name=Gtk.Entry(placeholder_text='Preset name',max_length=60,valign=Gtk.Align.CENTER)
+        name_row=row('Preset name');name_row.add_suffix(name);group.add(name_row)
+        save_row=row('Save Split Render preset','Available in reviews for compatible games.')
+        save=button('Save preset',lambda *_:save_preset(),'suggested-action')
+        save.set_valign(Gtk.Align.CENTER);save_row.add_suffix(save);group.add(save_row)
+        state={'filling':False,'compatible':False}
+        def update_save(*_):
+            save.set_sensitive(state['compatible'] and bool(name.get_text().strip()))
+        def check():
+            result=nr_addons.preset_check(package,setup())
+            state['compatible']=result['ok']
+            verdict.set_subtitle('Ready to save.' if result['ok'] else result['reason']);update_save()
+        def save_preset():
+            if not state['compatible'] or not name.get_text().strip():return
+            try:nr_addons.save_combo(self.service.config,name.get_text(),setup(),package)
+            except Exception as error:verdict.set_subtitle(str(error));return
+            self.toast('Split Render preset saved.');refresh()
+        name.connect('changed',update_save)
+        def changed(*_):
+            if state['filling']:return
+            combo_row.set_selected(0);check()
+        for slot,s in slots.items():
+            s['addon'].connect('notify::selected',lambda *_,slot=slot:(fill_builds(slot),changed()))
+            s['build'].connect('notify::selected',changed)
+        for model_button in model_buttons.values():
+            model_button.connect('toggled',lambda widget:changed() if widget.get_active() else None)
+        def combo_chosen(*_):
+            index=combo_row.get_selected()
+            if index<=0:return
+            # The combo as it applies to this game: beside Skynizz, Skynizz is its world.
+            combo=combos[index-1][1];state['filling']=True
+            for slot,s in slots.items():
+                spec=combo.get(slot) or {}
+                s['addon'].set_selected(position(slot,spec.get('addon')))
+                fill_builds(slot,spec.get('build'))
+                s['values']=spec.get('values');s['values_for']=spec.get('addon')
+            if model_buttons:
+                model=(combo.get('environment') or {}).get('model') or (combo.get('character') or {}).get('model') or 'new'
+                model_buttons.get(model,model_buttons['new']).set_active(True)
+            name.set_text(combo.get('name','') if not combo.get('builtin') else '')
+            state['filling']=False;check()
+        combo_row.connect('notify::selected',combo_chosen)
+        state['filling']=True
+        for slot in slots:fill_builds(slot)
+        state['filling']=False;check()
+
     def build_presets_page(self,tuning):
         page=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=24)
         page.add_css_class('forge-page')
@@ -5698,6 +5822,7 @@ class Window(Adw.ApplicationWindow):
         heading.append(label('Your defaults for new installs. Review games to apply them to existing packages.','dim-label'))
         for child in (heading.get_first_child(),heading.get_last_child()):child.set_xalign(0)
         page.append(heading)
+        page.append(self.build_split_presets())
         group=Adw.PreferencesGroup()
         pod=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         pod.add_css_class('presets-card')
@@ -6771,71 +6896,99 @@ class Window(Adw.ApplicationWindow):
         control.add_suffix(buttons)
         return control,choices
 
-    def populate_feeder_character(self,group,status,game,settings,guide):
+    def populate_feeder_character(self, group, status, game, settings):
         import feeder_character
+        group.set_title('Feeder NR passes')
+        group.set_description('Each pass processes the whole frame. Character enables the mask so Skin detail can affect detected people.')
         if not settings['available']:
-            status.set_subtitle(guide+'\n'+settings.get('reason',''))
+            status.set_title('Pass roles')
+            status.set_subtitle(settings.get('reason', ''))
             return
-        status.set_subtitle('ShortFuse requires native DLSS. Use Feeder NR’s second pass to tune character detail with the existing setup.')
-        group.add(row('Pass 1 · Environment','Feeder NR keeps the main pass and its current tuning.'))
-        pass_row=row('Pass 2 · Character detail')
-        inherit=row('Use main settings')
-        skin=row('Skin detail')
-        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,-1,1,.01)
-        scale.set_digits(2);scale.set_draw_value(True);scale.set_size_request(180,-1)
+        group.remove(status)
+        options = settings['options']
+        pass_row = safe_combo_row(title='Pass', model=Gtk.StringList.new([f"Pass {item['number']}" for item in options]))
+        role = safe_combo_row(title='Role', model=Gtk.StringList.new(['Standard', 'Character']))
+        skin = row('Skin detail')
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -1, 1, .01)
+        scale.set_size_request(180, -1)
         scale.set_valign(Gtk.Align.CENTER)
-        scale.update_property([Gtk.AccessibleProperty.LABEL],['Pass 2 Skin detail'])
+        scale.update_property([Gtk.AccessibleProperty.LABEL], ['Skin detail for the selected pass'])
         skin.add_suffix(scale)
-        action=row('Save character detail')
-        working=False
+        action = row('Apply next launch')
+        working = False
 
-        def ready(result,current,error):
-            nonlocal working,settings
-            working=False
+        def selection():
+            option = settings['options'][pass_row.get_selected()]
+            character = role.get_selected() == 1
+            value = scale.get_value()
+            value = -1.0 if value < 0 else value
+            tuning = character != option['character'] or character and abs(value - option['skin']) > .005
+            return option, character, value, tuning
+
+        def refresh(*_):
+            option, character, value, tuning = selection()
+            count, number = settings['passes'], option['number']
+            blocked = settings.get('reason')
+            locked = working or bool(blocked)
+            pass_row.set_subtitle(f"{count} of {len(options)} full-frame passes configured.")
+            role.set_subtitle('Copies the main pass’s model settings before assigning this pass its own settings.'
+                              if option['inherited'] and tuning else
+                              'Passes that follow the main settings also use this role.' if number == 1 else '')
+            skin.set_visible(character)
+            skin.set_subtitle('Stock' if value < 0 else f'Selected · {value:.2f}')
+            action.set_subtitle(blocked or (f'Full-frame passes · {count} → {number}. Extra passes can lower frame rate.'
+                                          if number > count else 'Saves the selected pass settings for the next launch.'))
+            for control in (pass_row, role, scale):
+                control.set_sensitive(not locked)
+            apply_button.set_sensitive(not locked and (number > count or tuning))
+
+        def select_pass(*_):
+            option = settings['options'][pass_row.get_selected()]
+            role.set_selected(int(option['character']))
+            scale.set_value(option['skin'])
+            refresh()
+
+        def ready(result, current, error):
+            nonlocal working, settings
+            working = False
             if current and current.get('available'):
-                settings=current
-                show()
-            else:refresh()
+                settings = current
+                select_pass()
+            else:
+                refresh()
             action.set_subtitle(error or result['message'])
             return False
 
         def apply(*_):
             nonlocal working
-            if working or self.busy:return
-            working=True;refresh()
-            action.set_subtitle('Saving Pass 2…')
-            stamp,value=settings['stamp'],scale.get_value()
-            def work():
-                try:result=feeder_character.apply(self.service.config,game,stamp,value)
-                except Exception as error:GLib.idle_add(ready,None,None,str(error))
-                else:
-                    current=feeder_character.snapshot(self.service.config,game)
-                    GLib.idle_add(ready,result,current,None)
-            threading.Thread(target=work,daemon=False).start()
+            if working or self.busy:
+                return
+            option, character, value, _ = selection()
+            working = True
+            refresh()
+            number = option['number']
+            action.set_subtitle(f'Saving Pass {number}…')
+            stamp = settings['stamp']
 
-        apply_button=button('Apply character detail',apply,'suggested-action')
+            def work():
+                try:
+                    result = feeder_character.apply(self.service.config, game, stamp,
+                                                    value if character else None, number, character)
+                except Exception as error:
+                    GLib.idle_add(ready, None, None, str(error))
+                else:
+                    GLib.idle_add(ready, result, feeder_character.snapshot(self.service.config, game), None)
+            threading.Thread(target=work, daemon=False).start()
+
+        apply_button = button('Save pass role', apply, 'suggested-action')
         apply_button.set_valign(Gtk.Align.CENTER)
         action.add_suffix(apply_button)
-        for control in (pass_row,inherit,skin,action):group.add(control)
-
-        def refresh(*_):
-            saved=settings['skin']
-            current='Default' if saved is None else f'{saved:.2f}'
-            skin.set_subtitle(f'Current · {current}   /   Proposed · {scale.get_value():.2f}')
-            scale.set_sensitive(not working)
-            apply_button.set_sensitive(not working and not settings.get('reason') and
-                (settings['changes'] or saved is None or abs(saved-scale.get_value())>.005))
-
-        def show():
-            current,target=settings['passes'],settings['target_passes']
-            pass_row.set_subtitle(f'Passes · {current}' if current==target else f'Passes · {current} → {target}')
-            inherit.set_subtitle('On → Off · Tune Pass 2 independently.' if settings['inherit'] else 'Off · Pass 2 has its own settings.')
-            action.set_subtitle(settings.get('reason') or ('Saves to ReShade.ini for the next launch.' if settings['nr_enabled']
-                else 'Saves for the next launch. Enable NR in the in-game Feeder panel to see the effect.'))
-            scale.set_value(settings['target_skin'])
-            refresh()
-        scale.connect('value-changed',refresh)
-        show()
+        for control in (pass_row, role, skin, action):
+            group.add(control)
+        pass_row.connect('notify::selected', select_pass)
+        role.connect('notify::selected', refresh)
+        scale.connect('value-changed', refresh)
+        select_pass()
 
     def populate_nr_addons(self,body,game):
         """Split Render roles, pinned builds and a shared DLSS 5 model."""
@@ -6873,113 +7026,28 @@ class Window(Adw.ApplicationWindow):
                 return
             if reason:=catalog.get('blocked'):
                 if feeder:=catalog.get('feeder_character'):
-                    self.populate_feeder_character(group,status,game,feeder,reason)
+                    self.populate_feeder_character(group,status,game,feeder)
                 else:status.set_subtitle(reason)
                 return
             status.set_subtitle('Not installed in this game.')
-            combos=[(key,value) for key,value in catalog['combos'].items()]
-            combo_row=safe_combo_row(title='Preset',subtitle='Fill both roles from a saved or built-in preset.',
-                                     model=Gtk.StringList.new(['Choose manually']+[value.get('name',key) for key,value in combos]),selected=0)
-            group.add(combo_row)
-            slots={}
-            world_choice=[{'id':nr_addons.RUNTIME,'name':world,'builds':[]}]
-            for slot,optional,title,choices in (('environment',not runtime,'Environment',world_choice if runtime else addons),
-                                                ('character',True,'Character detail',addons)):
-                names=(['None'] if optional else [])+[a['name'] for a in choices]
-                addon=safe_combo_row(title=title,model=Gtk.StringList.new(names),selected=0)
-                addon.set_sensitive(optional or len(choices)>1)
-                build=safe_combo_row(title=title+' build',model=Gtk.StringList.new([]),selected=0)
-                group.add(addon);group.add(build)
-                slots[slot]={'optional':optional,'choices':choices,'addon':addon,'build':build,'builds':[],'values':None,'values_for':None}
-            if runtime:
-                group.add(row('DLSS 5 model',f'The character pass shares the model installed by {world}.'))
-                model_buttons={}
-            else:
-                model_row,model_buttons=self.nr_model_row(models,'Both passes share this model.')
-                group.add(model_row)
-            def chosen(slot):
-                s=slots[slot];index=s['addon'].get_selected()-(1 if s['optional'] else 0)
-                return s['choices'][index] if 0<=index<len(s['choices']) else None
-            def position(slot,key):
-                s=slots[slot];found=next((i for i,a in enumerate(s['choices']) if a['id']==key),None)
-                return 0 if found is None else found+(1 if s['optional'] else 0)
-            def fill_builds(slot,select=None):
-                s=slots[slot];builds=(chosen(slot) or {}).get('builds',[])
-                s['builds']=builds;s['build'].set_model(Gtk.StringList.new([b['label'] for b in builds]))
-                pick=next((i for i,b in enumerate(builds) if (b['id']==select if select else b['default'])),0)
-                if builds:s['build'].set_selected(pick)
-                s['build'].set_visible(bool(builds))
+            combos=list(catalog['combos'].values())
+            preset=safe_combo_row(title='Preset',subtitle='Create and customize setups in Presets.',
+                model=Gtk.StringList.new(['Recommended for this game']+[value['name'] for value in combos]),selected=0)
+            group.add(preset)
             def setup():
-                result={}
-                model=next((key for key,button in model_buttons.items() if button.get_active()),'new')
-                for slot,s in slots.items():
-                    addon=chosen(slot)
-                    if not addon:continue
-                    if addon['id']==nr_addons.RUNTIME:result[slot]={'addon':addon['id']};continue  # Skynizz brings its own model
-                    index=s['build'].get_selected()
-                    spec={'addon':addon['id'],'build':s['builds'][index]['id'] if index<len(s['builds']) else None,'model':model}
-                    if s['values'] is not None and s['values_for']==addon['id']:spec['values']=dict(s['values'])
-                    result[slot]=spec
-                return result
-            verdict=row('Compatibility','Choose the passes for this game.');group.add(verdict)
-            apply_row=row('Apply to this game','Review the exact files before anything changes.')
-            actions=Gtk.Box(spacing=8,valign=Gtk.Align.CENTER)
-            save=button('Save preset…',lambda *_:self.save_nr_combo(game,setup()))
-            install=button('Review installation',lambda *_:self.review_nr(game,setup()),'suggested-action');install.set_sensitive(False)
-            actions.append(save);actions.append(install);apply_row.add_suffix(actions);group.add(apply_row)
-            state={'filling':False}
-            def check():
+                index=preset.get_selected()
+                chosen=combos[index-1] if 0<index<=len(combos) else current.get('default') or {}
+                return {slot:chosen[slot] for slot in nr_addons.SLOTS if chosen.get(slot)}
+            action=row('Install Split Render','Review what this game will use before installing.')
+            install=button('Review installation',lambda *_:self.review_nr(game,setup()),'suggested-action')
+            install.set_valign(Gtk.Align.CENTER);action.add_suffix(install);group.add(action)
+            def check(*_):
                 result=nr_addons.check(game,setup())
-                if result['ok']:
-                    text='Available to review.' if result['verified'] else 'Available to review · this pairing is not verified on a test copy yet.'
-                    if result.get('optiscaler_nr'):text=f"{world} covers the environment. "+text
-                    if result['skipped']:text+=" Some settings aren't verified for this add-on and are left out."
-                else:text=result['reason']
-                verdict.set_subtitle(text);install.set_sensitive(result['ok'] and not self.busy)
-            def changed(*_):
-                if state['filling']:return
-                combo_row.set_selected(0);check()
-            for slot,s in slots.items():
-                s['addon'].connect('notify::selected',lambda *_,slot=slot:(fill_builds(slot),changed()))
-                s['build'].connect('notify::selected',changed)
-            for model_button in model_buttons.values():
-                model_button.connect('toggled',lambda widget:changed() if widget.get_active() else None)
-            def combo_chosen(*_):
-                index=combo_row.get_selected()
-                if index<=0:return
-                # The combo as it applies to this game: beside Skynizz, Skynizz is its world.
-                combo=combos[index-1][1];state['filling']=True
-                for slot,s in slots.items():
-                    spec=combo.get(slot) or {}
-                    s['addon'].set_selected(position(slot,spec.get('addon')))
-                    fill_builds(slot,spec.get('build'))
-                    s['values']=spec.get('values');s['values_for']=spec.get('addon')
-                if model_buttons:
-                    model=(combo.get('environment') or {}).get('model') or (combo.get('character') or {}).get('model') or 'new'
-                    model_buttons.get(model,model_buttons['new']).set_active(True)
-                state['filling']=False;check()
-            combo_row.connect('notify::selected',combo_chosen)
-            state['filling']=True
-            start=current.get('default') or {}
-            for slot,s in slots.items():
-                s['addon'].set_selected(position(slot,(start.get(slot) or {}).get('addon')))
-                fill_builds(slot)
-            state['filling']=False;check()
+                status.set_subtitle(('Available to review.' if result['verified'] else 'Available to review · pairing unverified.')
+                                    if result['ok'] else result['reason'])
+                install.set_sensitive(result['ok'] and not self.busy)
+            preset.connect('notify::selected',check);check()
         threading.Thread(target=load,daemon=True).start()
-
-    def save_nr_combo(self,game,setup):
-        import nr_addons
-        dialog=Adw.AlertDialog(heading='Save preset',body='The preset is available for every game.')
-        entry=Gtk.Entry(placeholder_text='Preset name',max_length=60,activates_default=True);dialog.set_extra_child(entry)
-        dialog.add_response('cancel','Cancel');dialog.add_response('save','Save')
-        dialog.set_response_appearance('save',Adw.ResponseAppearance.SUGGESTED)
-        dialog.set_default_response('save');dialog.set_close_response('cancel')
-        def chosen(_dialog,response):
-            if response!='save' or not entry.get_text().strip():return
-            try:nr_addons.save_combo(self.service.config,entry.get_text(),setup)
-            except Exception as error:self.toast(str(error));return
-            self.toast("Combo saved. It's available for every game. Reopen Tools to pick it.")
-        dialog.connect('response',chosen);dialog.present(self)
 
     def review_nr(self,game,setup,remove=False):
         import nr_install

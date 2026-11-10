@@ -847,6 +847,7 @@ function splitToolCard(game: Game) {
     ${!backend.enabled ? '' : !tool ? `<p role="status">${e(splitToolError || 'Checking this game…')}</p>` :
       tool.installed ? `<p role="status">${e(tool.installedText)}</p>
       <button class="quiet" data-action="split-tool-remove" ${tool.busy ? 'disabled' : ''}>Remove Split Render</button>` :
+      tool.catalog.blocked ? `<p role="status">${e(tool.catalog.blocked)}</p>` :
       `<p class="subtle">Not installed in this game.</p>${splitPicker(tool.catalog, tool.picker, 'tools', true)}
       <p role="status">${e(tool.reason || (tool.checked ? tool.verdict : 'Checking compatibility…'))}</p>
       <div class="operation-actions"><button class="primary" data-action="split-tool-install" ${tool.checked && !tool.reason && !tool.busy ? '' : 'disabled'}>Review Split Render</button>
@@ -879,7 +880,7 @@ async function loadSplitTool(game: Game) {
     if (status.changed?.length) parts.push(`${status.changed.length} file(s) changed since install`);
     splitTool = { game: game.id, row, catalog, picker, installed: status.installed, installedText: 'Installed · ' + parts.join(' · '),
       checked: false, reason: '', verdict: '', revision: 0, name: '', busy: false };
-    if (status.installed) render();
+    if (status.installed || catalog.blocked) render();
     else await checkSplitTool();
   } catch (problem) {
     if (view === 'details' && selectedId === game.id && detailsSection === 'tools') {

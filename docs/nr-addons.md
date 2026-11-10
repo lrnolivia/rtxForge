@@ -76,6 +76,10 @@ verified before use.
 - **Skynizz + ShortFuse runs close to a 12 GB card's video memory.**
   Switching windows can stall the game. Lower Character detail's resolution
   scale if it does.
+- **Feeder NR games use their existing renderer.** ShortFuse hooks native DLSS,
+  so it cannot use the inputs Feeder supplies to its own RenoDX renderer. For
+  a second pass in a Feeder game, open the in-game NR panel and set **Passes**
+  to 2. Adjust skin detail under **Pass 2**.
 - **Another tool's files are kept.** rtxForge refuses the install rather than
   replace them.
 

@@ -11,6 +11,7 @@ export type Catalog = {
   models: { id: string; label: string }[];
   combos: Record<string, Combo>;
   runtime_nr?: { id: string; name: string } | null;
+  blocked?: string | null;
 };
 export type Choice = { auto: true; model: string } | { setup: Setup & { beside_runtime_nr?: Setup }; adapt: boolean };
 export type Picker = { preset: string; model: string; manualModel: string; manual: Setup };

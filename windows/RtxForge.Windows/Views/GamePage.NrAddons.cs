@@ -65,6 +65,12 @@ public sealed partial class GamePage
             return;
         }
 
+        if (catalog["blocked"]?.GetValue<string>() is { Length: > 0 } reason)
+        {
+            SetSubtitle(status, reason);
+            return;
+        }
+
         var combos = (catalog["combos"] as JsonObject ?? []).Select(kv => (Id: kv.Key, Combo: kv.Value as JsonObject)).Where(c => c.Combo is not null).ToList();
         var (comboRow, comboBox) = Prefs.ComboRow("Preset", "Fill both roles from a saved or built-in preset.",
             ["Choose manually", .. combos.Select(c => (string?)c.Combo!["name"] ?? c.Id)], 0, "");

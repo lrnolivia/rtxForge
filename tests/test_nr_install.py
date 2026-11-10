@@ -156,6 +156,20 @@ class NrInstallTests(unittest.TestCase):
             nr_install.revise_package_reviews({}, [review], {'revision': 2, 'choice': choice}, 'ada')
         self.assertNotIn('split_render', review['plans'][0])
 
+    def test_feeder_files_block_split_render_before_downloads_or_writes(self):
+        (self.game / 'dlss5-feed.addon64').write_bytes(pe(b'Feeder hook'))
+        (self.game / 'renodx-dlss5.addon64').write_bytes(pe(b'Feeder renderer'))
+        before = self.files()
+        choice = {'setup': COMBO, 'adapt': False}
+        with (patch.object(nr_install.engine_bridge, 'module', return_value=self.engine),
+              patch.object(nr_install, '_payload') as payload):
+            self.assertEqual(nr_install.match_batch({}, [self.row], choice), [])
+            result = nr_install.prepare_batch({}, [self.row], choice)
+            self.assertEqual(result['plans'], [])
+            self.assertIn('Feeder NR', result['blocked'][0]['reason'])
+            payload.assert_not_called()
+        self.assertEqual(self.files(), before)
+
     def test_lecram_never_runs_where_optiscaler_is_installed(self):
         # ReShade reloads Lecram while the game starts; each reload hooks DLSS again and
         # OptiScaler's Ray Reconstruction and frame generation fail to start (The Witcher 3).

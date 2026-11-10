@@ -162,6 +162,11 @@ def _value(value):
 
 def _target(row, exe, e, projection=None):
     t.need(not _receipt(row).exists(), 'A Split Render setup is already installed. Remove it before choosing another.')
+    import feeder_provider
+    if reason := nr_addons.split_render_block(row):
+        raise t.Refusal(reason)
+    if feeder_provider.has_feeder_hook(exe.parent):
+        raise t.Refusal(nr_addons.FEEDER_SPLIT_RENDER_BLOCK)
     arch = hdr.architecture(exe)
     route, host, optiscaler_ini = hdr._route(e, exe, arch, projection=projection)
     # The game folder, not the library row, says whether OptiScaler is here and runs its own NR.
@@ -359,7 +364,8 @@ def prepare_after_packages(config, reviews, choice, gpu='ada'):
                 if row.get('game') and row['game'] not in seen:
                     seen.add(row['game'])
                     summary.append({'game': row['game'], 'name': row['name'],
-                                    'reason': 'Split Render is unavailable with this main package route.'})
+                                    'reason': (nr_addons.FEEDER_SPLIT_RENDER_BLOCK if review.get('kind') == 'feeder'
+                                               else 'Split Render is unavailable with this main package route.')})
 
     for review in reviews:
         visit(review)

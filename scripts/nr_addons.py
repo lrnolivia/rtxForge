@@ -286,6 +286,18 @@ def combo_setup(game, combo):
     return setup
 
 
+FEEDER_SPLIT_RENDER_BLOCK = (
+    'Feeder NR already provides the environment. ShortFuse hooks the game’s native DLSS and '
+    'cannot use Feeder NR’s inputs. Use Passes in the in-game Feeder NR panel to tune a second pass.'
+)
+
+
+def split_render_block(game):
+    if game.get('runtime_provider') == 'feeder' or game.get('feeder_detected'):
+        return FEEDER_SPLIT_RENDER_BLOCK
+    return None
+
+
 def catalog_view(config, game=None):
     """The catalog as the apps show it: add-ons with their builds, models and combos. For a game,
     each combo is what it means there, and runtime_nr names the world Skynizz already provides."""
@@ -300,7 +312,8 @@ def catalog_view(config, game=None):
                        for key, a in cat['addons'].items()],
             'models': [{'id': key, 'label': m['label']} for key, m in cat['models'].items()],
             'combos': found,
-            'runtime_nr': runtime_nr(game) if game is not None else None}
+            'runtime_nr': runtime_nr(game) if game is not None else None,
+            'blocked': split_render_block(game) if game is not None else None}
 
 
 def install_choices(config):
@@ -329,6 +342,8 @@ def default_setup(game):
 
 def install_plan(game, setup):
     """The standalone add-on operation cannot install the Feeder stack."""
+    if reason := split_render_block(game):
+        raise t.Refusal(reason)
     result = plan(game, setup)
     t.need(not result['feeder'],
            'This game has no DLSS of its own, so Lecram runs through Feeder NR. Choose Feeder NR for it.')

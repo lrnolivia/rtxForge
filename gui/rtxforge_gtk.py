@@ -6805,6 +6805,9 @@ class Window(Adw.ApplicationWindow):
                 remove=row('Restore original files','Puts back the files and ReShade settings changed by Split Render.')
                 action=button('Remove Split Render',lambda *_:self.review_nr(game,None,remove=True));action.set_valign(Gtk.Align.CENTER);remove.add_suffix(action);group.add(remove)
                 return
+            if reason:=catalog.get('blocked'):
+                status.set_subtitle(reason)
+                return
             status.set_subtitle('Not installed in this game.')
             combos=[(key,value) for key,value in catalog['combos'].items()]
             combo_row=safe_combo_row(title='Preset',subtitle='Fill both roles from a saved or built-in preset.',

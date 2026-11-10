@@ -31,7 +31,8 @@ INSTALL_DEFAULTS = {'NRFollowInputRes': '0', 'NRResolutionScale': '0.65',
                     'NRLocalStructure': '1.0', 'NRSkinStructure': '1.0'}
 # Files only a Feeder install adds. When none remain, a game update or Steam
 # verification replaced the folder and the old install record is obsolete.
-FEEDER_ONLY = ('dlss5-feed.addon64', 'dlss5-feed.addon32', 'dlss5-feed-helper.addon64', 'renodx-dlss5.addon64', 'ReShade.ini')
+FEEDER_HOOKS = ('dlss5-feed.addon64', 'dlss5-feed.addon32', 'dlss5-feed-helper.addon64')
+FEEDER_ONLY = (*FEEDER_HOOKS, 'renodx-dlss5.addon64', 'ReShade.ini')
 # EA's activation wrapper hides these executables' imports until it decrypts
 # them at launch. Each was reviewed as an x64 DirectX 11 game.
 REVIEWED_DX11 = {'ts4_x64.exe'}
@@ -117,6 +118,11 @@ def digest(path, cached=False):
     if session is not None:
         session[key] = value
     return value
+
+
+def has_feeder_hook(directory):
+    """Recognize the Feeder hook files without treating RenoDX alone as Feeder."""
+    return any((directory / name).is_file() for name in FEEDER_HOOKS)
 
 
 def state_dir(e, target):
@@ -691,7 +697,7 @@ def expand_rows(e, rows, selected=False):
                 child['exe'] = exe.relative_to(root).as_posix()
             if child.get('native_dlss') and leftover_sr(e, exe.parent):
                 child['native_dlss'] = False
-            if any((exe.parent / name).is_file() for name in ('dlss5-feed.addon64', 'dlss5-feed.addon32', 'dlss5-feed-helper.addon64')):
+            if has_feeder_hook(exe.parent):
                 try:
                     import cross_os
                     shared = cross_os.read(exe.parent)

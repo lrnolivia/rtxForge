@@ -88,7 +88,7 @@ public interface IForgeService
     Task<HdrStatus> HdrStatusAsync(Game game);
     Task<EngineReview> ReviewHdrAsync(Game game, bool remove = false, string? customPath = null);
 
-    // DLSS5 NR add-ons (nr_addons / nr_install): Environment and Character slots, Old/New model, combos.
+    // Split Render (nr_addons / nr_install): Environment and Character slots, Old/New model, combos.
     Task<System.Text.Json.Nodes.JsonObject> NrCatalogAsync(Game? game = null);
     Task<System.Text.Json.Nodes.JsonObject> NrCheckAsync(Game game, System.Text.Json.Nodes.JsonObject setup);
     Task<System.Text.Json.Nodes.JsonObject> NrStatusAsync(Game game);

@@ -12,7 +12,9 @@ Elsewhere it tries a single environment pass in this order: Lecram, ShortFuse,
 GITC Uplift. The chosen DLSS 5 model applies to any newly installed model.
 The review confirms the provider and model for each game and checks the files
 before installing. You can also choose Split Render in the main installation
-review, then review the Split Render changes after the main package installs.
+review. Confirm once to install each game’s main package, then apply that
+game’s reviewed Split Render setup in the same run. The review lists the
+exact file changes and shows when a game can only receive its main package.
 
 For custom builds, tuning and saved combos, open a game's
 **Tools → Split Render**. The group has two slots:
@@ -74,6 +76,10 @@ verified before use.
 - **Skynizz + ShortFuse runs close to a 12 GB card's video memory.**
   Switching windows can stall the game. Lower Character detail's resolution
   scale if it does.
+- **Feeder NR games use their existing renderer.** ShortFuse hooks native DLSS,
+  so it cannot use the inputs Feeder supplies to its own RenoDX renderer. For
+  a second pass in a Feeder game, open the in-game NR panel and set **Passes**
+  to 2. Adjust skin detail under **Pass 2**.
 - **Another tool's files are kept.** rtxForge refuses the install rather than
   replace them.
 
@@ -105,7 +111,7 @@ apps share them.
 
 ## In the rtxForge overlay
 
-Where the rtxForge overlay runs, its **NR add-ons** section lists the settings of
+Where the rtxForge overlay runs, its **Split Render** section lists the settings of
 each add-on rtxForge installed, under its role: **Environment · Lecram** and
 **Character detail · ShortFuse**. Lecram never appears where OptiScaler is
 installed. Where Skynizz is the world, its NR settings stay in the overlay's own

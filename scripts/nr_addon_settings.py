@@ -1,4 +1,4 @@
-"""In-game overlay settings for the DLSS5 NR add-ons rtxForge installed in a game.
+"""In-game overlay settings for the Split Render passes rtxForge installed in a game.
 
 Lecram and ShortFuse read their settings from ReShade.ini when the game starts,
 and ShortFuse writes them back while it runs, so the overlay never edits a
@@ -89,7 +89,7 @@ def _context(config, row):
     ini = t.safe(exe.parent / 'ReShade.ini')
     t.need(ini.is_file() and ini.stat().st_size <= 2 * 1024**2, 'The ReShade configuration is unavailable.')
     fields = _fields(record)
-    t.need(fields, 'This NR add-on setup has no settings rtxForge can adjust yet. Use the add-on\'s own panel.')
+    t.need(fields, 'This Split Render setup has no settings rtxForge can adjust yet. Use the add-on\'s own panel.')
     pending = storage.storage(config) / FOLDER / (t.sha((str(root) + '\0' + row['exe']).encode()) + '.json')
     return root, exe, receipt, ini, fields, pending
 
@@ -131,12 +131,12 @@ def snapshot(config, row):
         if pending.get('receipt') == t.digest(receipt):
             by_key = {f['key']: f for f in fields}
             changes = pending.get('changes', {})
-            t.need(isinstance(changes, dict) and set(changes) <= by_key.keys(), 'Invalid pending NR add-on settings.')
+            t.need(isinstance(changes, dict) and set(changes) <= by_key.keys(), 'Invalid pending Split Render settings.')
             values.update({key: _number(value, by_key[key]) for key, value in changes.items()})
             unreported = [key for key in unreported if key not in changes]
         else:
             pending = {}
-        return {'available': True, 'installed': True, 'title': 'NR add-ons', 'controls': _public(fields),
+        return {'available': True, 'installed': True, 'title': 'Split Render', 'controls': _public(fields),
                 'values': values, 'unreported': unreported, 'pending': bool(pending),
                 'message': pending.get('error') or
                 ('Saved changes are queued until this game closes. Restart to use them.' if pending else
@@ -154,7 +154,7 @@ def save(config, row, changes):
     root, exe, receipt, ini, fields, path = _context(config, row)
     by_key = {f['key']: f for f in fields}
     t.need(isinstance(changes, dict) and 0 < len(changes) <= len(by_key) and set(changes) <= by_key.keys(),
-           'Choose a supported NR add-on setting.')
+           'Choose a supported Split Render setting.')
     changes = {key: _number(value, by_key[key]) for key, value in changes.items()}
     e = hdr.engine_bridge.module(config)
     with e.mutation_lock():
@@ -162,7 +162,7 @@ def save(config, row, changes):
         before, _ = _saved(ini, fields)
         raw = t.ini(ini.read_text(encoding='utf-8-sig'))
         prior = t.read_json(path) if path.is_file() else {}
-        t.need(not prior or prior.get('receipt') == t.digest(receipt), 'The NR add-on setup changed. Review these settings again.')
+        t.need(not prior or prior.get('receipt') == t.digest(receipt), 'The Split Render setup changed. Review these settings again.')
         document = {'schema': 1, 'row': {k: row[k] for k in ('name', 'game', 'exe') if k in row}, 'receipt': t.digest(receipt),
                     'changes': {**prior.get('changes', {}), **changes},
                     # The file's text before the first queued edit, None where the key was absent.
@@ -182,7 +182,7 @@ def flush(config):
     if not folder.is_dir():
         return {'applied': 0}
     paths = list(folder.glob('*.json'))
-    t.need(len(paths) <= 512, 'Too many pending NR add-on records.')
+    t.need(len(paths) <= 512, 'Too many pending Split Render records.')
     if not paths:
         return {'applied': 0}
     e = hdr.engine_bridge.module(config)
@@ -191,16 +191,16 @@ def flush(config):
         with e.mutation_lock():
             pending = {}
             try:
-                t.need(t.safe(path).stat().st_size <= 256 * 1024, 'Invalid NR add-on settings record.')
+                t.need(t.safe(path).stat().st_size <= 256 * 1024, 'Invalid Split Render settings record.')
                 pending = t.read_json(path)
                 root, exe, receipt, ini, fields, expected = _context(config, pending['row'])
                 t.need(path == expected and pending.get('schema') == 1 and pending['receipt'] == t.digest(receipt),
-                       'The NR add-on setup changed; these settings were kept for review.')
+                       'The Split Render setup changed; these settings were kept for review.')
                 if e._running_processes_under_root(root):
                     continue
                 by_key = {f['key']: f for f in fields}
                 changes = pending['changes']
-                t.need(isinstance(changes, dict) and changes and set(changes) <= by_key.keys(), 'Invalid NR add-on settings.')
+                t.need(isinstance(changes, dict) and changes and set(changes) <= by_key.keys(), 'Invalid Split Render settings.')
                 raw = ini.read_bytes()
                 text = raw.decode('utf-8-sig')
                 parsed = t.ini(text)
@@ -216,7 +216,7 @@ def flush(config):
                 if not backup.exists():
                     t.atomic_file(backup, raw, 0o600)
                 # Repeat the runtime guard at the last possible write boundary.
-                t.need(not e._running_processes_under_root(root), 'The game started; NR add-on settings remain queued.')
+                t.need(not e._running_processes_under_root(root), 'The game started; Split Render settings remain queued.')
                 t.atomic_file(ini, text.encode('utf-8-sig' if raw.startswith(b'\xef\xbb\xbf') else 'utf-8'), ini.stat().st_mode & 0o777)
                 path.unlink()
                 applied += 1

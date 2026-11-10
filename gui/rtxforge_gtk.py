@@ -3988,9 +3988,7 @@ class OperationFlow:
         if self.accent:self.dialog.remove_css_class(self.accent)
         if getattr(self.owner,'operation_flow',None) is self:self.owner.operation_flow=None
         if self.owner.dialog is self.dialog:self.owner.dialog=None
-        follow_up=getattr(self,'follow_up',None)
-        if self.stage=='done' and follow_up:GLib.idle_add(follow_up)
-        elif getattr(self,'rescan_on_close',False) or (self.stage=='done' and getattr(self,'rescan',False)):self.owner.scan()
+        if getattr(self,'rescan_on_close',False) or (self.stage=='done' and getattr(self,'rescan',False)):self.owner.scan()
 
     def cancel(self):
         owner=self.owner
@@ -6807,6 +6805,9 @@ class Window(Adw.ApplicationWindow):
                 remove=row('Restore original files','Puts back the files and ReShade settings changed by Split Render.')
                 action=button('Remove Split Render',lambda *_:self.review_nr(game,None,remove=True));action.set_valign(Gtk.Align.CENTER);remove.add_suffix(action);group.add(remove)
                 return
+            if reason:=catalog.get('blocked'):
+                status.set_subtitle(reason)
+                return
             status.set_subtitle('Not installed in this game.')
             combos=[(key,value) for key,value in catalog['combos'].items()]
             combo_row=safe_combo_row(title='Preset',subtitle='Fill both roles from a saved or built-in preset.',
@@ -6930,7 +6931,7 @@ class Window(Adw.ApplicationWindow):
         import nr_addons
         try:catalog=nr_addons.catalog_view(self.service.config)
         except (OSError, ValueError, RuntimeError) as error:
-            return row('Add-on setup',user_messages.friendly_error(str(error)))
+            return row('Split Render setup',user_messages.friendly_error(str(error)))
 
         group=Adw.PreferencesGroup()
         combos=list(catalog['combos'].values())
@@ -15537,9 +15538,55 @@ class Window(Adw.ApplicationWindow):
         review['_chosen_offers']=[]
         extra=self.supported_offers(review,offers,flow) if offers else None
         if operation=='install' and (review.get('rows') or offers) and not self.options.demo:
+            import nr_install
             group=Adw.PreferencesGroup(title='Split Render',
-                description='Optional. Render the environment and characters with DLSS 5 NR. Review the Split Render files after the main package installs.')
-            group.add(self.nr_install_picker(lambda choice:review.update(_nr_choice=choice)))
+                description='Optional. Review the DLSS 5 NR setup each game will receive after its main package installs.')
+            results=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6)
+            revision=0
+            def choose(choice):
+                nonlocal revision
+                revision+=1
+                current=revision
+                review['_split_ready']=False
+                flow.primary.set_sensitive(False)
+                clear(results)
+                results.append(label('Preparing Split Render…','dim-label'))
+                def ready(staged,rows,error):
+                    if flow.closed or flow.stage!='review' or current!=revision:return False
+                    clear(results)
+                    if error:
+                        results.append(label(user_messages.friendly_error(str(error))+' Change the setup or choose None to continue.','dim-label'))
+                        return False
+                    nr_install.attach_after_packages(staged)
+                    if rows:
+                        listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+                        listing.add_css_class('boxed-list');listing.add_css_class('review-list')
+                        for item in rows:
+                            reason=item.get('reason')
+                            listing.append(self.review_entry(item['name'],
+                                reason or item['summary'],
+                                self.review_game(item['name'],item['game']), 'Skipped' if reason else 'Ready',
+                                item.get('details'), icon='dialog-warning-symbolic' if reason else 'text-x-generic-symbolic'))
+                        results.append(listing)
+                    flow._fit(flow.content,flow.dialog.get_content_width())
+                    review['_split_ready']=True
+                    flow.primary.set_sensitive(bool(review.get('rows') or review['_chosen_offers']))
+                    return False
+                def prepare():
+                    try:
+                        staged,rows=nr_install.prepare_after_packages(self.service.config,
+                            [review,*[offer['review'] for offer in offers]],choice,(self.hardware_info or {}).get('family') or 'ada')
+                    except Exception as error:
+                        GLib.idle_add(ready,None,[],error)
+                    else:
+                        GLib.idle_add(ready,staged,rows,None)
+                def start():
+                    if not flow.closed and current==revision:
+                        threading.Thread(target=prepare,daemon=True).start()
+                    return False
+                GLib.timeout_add(180,start)
+            group.add(self.nr_install_picker(choose))
+            group.add(results)
             if extra is None:extra=group
             else:extra.append(group)
         flow.show_review(review,self.execute,self.review_details(review),enabled=not self.options.demo,extra=extra)
@@ -15569,14 +15616,14 @@ class Window(Adw.ApplicationWindow):
                 chosen=review['_chosen_offers']
                 if button.get_active() and offer not in chosen:chosen.append(offer)
                 elif not button.get_active() and offer in chosen:chosen.remove(offer)
-                flow.primary.set_sensitive(not self.options.demo and bool(review.get('rows') or chosen))
+                flow.primary.set_sensitive(not self.options.demo and review.get('_split_ready',True) and bool(review.get('rows') or chosen))
             check.connect('toggled',toggled)
             card.append(check);card.append(text);box.append(card)
         return box
 
     def execute(self,review,*_legacy):
         """Stage 4: progress, then Done or Could not finish."""
-        if self.options.demo:return
+        if self.options.demo or not review.get('_split_ready',True):return
         flow=self.operation_flow
         if review.get('kind') in ('rollback','restore-cleanup','operation','cleanup'):flow.show_working(flow.progress_verb+'…')
         else:flow.show_progress((len(review.get('rows',[])) or len(self.operation_games))+sum(len(o.get('games',[])) for o in review.get('_chosen_offers') or []))
@@ -15623,16 +15670,6 @@ class Window(Adw.ApplicationWindow):
         if self.review and self.review.get('save_defaults'):self.defaults_applied(self.review['save_defaults'])
         count=len(self.review.get('rows',[])) if self.review else 0
         self.log.append('Saved report: '+str(path))
-        if self.review and self.review.get('_nr_choice'):
-            ready=list(self.review.get('rows',[]))
-            for offer in self.review.get('_chosen_offers',[]):
-                ready.extend(offer['review'].get('rows',[]))
-            roots={item.get('game') for item in ready}
-            games=[game for game in self.operation_games if game.get('game') in roots]
-            flow=self.operation_flow
-            if games and flow and not flow.closed:
-                choice=self.review['_nr_choice']
-                flow.follow_up=lambda:self.review_nr_batch(games,choice,rescan_on_close=True)
         self.finish_progress(True,f'{count} game'+('s' if count!=1 else '')+' updated.')
 
     def show_activity(self,*_):

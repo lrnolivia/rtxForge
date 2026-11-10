@@ -8,7 +8,8 @@ import { captureArrival, arrive } from './motion';
 import { bindArtworkFailures, hydrateArtwork, clearArtworkCache, prioritizeArtwork } from './artwork';
 // Artwork sources remain exact library identities.
 import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type OverviewCard, type Snapshot, type View } from './model';
-import { operationFlow,operationStep,flowGame } from './operation-ui';
+import { operationFlow,operationStep,flowGame,reviewRow } from './operation-ui';
+import { activeSetup, changePicker, newPicker, splitChoice, splitPicker, splitRenderDescription, type Catalog, type Picker, type Setup } from './split-render';
 import { installInput } from './input';
 import { setupLibraryLayout } from './library-layout';
 import { heroCrop, analyzeHeroFocus } from './hero-focus';
@@ -39,7 +40,10 @@ const drafts = new Map<string, Record<string, string>>();
 let extraKind = 'reshade-import', toolImportOpen = false;
 let backend: EngineStatus = { enabled: false, reason: 'Checking the reviewed host adapter…' };
 let engineRows: EngineRow[] = [], detailsSection = 'overview';
-let operation: { stage: 'startup' | 'checking' | 'review' | 'running' | 'done' | 'error';kind?:string;targets?:Game[];cancelRequested?:boolean; title: string; review?: Review; execute: string; progress?: Record<string, unknown>; result?: unknown; error?: string; origin?: View; method?: string; changedKeys?: string[]; dismissed?: boolean } | null = null;
+let operation: { stage: 'startup' | 'checking' | 'review' | 'running' | 'done' | 'error';kind?:string;targets?:Game[];cancelRequested?:boolean; title: string; review?: Review; execute: string; progress?: Record<string, unknown>; result?: unknown; error?: string; origin?: View; method?: string; changedKeys?: string[]; dismissed?: boolean;
+  split?: { picker: Picker; revision: number; pending: boolean; error: string; rows: Record<string, unknown>[]; open: boolean };
+  acceptedTrust?: boolean; chosenOffers?: Set<string>;
+} | null = null;
 let settingsCategory = 'appearance', sharedPreferences: Record<string, unknown> | null = null;
 const preferenceChanges: Record<string, unknown> = {};
 let extraSource = '', extraRecords: Record<string, unknown>[] = [], packageSource = '';
@@ -80,8 +84,14 @@ let appearanceReady=false,appearanceStored="",appearanceTimer:ReturnType<typeof 
 let appearanceWrites:Promise<void>=Promise.resolve();
 let disposeViewportArtwork=()=>{};
 let pendingInstall:{params:Record<string,unknown>;settings:Record<string,unknown>;rows:EngineRow[]}|null=null;
-type NrChoice = { label: string; setup: Record<string, unknown>; adapt: boolean };
-let nrChoices: NrChoice[] = [];
+let splitCatalog: Catalog | undefined;
+const packagePicker = newPicker();
+let splitPackageOpen = false, splitQuery = '', splitMatchRevision = 0, splitMatching = false, splitMatchError = '', splitMatchNotice = '';
+const splitSelected = new Set<string>();
+let splitMatches = new Map<string, { row: EngineRow; summary: string }>();
+let splitTool: { game: string; row: EngineRow; catalog: Catalog; picker: Picker; installed: boolean; installedText: string;
+  checked: boolean; reason: string; verdict: string; revision: number; name: string; busy: boolean } | undefined;
+let splitToolError = '';
 let libraryFilter = 'all', libraryChecking = false, libraryMode: string | undefined;
 
 function announce(message: string) {
@@ -177,8 +187,9 @@ function setView(next: View, focus = true) {
     }
   }
   if (next === 'settings' && backend.enabled && !sharedPreferences) void loadPreferences();
-  if (next === 'packages' && backend.enabled) void loadNrChoices().then(() => { if (view === 'packages') render(); })
+  if (next === 'packages' && backend.enabled) void loadSplitCatalog().then(() => { if (view === 'packages') { render(); if (splitPackageOpen) void matchSplitGames(); } })
     .catch(problem => announce(problem.message));
+  if (next === 'details' && detailsSection === 'tools' && backend.enabled && selectedGame()) void loadSplitTool(selectedGame()!);
   if(next==='details'&&backend.enabled){const game=selectedGame();if(game)void getEngineRows(game).then(rows=>{if(view==='details'&&selectedId===game.id){render();if(detailsSection==='overview'&&rows[0])void loadOverviewExtras(game,rows[0]);}}).catch(problem=>announce(problem.message));}
 }
 async function loadPreferences() {
@@ -619,7 +630,7 @@ function detailTools(game: Game, row?: EngineRow) {
   }
   if (detailsSection === 'notes') return `<section class="glass-section"><h2>Your Notes</h2><p>Kept with this game in rtxForge. Included in bug reports when you choose.</p><label class="notes-field"><span>Notes</span><textarea id="game-notes" rows="10" ${!backend.enabled||!notesLoaded.has(game.id)?'disabled':''}>${e(noteDrafts.get(game.id) ?? game.notes ?? '')}</textarea></label><button class="primary extra-actions" data-action="save-notes" ${!backend.enabled||!notesLoaded.has(game.id)?'disabled':''}>Save Notes</button></section>`;
   return `<section class="glass-section"><h2>Tools</h2><div class="tool-utilities">${actionCard('Game Folder',game.path,'data-action="copy-game-path"','Copy location')}${actionCard('Diagnose NR','Read saved NR settings, runtime hashes and log evidence.','data-contract="diagnose"','Diagnose')}</div></section>
-  <section class="glass-section reshade-tools"><h2>ReShade &amp; add-ons</h2><p>Manage ReShade, RenoDX, shaders and presets for this game.</p><div class="inner-card tool-options">
+  ${splitToolCard(game)}<section class="glass-section reshade-tools"><h2>ReShade &amp; add-ons</h2><p>Manage ReShade, RenoDX, shaders and presets for this game.</p><div class="inner-card tool-options">
     <div class="detail-action-row"><div><strong>ReShade runtime</strong><p>Install the official runtime or import your own package, shaders or preset.</p></div><div class="operation-actions"><button class="primary" data-action="official-reshade" ${!backend.enabled?'disabled':''}>Install ReShade</button><button class="quiet" data-tool-kind="reshade-import" ${!backend.enabled?'disabled':''}>Import package&hellip;</button></div></div>
     <div class="detail-action-row"><div><strong>RenoDX</strong><p>Install the matching game add-on and its required ReShade files.</p></div><div class="operation-actions"><button class="quiet" data-contract="hdr_review" ${!backend.enabled?'disabled':''}>Install RenoDX</button><button class="quiet" data-contract="hdr_review" data-remove="true" ${!backend.enabled?'disabled':''}>Remove RenoDX</button><button class="quiet" data-tool-kind="hdr-custom" ${!backend.enabled?'disabled':''}>Use custom add-on&hellip;</button></div></div>
     <div class="detail-action-row"><div><strong>Other add-ons</strong><p>Choose a ReShade .addon64 file.</p></div><button class="quiet" data-tool-kind="addon" ${!backend.enabled?'disabled':''}>Choose add-on&hellip;</button></div>
@@ -671,8 +682,8 @@ function operationView() {
   const state = operation, review = state.review;
   if(state.method==='overlay_status'&&state.stage==='done')return heading('Overlay Status','Installed versions and recorded update times.')+overlayStatusView(state.result as OverlayStatus);
   if(state.kind)return operationFlow(state,snapshot?.games||[],icon,startupSettingsView(),supportedReviews(review),
-    state.kind === 'install' && review && (review.rows?.length || review.supported?.length)
-      ? nrChoicePicker('Review the add-on files after the main package installs.') : '');
+    state.kind === 'install' && review && state.split && splitCatalog && (review.rows?.length || review.supported?.length)
+      ? splitInstallOptions(state.split) : '');
   const entries = review?.rows || review?.items || [];
   return heading(e(state.title), state.stage === 'checking' ? 'Checking the exact selection with the shared engine…' : state.stage === 'running' ? 'The existing engine is applying the reviewed changes.' : state.stage === 'review' ? 'Your files change only after you confirm this exact review.' : '') +
     `<section class="operation-workspace glass-section">${state.stage === 'checking' || state.stage === 'running' ? `<div class="operation-progress">${icon('refresh')}<h2>${state.stage === 'checking' ? 'Preparing review' : 'Working'}</h2><p role="status">${e(state.progress?.label || state.progress?.phase || 'Waiting for the engine to report progress…')}</p>${typeof state.progress?.fraction === 'number' ? `<progress max="1" value="${state.progress.fraction}" aria-label="Engine progress"></progress>` : ''}<p class="subtle">${e(state.progress?.game || '')}</p></div>` : ''}
@@ -684,7 +695,7 @@ function operationView() {
 type ReportDraft = { reports: { id: string; name: string; fields: Record<string, string> }[]; fields: { id: string; label: string; choices: string[]; required: boolean; max: number }[] };
 function supportedReviews(review?: Review) {
   if (!review?.supported?.length) return '';
-  return `<fieldset class="supported-reviews"><legend>Optional supported features</legend>${review.supported.map(offer => `<label class="supported-choice inner-card"><input type="checkbox" data-supported-token="${e(offer.token)}" /><span><strong>Include ${offer.nr && offer.mfg ? 'NR + MFG' : offer.nr ? 'NR only' : 'MFG only'}</strong><small>${e(offer.reason)}</small><small>${offer.rows.map(row => e(row.name)).join(' · ')}</small></span></label>`).join('')}</fieldset>`;
+  return `<fieldset class="supported-reviews"><legend>Optional supported features</legend>${review.supported.map(offer => `<label class="supported-choice inner-card"><input type="checkbox" data-supported-token="${e(offer.token)}" ${operation?.chosenOffers?.has(offer.token) ? 'checked' : ''} /><span><strong>Include ${offer.nr && offer.mfg ? 'NR + MFG' : offer.nr ? 'NR only' : 'MFG only'}</strong><small>${e(offer.reason)}</small><small>${offer.rows.map(row => e(row.name)).join(' · ')}</small></span></label>`).join('')}</fieldset>`;
 }
 function syncReviewConfirm() {
   const state = operation, button = app.querySelector<HTMLButtonElement>('[data-action="confirm-operation"]');
@@ -694,7 +705,7 @@ function syncReviewConfirm() {
   const hasChanges = count>0;
   const summary=app.querySelector('.flow-summary h2');if(summary)summary.textContent=count?`${count} game${count===1?'':'s'} ready`:'Nothing ready yet';
   const acknowledged = !state.review.trust || Boolean(app.querySelector<HTMLInputElement>('#review-trust')?.checked);
-  button.disabled = !hasChanges || !acknowledged;
+  button.disabled = !hasChanges || !acknowledged || !!state.split?.pending || !!state.split?.error;
 }
 function reportForm(result: unknown) {
   const draft = result as ReportDraft;
@@ -703,51 +714,234 @@ function reportForm(result: unknown) {
 async function withOperation(title: string, method: string, params: Record<string, unknown>, execute = 'run') {
   const origin = view === 'operation' ? operation?.origin || 'details' : view;
   const kind=method==='prepare_routes'?String(params.operation||'apply'):method==='prepare_dlss'?'update-dlss':method==='nr_review'?'install-nr-addons':undefined;
-  const targets=kind?(snapshot?.games||[]).filter(game=>((params.rows||[]) as EngineRow[]).some(row=>pathKey(row.game)===pathKey(game.path))):undefined;
+  const targets=kind?(snapshot?.games||[]).filter(game=>((params.rows||(params.row ? [params.row] : [])) as EngineRow[]).some(row=>pathKey(row.game)===pathKey(game.path))):undefined;
   const state = { stage: 'checking' as const, title, execute, origin, method,kind,targets, changedKeys: Object.keys((params.changes || {}) as object) };
   operation = state; setView('operation');
   try {
-    if (kind === 'install') await loadNrChoices().catch(() => { nrChoices = []; });
+    if (kind === 'install') await loadSplitCatalog().catch(() => { splitCatalog = undefined; });
     const result = await engineRequest<Review>(method, params, progress => { if (operation) { operation.progress = progress; render(); } });
     if (!operation || operation !== state || operation.dismissed) {
       if (result?.token) await engineRequest(execute === 'execute_routes' ? 'discard_routes' : execute === 'run' ? 'discard' : 'discard_operation', execute === 'run' ? { token: result.token } : { tokens: [result.token] });
       return;
     }
-    if (result?.token && execute !== 'inspect-package') { operation.review = result; operation.stage = 'review'; operation.title = result.title || title; }
+    if (result?.token && execute !== 'inspect-package') { operation.review = result; operation.stage = 'review'; operation.title = result.title || title;
+      if (kind === 'install') operation.split = { picker: newPicker(), revision: 0, pending: false, error: '', rows: [], open: false }; }
     else { operation.stage = 'done'; operation.result = result; }
   } catch (problem) { if (operation === state && !operation.dismissed) { operation.stage = 'error'; operation.error = problem instanceof Error ? problem.message : 'The engine could not complete the request.'; } else return; }
   render(); document.querySelector<HTMLElement>('#page-title')?.focus();
 }
-async function loadNrChoices() {
-  const catalog = await engineRequest<{ install_choices: NrChoice[] }>('nr_catalog');
-  nrChoices = catalog.install_choices ?? [];
+async function loadSplitCatalog() {
+  splitCatalog = await engineRequest<Catalog>('nr_catalog');
 }
-function nrChoicePicker(help: string) {
-  return `<label class="field" for="nr-add-on-setup"><span><strong>Split Render</strong><small>${e(help)}</small></span><select id="nr-add-on-setup" ${nrChoices.length ? '' : 'disabled'}><option value="">None</option>${nrChoices.map((choice,index) => `<option value="${index}">${e(choice.label)}</option>`).join('')}</select></label>`;
+function splitInstallOptions(split: NonNullable<NonNullable<typeof operation>['split']>) {
+  const chosen = operation?.chosenOffers || new Set<string>();
+  const optional = new Set((operation?.review?.supported || []).filter(offer => !chosen.has(offer.token))
+    .flatMap(offer => offer.rows.map(row => pathKey(String(row.game || '')))));
+  const rows = split.rows.filter(row => !optional.has(pathKey(String(row.game || ''))));
+  return `<details id="split-install-options" class="split-section inner-card" ${split.open ? 'open' : ''}>
+    <summary>Split Render <span class="subtle">· Optional</span></summary>
+    <p>Review the DLSS 5 NR setup each game will receive after its main package installs.</p>
+    ${splitPicker(splitCatalog!, split.picker, 'install')}
+    <div class="split-results">${split.pending || split.error ? `<p role="status">${e(split.error || 'Preparing Split Render…')}</p>`
+      : rows.map(row => reviewRow(row, snapshot?.games || [], icon, !row.reason)).join('')}</div>
+  </details>`;
 }
-function selectedNrChoice() {
-  const value = app.querySelector<HTMLSelectElement>('#nr-add-on-setup')?.value;
-  return value ? nrChoices[Number(value)] : undefined;
+async function reviewSplitChoices() {
+  const state = operation, split = state?.split;
+  if (!state?.review || state.stage !== 'review' || !split || !splitCatalog) return;
+  const choice = splitChoice(splitCatalog, split.picker), revision = ++split.revision;
+  split.pending = true;
+  split.error = '';
+  split.rows = [];
+  render();
+  await new Promise(resolve => setTimeout(resolve, 180));
+  if (operation !== state || state.stage !== 'review' || revision !== split.revision || view !== 'operation') return;
+  try {
+    const result = await engineRequest<{rows: Record<string, unknown>[]}>('split_render_routes_review', { token: state.review.token, choice, revision });
+    if (operation === state && revision === split.revision) split.rows = result.rows;
+  } catch (problem) {
+    if (operation === state && revision === split.revision)
+      split.error = (problem instanceof Error ? problem.message : 'Split Render could not be reviewed.') + ' Change the setup or choose None to continue.';
+  } finally {
+    if (operation === state && revision === split.revision) {
+      split.pending = false;
+      if (view === 'operation') render();
+    }
+  }
+}
+function visibleSplitGames() {
+  const choice = splitCatalog && splitChoice(splitCatalog, packagePicker);
+  return (snapshot?.games || []).filter(game => (!choice || splitMatches.has(game.id)) && game.name.toLowerCase().includes(splitQuery.trim().toLowerCase()))
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 function nrPackageCard() {
-  return `<section class="glass-section"><h2>Split Render</h2><p>Render the environment and characters with DLSS 5 NR, with a separate character pass where supported.</p>${backend.enabled ? `<details><summary>Choose games</summary>${nrChoicePicker('Choose a Split Render setup to review for the selected games.')}` +
-    (snapshot?.games || []).map(game => {
-      const accent=detailsAccent(game)||'#b4b4b4';
-      return `<label class="trust-choice nr-target-choice" style="--game-accent:${e(accent)};--game-selected-ink:${selectionInk(accent)}"><input type="checkbox" data-nr-target="${e(game.id)}"/><span class="selection-check" aria-hidden="true">${icon('check')}</span><span>${e(game.name)}</span></label>`;
-    }).join('') +
-    '<button class="primary" data-action="review-nr-addons">Review games</button></details>' : ''}</section>`;
+  const games = visibleSplitGames();
+  const choice = splitCatalog && splitChoice(splitCatalog, packagePicker);
+  return `<section class="glass-section"><h2>Split Render</h2><p>${e(splitRenderDescription)}</p>${backend.enabled ? `<details id="split-packages" ${splitPackageOpen ? 'open' : ''}><summary>Choose games</summary>
+    ${splitCatalog ? `<div class="split-layout"><section><h3>${icon('gear')} Setup</h3>${splitPicker(splitCatalog, packagePicker, 'packages')}</section>
+    <section><h3>${icon('controller')} Games <span class="subtle">${splitSelected.size} selected</span></h3>
+    <label class="split-search">${icon('search')}<input id="split-game-search" type="search" aria-label="Search games" placeholder="Search games" value="${e(splitQuery)}"></label>
+    <div class="operation-actions"><button class="quiet" data-action="split-select-all" ${splitMatching || !games.some(game => !splitSelected.has(game.id)) ? 'disabled' : ''}>${icon('check')}${splitQuery.trim() ? 'Select all results' : 'Select all'}</button>
+    <button class="quiet" data-action="split-clear" ${splitSelected.size ? '' : 'disabled'}>${icon('minus')}Clear selection</button></div>
+    ${splitMatchNotice ? `<p class="subtle" role="status">${e(splitMatchNotice)}</p>` : ''}
+    <div class="split-game-list">${splitMatching || splitMatchError || !games.length ? `<p role="status">${e(splitMatchError || (splitMatching ? 'Checking compatibility…' :
+      !snapshot?.games.length ? 'There are no scanned games in your library.' : !choice || splitMatches.size ? 'No games match your search.' : 'No games can use this setup.'))}</p>`
+      : games.map(game => {
+        const accent = detailsAccent(game) || '#b4b4b4', art = game.capsule || game.art;
+        return `<label class="nr-target-choice" style="--game-accent:${e(accent)};--game-selected-ink:${selectionInk(accent)}"><input type="checkbox" data-nr-target="${e(game.id)}" ${splitSelected.has(game.id) ? 'checked' : ''} /><span class="selection-check" aria-hidden="true">${icon('check')}</span>
+        <span class="flow-thumbnail">${art ? `<img src="${e(art)}" alt=""/>` : icon('controller')}</span><span><strong>${e(game.name)}</strong><small>${e(splitMatches.get(game.id)?.summary || game.source)}</small></span></label>`;
+      }).join('')}</div>
+    </section></div>
+    <button class="primary" data-action="review-nr-addons" ${splitMatching || !choice || !splitSelected.size ? 'disabled' : ''}>Review selection</button>`
+    : '<p role="status">Loading Split Render setups…</p>'}</details>` : ''}</section>`;
+}
+async function matchSplitGames() {
+  if (!splitCatalog) return;
+  const choice = splitChoice(splitCatalog, packagePicker), revision = ++splitMatchRevision;
+  splitMatching = !!choice;
+  splitMatchError = '';
+  splitMatchNotice = '';
+  if (!choice) splitMatches.clear();
+  if (view === 'packages') render();
+  if (!choice) return;
+  await new Promise(resolve => setTimeout(resolve, 160));
+  if (revision !== splitMatchRevision) return;
+  try {
+    const games = snapshot?.games || [], candidates: { game: Game; row: EngineRow }[] = [];
+    for (const game of games) {
+      if (revision !== splitMatchRevision) return;
+      const row = engineRows.find(row => pathKey(row.game) === pathKey(game.path))
+        || (await getEngineRows(game)).find(row => pathKey(row.game) === pathKey(game.path));
+      if (row) candidates.push({ game, row });
+    }
+    if (revision !== splitMatchRevision) return;
+    const results = await engineRequest<{index: number; summary: string}[]>('nr_match', { rows: candidates.map(item => item.row), choice });
+    if (revision !== splitMatchRevision) return;
+    splitMatches = new Map(results.map(({index, summary}) => [candidates[index].game.id, { row: candidates[index].row, summary }]));
+    const previousCount = splitSelected.size;
+    for (const id of splitSelected) if (!splitMatches.has(id)) splitSelected.delete(id);
+    const removed = previousCount - splitSelected.size;
+    if (removed) splitMatchNotice = removed === 1 ? '1 game was deselected because it cannot use this setup.'
+      : `${removed} games were deselected because they cannot use this setup.`;
+  } catch (problem) {
+    if (revision !== splitMatchRevision) return;
+    splitMatchError = problem instanceof Error ? problem.message : 'Compatibility could not be checked.';
+    splitMatches.clear();
+    splitSelected.clear();
+  } finally {
+    if (revision === splitMatchRevision) {
+      splitMatching = false;
+      if (view === 'packages') render();
+    }
+  }
 }
 async function reviewNrPackage() {
-  const choice = selectedNrChoice();
-  const selected = new Set([...app.querySelectorAll<HTMLInputElement>('[data-nr-target]:checked')].map(node => node.dataset.nrTarget));
-  if (!choice || !selected.size) { announce('Choose a Split Render setup and at least one game.'); return; }
-  const rows: EngineRow[] = [];
-  for (const game of snapshot?.games || []) {
-    if (!selected.has(game.id)) continue;
+  const choice = splitCatalog && splitChoice(splitCatalog, packagePicker);
+  const rows = [...splitSelected].flatMap(id => splitMatches.get(id)?.row || []);
+  if (!splitMatching && choice && rows.length && view === 'packages')
+    await withOperation('Review Split Render', 'nr_review', { rows, choice });
+}
+function splitToolCard(game: Game) {
+  const tool = splitTool?.game === game.id ? splitTool : undefined;
+  return `<section class="glass-section split-section"><h2>${icon('sliders')} Split Render</h2><p>${e(splitRenderDescription)}</p>
+    ${!backend.enabled ? '' : !tool ? `<p role="status">${e(splitToolError || 'Checking this game…')}</p>` :
+      tool.installed ? `<p role="status">${e(tool.installedText)}</p>
+      <button class="quiet" data-action="split-tool-remove" ${tool.busy ? 'disabled' : ''}>Remove Split Render</button>` :
+      tool.catalog.blocked ? `<p role="status">${e(tool.catalog.blocked)}</p>` :
+      `<p class="subtle">Not installed in this game.</p>${splitPicker(tool.catalog, tool.picker, 'tools', true)}
+      <p role="status">${e(tool.reason || (tool.checked ? tool.verdict : 'Checking compatibility…'))}</p>
+      <div class="operation-actions"><button class="primary" data-action="split-tool-install" ${tool.checked && !tool.reason && !tool.busy ? '' : 'disabled'}>Review Split Render</button>
+      </div>
+      <div class="split-saved"><label>Preset name <input type="text" id="split-preset-name" maxlength="60" value="${e(tool.name)}"></label>
+      <button class="quiet" data-action="split-tool-save" ${tool.checked && !tool.reason && !tool.busy ? '' : 'disabled'}>Save preset</button>
+      </div>`}</section>`;
+}
+async function loadSplitTool(game: Game) {
+  splitToolError = '';
+  try {
     const row = (await getEngineRows(game)).find(row => pathKey(row.game) === pathKey(game.path));
-    rows.push(row ?? {name:game.name, game:game.path});
+    if (!row) throw new Error('This installation is unavailable to the engine.');
+    const [catalog, status] = await Promise.all([
+      engineRequest<Catalog>('nr_catalog', { row }), engineRequest<{installed: boolean; setup?: Setup; default?: Setup; changed?: string[]; error?: string}>('nr_status', { row }),
+    ]);
+    if (selectedId !== game.id || view !== 'details' || detailsSection !== 'tools') return;
+    if (status.error) throw new Error(status.error);
+    const picker = splitTool?.game === game.id ? splitTool.picker : newPicker(status.default ||
+      (catalog.runtime_nr ? { character: { addon: 'shortfuse' } } : { environment: { addon: 'lecram' } }));
+    if (picker.preset && !catalog.combos[picker.preset]) picker.preset = '';
+    const addonName = (id: string) => id === catalog.runtime_nr?.id ? catalog.runtime_nr.name :
+      catalog.addons.find(addon => addon.id === id)?.name || id;
+    const installedSetup = status.setup || {};
+    const installedModel = installedSetup.environment?.model || installedSetup.character?.model || 'new';
+    const parts = Object.entries(installedSetup).map(([role, slot]) =>
+      `${role === 'environment' ? 'Environment' : 'Character detail'}: ${addonName(slot.addon)}`);
+    parts.push(catalog.runtime_nr ? `DLSS 5 model shared with ${catalog.runtime_nr.name}` :
+      catalog.models.find(model => model.id === installedModel)?.label || installedModel);
+    if (status.changed?.length) parts.push(`${status.changed.length} file(s) changed since install`);
+    splitTool = { game: game.id, row, catalog, picker, installed: status.installed, installedText: 'Installed · ' + parts.join(' · '),
+      checked: false, reason: '', verdict: '', revision: 0, name: '', busy: false };
+    if (status.installed || catalog.blocked) render();
+    else await checkSplitTool();
+  } catch (problem) {
+    if (view === 'details' && selectedId === game.id && detailsSection === 'tools') {
+      splitTool = undefined;
+      splitToolError = problem instanceof Error ? problem.message : 'Split Render is unavailable for this game.';
+      render();
+    }
   }
-  if (view === 'packages') await withOperation('Review Split Render', 'nr_review', {rows, choice});
+}
+async function checkSplitTool() {
+  const tool = splitTool;
+  if (!tool) return;
+  const revision = ++tool.revision;
+  tool.checked = false;
+  tool.reason = '';
+  render();
+  try {
+    const setup = activeSetup(tool.catalog, tool.picker);
+    if (!Object.values(setup).some(slot => slot.addon !== 'optiscaler')) throw new Error('Choose an environment or character setup.');
+    const check = await engineRequest<{ok: boolean; reason?: string; verified?: boolean; world?: string; skipped?: unknown[]}>('nr_check', { row: tool.row, setup });
+    if (!check.ok) throw new Error(check.reason || 'This setup is unavailable for this game.');
+    if (tool.revision === revision)
+      tool.verdict = [check.world ? `${check.world} covers the environment.` : '',
+        check.verified ? 'Available to review.' : 'Available to review · this pairing has not been verified on a test copy.',
+        check.skipped?.length ? 'Some settings are left out because they have not been verified for this provider.' : ''].filter(Boolean).join(' ');
+  } catch (problem) {
+    if (tool.revision === revision) tool.reason = problem instanceof Error ? problem.message : 'This setup could not be checked.';
+  } finally {
+    if (splitTool === tool && tool.revision === revision) {
+      tool.checked = true;
+      if (view === 'details' && selectedId === tool.game && detailsSection === 'tools') render();
+    }
+  }
+}
+async function applySplitTool(action: string) {
+  const tool = splitTool;
+  if (!tool || tool.busy) return;
+  const setup = activeSetup(tool.catalog, tool.picker);
+  if (action === 'split-tool-install' || action === 'split-tool-remove') {
+    const remove = action === 'split-tool-remove';
+    if (remove ? !tool.installed : !tool.checked || !!tool.reason) return;
+    await withOperation(remove ? 'Remove Split Render' : 'Review Split Render', 'nr_review', { row: tool.row, setup, remove });
+    return;
+  }
+  if (action === 'split-tool-save' && (!tool.name.trim() || !tool.checked || tool.reason)) {
+    announce('Enter a name for this compatible setup.');
+    return;
+  }
+  tool.busy = true;
+  render();
+  try {
+    const saved = await engineRequest<{id: string}>('nr_combo_save', {name: tool.name.trim(), combo: setup});
+    tool.picker.preset = saved.id;
+    const game = selectedGame();
+    if (game?.id === tool.game && view === 'details' && detailsSection === 'tools') await loadSplitTool(game);
+  } catch (problem) {
+    announce(problem instanceof Error ? problem.message : 'The preset could not be updated.');
+  } finally {
+    tool.busy = false;
+    if (view === 'details' && selectedId === tool.game && detailsSection === 'tools') render();
+  }
 }
 async function getEngineRows(target?: Game) {
   if (!backend.enabled) throw new Error(backend.reason);
@@ -798,7 +992,7 @@ function packages() {
   const pair = records.find(item=>item.id==='skynizz');
   const versions = (pair?.mfg_versions||{}) as Record<string,string>;
   const mfg = [['universal','Universal MFG','OptiScaler plugin','Keeps NVIDIA’s DLSS Frame Generation and unlocks 3× to 6× where the driver allows 2×.'],['integrated','Integrated MFG unlock','Built into the bridge','Patches NVIDIA’s DLSS Frame Generation for 3× to 6× with no extra plugin.'],['mfg-unlock','MFG Unlock','ReShade add-on','Raises NVIDIA’s DLSS Frame Generation multiplier through ReShade.']];
-  return heading('Packages','Choose what rtxForge installs. Every game change is reviewed before it is applied.')+`<div class="package-columns"><section class="glass-section"><h2>NR packages</h2><p>Choose one for games with DLSS. Feeder and Vulkan packages are used automatically for the games they cover.</p><div class="package-options">${nr.length?nr.map(item=>packageCard(item,Boolean(item.automatic))).join(''):fallback.filter(item=>item.id==='skynizz').map(item=>packageCard(item as unknown as Record<string,unknown>)).join('')}</div></section><section class="glass-section"><h2>MFG packages</h2><p>Native NVIDIA frame generation for Skynizz NR.</p><div class="package-options">${mfg.map(([id,name,kind,summary])=>`<article class="inner-card package-option"><div><h3 class="game-title">${name}</h3><p class="version">${e(versions[id]||kind)}</p></div><p>${summary}</p><button class="quiet" data-mfg-default="${id}" ${!backend.enabled?'disabled':''}>Use with Skynizz NR</button></article>`).join('')}</div></section></div><div class="package-columns package-sources"><section class="glass-section unified-packages"><h2>Unified packages</h2><p>NR and MFG together in one package.</p><div class="package-options">${unified.map(item=>packageCard(item as Record<string,unknown>)).join('')}</div></section><section class="glass-section package-policy"><h2>Your own package</h2><p>Inspect a ZIP archive and review its settings before using it. Instructions are never run.</p><label class="field"><span><strong>Archive path</strong></span><input id="package-source" value="${e(packageSource)}" ${!backend.enabled?'disabled':''}/></label><button class="quiet" data-action="inspect-package" ${!backend.enabled?'disabled':''}>Choose archive</button></section></div>`;
+  return heading('Packages','Choose what rtxForge installs. Every game change is reviewed before it is applied.')+`<div class="package-columns"><section class="glass-section"><h2>NR packages</h2><p>Choose one for games with DLSS. Feeder and Vulkan packages are used automatically for the games they cover.</p><div class="package-options">${nr.length?nr.map(item=>packageCard(item,Boolean(item.automatic))).join(''):fallback.filter(item=>item.id==='skynizz').map(item=>packageCard(item as unknown as Record<string,unknown>)).join('')}</div></section><section class="glass-section"><h2>MFG packages</h2><p>Native NVIDIA frame generation for Skynizz NR.</p><div class="package-options">${mfg.map(([id,name,kind,summary])=>`<article class="inner-card package-option"><div><h3 class="game-title">${name}</h3><p class="version">${e(versions[id]||kind)}</p></div><p>${summary}</p><button class="quiet" data-mfg-default="${id}" ${!backend.enabled?'disabled':''}>Use with Skynizz NR</button></article>`).join('')}</div></section></div>${nrPackageCard()}<div class="package-columns package-sources"><section class="glass-section unified-packages"><h2>Unified packages</h2><p>NR and MFG together in one package.</p><div class="package-options">${unified.map(item=>packageCard(item as Record<string,unknown>)).join('')}</div></section><section class="glass-section package-policy"><h2>Your own package</h2><p>Inspect a ZIP archive and review its settings before using it. Instructions are never run.</p><label class="field"><span><strong>Archive path</strong></span><input id="package-source" value="${e(packageSource)}" ${!backend.enabled?'disabled':''}/></label><button class="quiet" data-action="inspect-package" ${!backend.enabled?'disabled':''}>Choose archive</button></section></div>`;
 }
 
 function extras() {
@@ -932,11 +1126,13 @@ function render() {
   const contentScroll = view==='operation'&&modalOrigin ? modalOrigin.content : sameSurface ? app.querySelector<HTMLElement>('#content')?.scrollTop || 0 : 0;
   const detailsScroll = view==='operation'&&modalOrigin ? modalOrigin.details : sameSurface ? app.querySelector<HTMLElement>('.details-scroll')?.scrollTop || 0 : 0;
   const resultsScroll = view==='operation'&&modalOrigin ? modalOrigin.results : sameSurface ? app.querySelector<HTMLElement>('#game-results')?.scrollTop || 0 : 0;
+  const splitListScroll = sameSurface ? app.querySelector<HTMLElement>('.split-game-list')?.scrollTop || 0 : 0;
+  const flowScroll = operation?.stage === 'review' ? app.querySelector<HTMLElement>('.operation-flow[data-stage=review] .flow-body')?.scrollTop || 0 : 0;
   applyAppearance();
   const modal = view==='operation' && !!operation?.kind;
   const surface = modal ? operation?.origin || 'library' : view;
   document.documentElement.dataset.surface = surface;
-  const pageContent = surface === 'library' ? library() : surface === 'presets' ? presets() : surface === 'details' ? details() : surface === 'packages' ? packages() + nrPackageCard() : surface === 'extras' ? extras() : surface === 'operation' ? operationView() : settings();
+  const pageContent = surface === 'library' ? library() : surface === 'presets' ? presets() : surface === 'details' ? details() : surface === 'packages' ? packages() : surface === 'extras' ? extras() : surface === 'operation' ? operationView() : settings();
   const content = modal ? pageContent.replace('id="page-title"','id="background-page-title"') : pageContent;
   const overlay = modal ? `<div class="operation-backdrop"><section class="operation-modal glass-section" role="dialog" aria-modal="true" aria-labelledby="page-title">${operationView()}</section></div>` : '';
   app.innerHTML = `<div class="shell" ${modal?'inert aria-hidden="true"':''}><header class="app-header" data-tauri-drag-region><div class="brand"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></div><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><div id="input-hints">${hints()}</div></footer></div>${overlay}`;
@@ -955,6 +1151,8 @@ function render() {
   setupScrollFades();
   const main = app.querySelector<HTMLElement>('#content'); if(main)main.scrollTop=contentScroll;
   const results = app.querySelector<HTMLElement>('#game-results'); if(results)results.scrollTop=resultsScroll;
+  const splitList = app.querySelector<HTMLElement>('.split-game-list'); if (splitList) splitList.scrollTop = splitListScroll;
+  const flowBody = app.querySelector<HTMLElement>('.flow-body'); if (flowBody) flowBody.scrollTop = flowScroll;
   const scrollingDetails=app.querySelector<HTMLElement>('.details-scroll'); if(scrollingDetails) { scrollingDetails.scrollTop=detailsScroll; scrollingDetails.dispatchEvent(new Event('scroll')); }
   renderedView=view;renderedGame=selectedGame()?.id||'';
   if (arrival) arrive(app, arrival, view);
@@ -1013,7 +1211,44 @@ function enhanceActionLabels() {
     }
   }
 }
+function bindSplitRender() {
+  app.querySelector<HTMLDetailsElement>('#split-packages')?.addEventListener('toggle', event => {
+    splitPackageOpen = (event.currentTarget as HTMLDetailsElement).open;
+  });
+  app.querySelector<HTMLDetailsElement>('#split-install-options')?.addEventListener('toggle', event => {
+    if (operation?.split) operation.split.open = (event.currentTarget as HTMLDetailsElement).open;
+  });
+  app.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-split-field]').forEach(field => field.addEventListener('change', () => {
+    const scope = field.closest<HTMLElement>('[data-split-picker]')?.dataset.splitPicker;
+    const key = field.dataset.splitField!;
+    if (scope === 'install' && splitCatalog && operation?.split) {
+      changePicker(splitCatalog, operation.split.picker, key, field.value);
+      operation.split.open = true;
+      void reviewSplitChoices();
+    } else if (scope === 'packages' && splitCatalog) {
+      changePicker(splitCatalog, packagePicker, key, field.value);
+      void matchSplitGames();
+    } else if (scope === 'tools' && splitTool) {
+      changePicker(splitTool.catalog, splitTool.picker, key, field.value, true);
+      void checkSplitTool();
+    }
+  }));
+  app.querySelector<HTMLInputElement>('#split-game-search')?.addEventListener('input', event => {
+    splitQuery = (event.target as HTMLInputElement).value;
+    render();
+  });
+  app.querySelectorAll<HTMLInputElement>('[data-nr-target]').forEach(field => field.addEventListener('change', () => {
+    const id = field.dataset.nrTarget!;
+    if (field.checked) splitSelected.add(id);
+    else splitSelected.delete(id);
+    render();
+  }));
+  app.querySelector<HTMLInputElement>('#split-preset-name')?.addEventListener('input', event => {
+    if (splitTool) splitTool.name = (event.target as HTMLInputElement).value;
+  });
+}
 function bind() {
+  bindSplitRender();
   enhanceActionLabels();
   app.querySelectorAll<HTMLElement>('button,input,select,textarea,summary,a[href]').forEach(node=>node.classList.add('ui-control'));
   app.querySelectorAll<HTMLElement>('[data-preset-control]').forEach(node=>node.dataset.presetKey='control-'+node.dataset.presetControl);
@@ -1065,15 +1300,26 @@ function bind() {
   app.querySelector<HTMLSelectElement>('#display-scale')?.addEventListener('change', event => { const value = (event.target as HTMLSelectElement).value; appearance.scale = value === 'auto' ? 'auto' : Number(value); applyAppearance(); });
   app.querySelectorAll<HTMLSelectElement | HTMLInputElement>('[data-draft]').forEach(node => node.addEventListener('change', () => { const game = selectedGame(); if (!game) return; drafts.set(game.id, { ...drafts.get(game.id), [node.dataset.draft!]: node.value }); app.querySelector('#draft-label')!.textContent = 'Draft · not applied'; if (['mfg_mode', 'mfg_enabled', 'provider'].includes(node.dataset.draft!)) { render(); app.querySelector<HTMLElement>(`[data-draft="${node.dataset.draft}"]`)?.focus(); } announce('Preview choice changed. Nothing applied.'); }));
   app.querySelectorAll<HTMLElement>('[data-extra]').forEach(node => node.addEventListener('click', () => { extraKind = node.dataset.extra!; render(); app.querySelector<HTMLElement>(`[data-extra="${extraKind}"]`)?.focus(); }));
-  app.querySelectorAll<HTMLElement>('[data-detail-section]').forEach(node => node.addEventListener('click', () => { if(detailsSection!==node.dataset.detailSection)gameAccentDrafts.clear(); detailsSection = node.dataset.detailSection!; detailsMenuOpen=false; render(); app.querySelector<HTMLElement>(`[data-detail-section="${detailsSection}"]`)?.focus(); const game = selectedGame(); if(detailsSection==='files'&&game)void loadDlssFiles(game); if(detailsSection==='overview'&&game&&backend.enabled){const row=engineRows.find(record=>pathKey(record.game)===pathKey(game.path));if(row)void loadOverviewExtras(game,row);} if (detailsSection === 'notes' && backend.enabled && game && !notesLoaded.has(game.id)) void engineRequest<Record<string, unknown>>('notes_get', { game: game.path }).then(record => { if (!noteDrafts.has(game.id)) noteDrafts.set(game.id, String(record.notes || '')); notesLoaded.add(game.id); if (view === 'details' && detailsSection === 'notes' && selectedId === game.id) render(); }).catch(problem => announce(problem.message)); }));
+  app.querySelectorAll<HTMLElement>('[data-detail-section]').forEach(node => node.addEventListener('click', () => { if(detailsSection!==node.dataset.detailSection)gameAccentDrafts.clear(); detailsSection = node.dataset.detailSection!; detailsMenuOpen=false; render(); app.querySelector<HTMLElement>(`[data-detail-section="${detailsSection}"]`)?.focus(); const game = selectedGame(); if(detailsSection==='files'&&game)void loadDlssFiles(game); if(detailsSection==='tools'&&game&&backend.enabled)void loadSplitTool(game); if(detailsSection==='overview'&&game&&backend.enabled){const row=engineRows.find(record=>pathKey(record.game)===pathKey(game.path));if(row)void loadOverviewExtras(game,row);} if (detailsSection === 'notes' && backend.enabled && game && !notesLoaded.has(game.id)) void engineRequest<Record<string, unknown>>('notes_get', { game: game.path }).then(record => { if (!noteDrafts.has(game.id)) noteDrafts.set(game.id, String(record.notes || '')); notesLoaded.add(game.id); if (view === 'details' && detailsSection === 'notes' && selectedId === game.id) render(); }).catch(problem => announce(problem.message)); }));
   app.querySelectorAll<HTMLElement>('[data-operation]').forEach(node => node.addEventListener('click', () => void runOperation(node.dataset.operation!, node.dataset.batch === 'true', node.dataset.libraryScope === 'true')));
   app.querySelectorAll<HTMLElement>('[data-contract]').forEach(node => node.addEventListener('click', async () => {
     const game = selectedGame(); if (!game) return;
     try { const rows = await getEngineRows(); const row = rows.find(row => pathKey(row.game) === pathKey(game.path)); if (!row) throw new Error('This installation is unavailable to the engine.'); await withOperation(node.textContent?.trim() || 'Review', node.dataset.contract!, { ...(node.dataset.contract === 'report_draft' ? { rows: [row] } : { row }), ...(node.dataset.remove ? { remove: true } : {}) }, node.dataset.contract === 'report_draft' ? 'report-draft' : ['diagnose','dlss_inventory'].includes(node.dataset.contract!) ? 'inspect' : 'run'); }
     catch (problem) { announce(problem instanceof Error ? problem.message : 'The engine is unavailable.'); }
   }));
-  app.querySelector<HTMLInputElement>('#review-trust')?.addEventListener('change', syncReviewConfirm);
-  app.querySelectorAll<HTMLInputElement>('[data-supported-token]').forEach(field => field.addEventListener('change', syncReviewConfirm));
+  app.querySelector<HTMLInputElement>('#review-trust')?.addEventListener('change', event => {
+    if (operation) operation.acceptedTrust = (event.target as HTMLInputElement).checked;
+    syncReviewConfirm();
+  });
+  app.querySelectorAll<HTMLInputElement>('[data-supported-token]').forEach(field => field.addEventListener('change', () => {
+    if (!operation) return;
+    operation.chosenOffers ??= new Set();
+    if (field.checked) operation.chosenOffers.add(field.dataset.supportedToken!);
+    else operation.chosenOffers.delete(field.dataset.supportedToken!);
+    if (operation.split?.rows.length) render();
+    else syncReviewConfirm();
+  }));
+  if (operation?.stage === 'review') syncReviewConfirm();
   app.querySelectorAll<HTMLElement>('[data-settings-category]').forEach(node => node.addEventListener('click', () => { settingsCategory = node.dataset.settingsCategory!; render(); app.querySelector<HTMLElement>(`[data-settings-category="${settingsCategory}"]`)?.focus(); }));
   app.querySelectorAll<HTMLSelectElement>('[data-preference]').forEach(node => node.addEventListener('change', () => { editOverlayPreference(node.dataset.preference!,JSON.parse(node.value)); render(); app.querySelector<HTMLElement>(`[data-preference="${node.dataset.preference}"]`)?.focus(); announce('Preference changed in draft. Review to save it.'); }));
   app.querySelectorAll<HTMLElement>('[data-preference-toggle]').forEach(node=>node.addEventListener('click',()=>{ const key=node.dataset.preferenceToggle!; editOverlayPreference(key,!overlayWorkingPreferences()[key]);render();app.querySelector<HTMLElement>(`[data-preference-toggle="${key}"]`)?.focus(); }));
@@ -1195,6 +1441,9 @@ function action(name: string) {
   if (name === 'scan-engine') void getEngineRows().then(() => { render(); announce('Compatibility check completed.'); }).catch(problem => announce(problem.message));
   if(name==='startup-review'&&pendingInstall){void withOperation('Review Installation','prepare_routes',pendingInstall.params,'execute_routes');return;}
   if (name === 'review-nr-addons') void reviewNrPackage().catch(problem => announce(problem.message));
+  if (name === 'split-select-all') { for (const game of visibleSplitGames()) splitSelected.add(game.id); render(); }
+  if (name === 'split-clear') { splitSelected.clear(); render(); }
+  if (name.startsWith('split-tool-')) void applySplitTool(name);
   if (name === 'operation-back') { const origin = operation?.origin || 'details'; operation = null; pendingInstall=null; setView(origin); }
   if (name === 'discard-review') void discardReview();
   if (name === 'cancel-operation' && operation?.review){const state=operation;state.cancelRequested=true;render();void engineRequest(state.execute==='execute_routes'?'cancel_routes':'cancel',{token:state.review!.token}).then(()=>announce('Cancellation requested. The engine will stop at a safe boundary.')).catch(problem=>{state.cancelRequested=false;render();announce(String(problem));});}
@@ -1261,23 +1510,21 @@ function action(name: string) {
   if (['artwork-store', 'artwork-reset', 'artwork-sync', 'sgdb-status', 'sgdb-connect', 'sgdb-disconnect', 'sgdb-search'].includes(name)) void artworkAction(name);
 }
 async function discardReview() {
-  const origin = operation?.origin || 'details';
-  if (operation?.review) {
-    const token = operation.review.token;
-    try { await engineRequest(operation.execute === 'execute_routes' ? 'discard_routes' : operation.execute === 'run' ? 'discard' : 'discard_operation', operation.execute === 'run' ? { token } : { tokens: [token] }); }
+  const state = operation;
+  if (state) state.dismissed = true;
+  pendingInstall = null;
+  operation = null;
+  setView(state?.origin || 'details');
+  if (state?.review) {
+    const token = state.review.token;
+    try { await engineRequest(state.execute === 'execute_routes' ? 'discard_routes' : state.execute === 'run' ? 'discard' : 'discard_operation', state.execute === 'run' ? { token } : { tokens: [token] }); }
     catch (problem) { announce(problem instanceof Error ? problem.message : 'Could not release this review.'); }
   }
-  pendingInstall=null;operation = null; setView(origin);
 }
 async function confirmOperation() {
-  const state = operation; if (!state?.review || state.stage !== 'review') return;
+  const state = operation; if (!state?.review || state.stage !== 'review' || state.split?.pending || state.split?.error) return;
   if (state.review.trust && !app.querySelector<HTMLInputElement>('#review-trust')?.checked) return;
   const supported = [...app.querySelectorAll<HTMLInputElement>('[data-supported-token]:checked')].map(field => field.dataset.supportedToken!);
-  const choice = state.kind === 'install' ? selectedNrChoice() : undefined;
-  const reviewedRoots = new Set([...(state.review.rows || []),
-    ...(state.review.supported || []).filter(offer => supported.includes(offer.token)).flatMap(offer => offer.rows)]
-    .filter(row => row.game).map(row => pathKey(String(row.game))));
-  const addonRows = choice ? pendingInstall?.rows.filter(row => reviewedRoots.has(pathKey(row.game))) || [] : [];
   state.stage = 'running'; render();
   try {
     state.result = await engineRequest(state.execute, { token: state.review.token, trusted: true, offline_acknowledged: Boolean(state.review.trust), supported }, progress => {
@@ -1287,10 +1534,6 @@ async function confirmOperation() {
       else if (label) label.textContent = String(progress.label || progress.phase || 'Working…');
     });
     state.stage = 'done'; engineRows = [];if(state.execute==='steam_install')steamAdded=true;else if(state.execute==='steam_remove')steamAdded=false;
-    if (choice && addonRows.length && !(state.result as Record<string,unknown>)?.cancelled) {
-      await withOperation('Review Split Render', 'nr_review', {rows: addonRows, choice});
-      return;
-    }
     if(state.origin === 'presets' && !(state.result as Record<string,unknown>)?.cancelled) { drafts.delete(presetId); presetSelection=false; batchSelection.clear(); }
     if (['settings_review', 'executable_review', 'package_use'].includes(state.method || '') || state.origin === 'presets') {
       try {

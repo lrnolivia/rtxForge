@@ -4623,6 +4623,7 @@ def install_target(
     nr_on_launch: Optional[bool] = False,
     dry_run: bool = False,
     repair_changed: bool = False,
+    projection: Optional[dict] = None,
 ) -> dict:
     visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)  # Validate before any mutation.
     # A review reuses hashes of unchanged files; the real install hashes everything afresh.
@@ -4946,6 +4947,9 @@ def install_target(
 
     if dry_run:
         stale = stale_owned_proxies(target, chosen_proxy, reshade)
+        if projection is not None:
+            projection.update(payload=payload, remove=stale, proxy=chosen_proxy,
+                              provider=Y4MY_PROVIDER.get("id", "y4my"), mode=feature_mode)
         return {"proxy":chosen_proxy, "files":sorted(payload), "remove":stale,
                 "launch_options":build_launch_options(chosen_proxy,reshade),
                 "restored_support_tree":restored_support_tree,

@@ -143,6 +143,22 @@ class PlanTest(unittest.TestCase):
             plan.plan(broken, self.discarded.extend, [game('A'), game('B', runtime_provider='feeder')], 'install', 'nr-mfg', SETTINGS)
         self.assertEqual(self.discarded, ['first'])
 
+    def test_split_render_is_bound_to_all_exact_install_reviews(self):
+        self.refuse = {('NoFG', 'nr-mfg'): 'No native DLSS-G detected'}
+        prepared = []
+        routes = plan.ReviewedRoutes(lambda p: self.prepare(p['rows'], p['mode'], p['operation'], p['settings']),
+            None, None, lambda p: self.discarded.extend(p['tokens']), lambda: SETTINGS, split_render=prepared.append)
+        review = routes.prepare({'rows': [game('Ready', native_dlssg=True), game('NoFG', native_dlss=True)],
+                                 'operation': 'install', 'mode': 'nr-mfg'})
+        choice = {'auto': True, 'model': 'old'}
+        routes.split_render({'token': review['token'], 'tokens': ['unrelated'], 'revision': 1, 'choice': choice})
+        self.assertEqual(prepared[0]['tokens'], ['1', '2'])
+        self.assertEqual(prepared[0]['choice'], choice)
+        self.assertEqual(prepared[0]['revision'], 1)
+        routes.discard({'token': review['token']})
+        with self.assertRaisesRegex(ValueError, 'review expired'):
+            routes.split_render({'token': review['token'], 'revision': 2, 'choice': None})
+
     def test_uninstall_has_no_downloads_or_offers(self):
         result = self.run_plan([game('A', installed=True)], operation='uninstall')
         self.assertEqual(self.downloads, [])

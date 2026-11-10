@@ -29,7 +29,8 @@ public sealed class OperationDialog
     CancellationTokenSource? cancel;
     bool closed, completed;
     bool offlineAcknowledged;
-    JsonObject? nrChoice;
+    int splitRevision;
+    bool splitReady = true;
 
     // One step layout for checking and progress (OperationStepPanel).
     readonly OperationStepPanel checkingPanel = new();
@@ -64,11 +65,6 @@ public sealed class OperationDialog
         var shown = flow.dialog.ShowAsync();
         await flow.PrepareAsync();
         await shown;
-        if (flow.completed && flow.nrChoice is { } choice && shell.Service is EngineForgeService engine)
-        {
-            var reviewedGames = flow.review!.Ready.Select(item => item.Game).ToArray();
-            await ShowPreparedAsync(shell, "install-nr-addons", progress => engine.ReviewNrBatchAsync(reviewedGames, choice, progress));
-        }
         return flow.completed;
     }
 
@@ -223,7 +219,7 @@ public sealed class OperationDialog
         }
         body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 380, HorizontalScrollMode = ScrollMode.Disabled });
         if (operation == "install" && count > 0 && shell.Service is EngineForgeService engine)
-            _ = AddNrChoicesAsync(body, engine);
+            _ = AddNrChoicesAsync(body, engine, review, UpdatePrimary);
         body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
 
         dialog.Content = operation == "install" ? new ScrollViewer
@@ -232,21 +228,23 @@ public sealed class OperationDialog
             MaxHeight = Math.Max(240, dialog.XamlRoot.Size.Height - 184),
         } : body;
         dialog.PrimaryButtonText = ActionVerb();
-        dialog.IsPrimaryButtonEnabled = count > 0;
         offlineAcknowledged = false;
         if ((preparedReview?.Trust ?? review.RequiredTrust) is { Length: > 0 } trust)
         {
             var consent = new CheckBox { Content = new TextBlock { Text = trust, TextWrapping = TextWrapping.Wrap } };
-            dialog.IsPrimaryButtonEnabled = false;
-            consent.Checked += (_, _) => { offlineAcknowledged = true; dialog.IsPrimaryButtonEnabled = count > 0; };
-            consent.Unchecked += (_, _) => { offlineAcknowledged = false; dialog.IsPrimaryButtonEnabled = false; };
+            consent.Checked += (_, _) => { offlineAcknowledged = true; UpdatePrimary(); };
+            consent.Unchecked += (_, _) => { offlineAcknowledged = false; UpdatePrimary(); };
             body.Children.Add(consent);
         }
+        UpdatePrimary();
+
+        void UpdatePrimary() => dialog.IsPrimaryButtonEnabled = count > 0 && splitReady
+            && (string.IsNullOrEmpty(preparedReview?.Trust ?? review.RequiredTrust) || offlineAcknowledged);
         dialog.CloseButtonText = "Cancel";
         AccentPrimary();
     }
 
-    async Task AddNrChoicesAsync(StackPanel body, EngineForgeService engine)
+    async Task AddNrChoicesAsync(StackPanel body, EngineForgeService engine, OperationReview review, Action updatePrimary)
     {
         var options = new Expander
         {
@@ -262,14 +260,47 @@ public sealed class OperationDialog
             if (closed || stage != Stage.Review) return;
             var picker = new NrSetupPicker(catalog);
             var fields = new StackPanel { Spacing = 12 };
-            fields.Children.Add(Prefs.Label("Optional. Render the environment and characters with DLSS 5 NR. Review the Split Render files after the main package installs."));
+            fields.Children.Add(Prefs.Label("Optional. Review the DLSS 5 NR setup each game will receive after its main package installs."));
             fields.Children.Add(picker.Root);
+            var plans = new StackPanel { Spacing = 4 };
+            fields.Children.Add(plans);
             options.Content = fields;
             options.Header = "Split Render · None";
-            picker.Changed += () =>
+            picker.Changed += async () =>
             {
-                nrChoice = picker.Choice;
+                int revision = ++splitRevision;
+                var choice = picker.Choice;
                 options.Header = "Split Render · " + picker.Summary;
+                splitReady = false;
+                updatePrimary();
+                plans.Children.Clear();
+                plans.Children.Add(Prefs.Label("Preparing Split Render…"));
+                try
+                {
+                    await Task.Delay(180);
+                    if (closed || stage != Stage.Review || revision != splitRevision) return;
+                    var rows = await engine.PlanSplitRenderAsync(review, choice, revision);
+                    if (closed || stage != Stage.Review || revision != splitRevision) return;
+                    plans.Children.Clear();
+                    foreach (var row in rows.OfType<JsonObject>())
+                    {
+                        var name = row["name"]?.ToString() ?? "Game";
+                        var reason = row["reason"]?.ToString();
+                        var game = review.AllGames.Select(entry => entry.Item.Game).FirstOrDefault(game =>
+                            string.Equals(game.Location, row["game"]?.ToString(), StringComparison.OrdinalIgnoreCase))
+                            ?? review.AllGames.Select(entry => entry.Item.Game).FirstOrDefault(game => game.Name == name);
+                        plans.Children.Add(ReviewRow(game, name, reason ?? row["summary"]?.ToString() ?? "",
+                            reason is null ? "Ready" : "Skipped", reason is null, row["details"]?.ToString()));
+                    }
+                    splitReady = true;
+                    updatePrimary();
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+                {
+                    if (closed || stage != Stage.Review || revision != splitRevision) return;
+                    plans.Children.Clear();
+                    plans.Children.Add(Prefs.Label(error.Message + " Change the setup or choose None to continue."));
+                }
             };
         }
         catch (InvalidOperationException)

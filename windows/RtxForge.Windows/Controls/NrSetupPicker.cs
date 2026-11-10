@@ -45,7 +45,7 @@ internal sealed class NrSetupPicker
         Root.Children.Add(manual);
         Root.Children.Add(presetDetails);
         Root.Children.Add(model);
-        Root.Children.Add(Prefs.Label("Both add-ons share this model. A game using Skynizz NR keeps its installed model.",
+        Root.Children.Add(Prefs.Label("Both passes share this model. A game using Skynizz NR keeps its installed model.",
             "ForgeCaptionDimTextStyle"));
         foreach (var control in new[] { environment, character })
             control.SelectionChanged += (_, _) => Update();

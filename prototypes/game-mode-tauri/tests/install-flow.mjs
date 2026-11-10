@@ -3,15 +3,27 @@ import {chromium,expect} from '@playwright/test';
 const browser=await chromium.launch({...(process.env.RTXFORGE_BROWSER?{channel:process.env.RTXFORGE_BROWSER}:{}),headless:true});
 const page=await browser.newPage({viewport:{width:1440,height:990},reducedMotion:'reduce'}),calls=[],errors=[];
 page.on('pageerror',error=>errors.push(error.message));
-let source,prepareRelease,executeRelease,progressId,mode='ready',installed=false;
+let source,prepareRelease,executeRelease,splitRelease,progressId,mode='ready',installed=false,splitInstalled=false;
 await page.addInitScript(()=>{window.fixtureEvents=[];window.EventSource=class{constructor(){window.fixtureEvents.push(this);queueMicrotask(()=>this.onopen?.());}close(){this.onmessage=null;}};});
-await page.route('**/api/snapshot',async route=>{const response=await route.fetch();source=process.env.RTXFORGE_UI_FIXTURE?libraryFixture():await response.json();source.defaults.runtime_provider='skynizz';source.defaults.default_profile='nr-mfg';await route.fulfill({json:source});});
+await page.route('**/api/snapshot',async route=>{const response=await route.fetch();source=process.env.RTXFORGE_UI_FIXTURE?libraryFixture():await response.json();source.games=source.games.slice(0,3);source.defaults.runtime_provider='skynizz';source.defaults.default_profile='nr-mfg';await route.fulfill({json:source});});
 await page.route('**/api/engine/status',route=>route.fulfill({json:{enabled:true,reason:'Fixture only; no files changed.'}}));
 await page.route('**/api/engine',async route=>{
  const request=route.request().postDataJSON();calls.push(request);let result={};
- if(request.method==='scan_game')result=[{name:source.games[0].name,game:source.games[0].path,exe:'fixture.exe',runtime_provider:'skynizz',feature_mode:'nr-mfg',installed,nr_strength:2,feature_controls:{enabled:1,intensity:2},dynamic_mfg_available:true}];
- else if(request.method==='nr_catalog')result={install_choices:[{label:'Characters + world',setup:{character:{addon:'shortfuse'}},adapt:true}]};
- else if(request.method==='nr_review')result={token:'exact-nr-review',title:'Review Split Render',action:'Install Split Render',rows:[{game:source.games[0].path,name:source.games[0].name,summary:'Environment: Skynizz · Character detail: ShortFuse',details:'Add renodx-dlss.addon64'}]};
+ if(request.method==='scan_game'){const game=source.games.find(item=>item.path===request.params.folder)||source.games[0];result=[{name:game.name,game:game.path,exe:'fixture.exe',runtime_provider:'skynizz',feature_mode:'nr-mfg',installed,nr_strength:2,feature_controls:{enabled:1,intensity:2},dynamic_mfg_available:true}];}
+ else if(request.method==='nr_catalog')result={
+  addons:[{id:'lecram',name:'Lecram',builds:[{id:'10.8',label:'10.8',default:true}]},{id:'shortfuse',name:'ShortFuse',builds:[{id:'1.0',label:'1.0',default:true},{id:'2.0',label:'2.0'}]}],
+  models:[{id:'old',label:'Old DLSS 5 (310.8)'},{id:'new',label:'New DLSS 5 (310.9.16)'}],
+  combos:{'characters-and-world':{name:'Characters + world',builtin:true,character:{addon:'shortfuse',model:'new'}}},
+  runtime_nr:request.params.row?{id:'optiscaler',name:'Skynizz'}:null
+ };
+ else if(request.method==='nr_match')result=request.params.choice.model==='old'?[]:request.params.rows.slice(0,2).map((_,index)=>({index,summary:'Environment: Lecram · Model: 310.9.16'}));
+ else if(request.method==='nr_status')result={installed:splitInstalled,setup:splitInstalled?{environment:{addon:'optiscaler'},character:{addon:'shortfuse'}}:undefined};
+ else if(request.method==='nr_check')result={ok:true,verified:true};
+ else if(request.method==='split_render_routes_review'){
+  await new Promise(resolve=>splitRelease=resolve);
+  result={rows:[{game:source.games[0].path,name:source.games[0].name,summary:'Environment: Skynizz · Character detail: ShortFuse',details:'Add renodx-dlss.addon64'}]};
+ }
+ else if(request.method==='nr_review')result={token:'exact-nr-review',title:request.params.remove?'Remove Split Render':'Review Split Render',action:request.params.remove?'Remove Split Render':'Install Split Render',rows:[{game:source.games[0].path,name:source.games[0].name,summary:'Environment: Skynizz · Character detail: ShortFuse',details:'Add renodx-dlss.addon64'}]};
  else if(request.method==='run'&&request.params.token==='exact-nr-review')result={message:'Split Render installed in 1 game.'};
  else if(['prepare_routes','prepare_dlss'].includes(request.method)){
   if(mode==='delayed')await new Promise(resolve=>prepareRelease=resolve);
@@ -50,16 +62,49 @@ try{
  mode='empty';await click('Install Features');await click('Review games');await expect(page.getByRole('heading',{name:'Nothing ready yet',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Install Features',exact:true})).toBeDisabled();await page.locator('[data-supported-token]').check();await expect(page.getByRole('heading',{name:'1 game ready',exact:true})).toBeVisible();await page.locator('#review-trust').check();await click('Install Features');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();mode='cancelled';await waitForExecution();await click('Request cancellation');await expect.poll(()=>calls.some(c=>c.method==='cancel_routes'&&c.params.token==='exact-install-review')).toBe(true);await finishExecution();await expect(page.getByText('Cancelled safely. No files were changed.',{exact:true})).toBeVisible();await screenshot('cancelled');expect(calls.filter(c=>c.method==='execute_routes').at(-1).params.supported).toEqual(['exact-nr-subset']);await click('Back to game');
  mode='ready';await click('Install Features');await click('Review games');await page.locator('#review-trust').check();await click('Install Features');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();mode='failure';await finishExecution();await expect(page.getByText('The package could not be verified. Original files were kept.',{exact:true})).toBeVisible();await screenshot('error');await click('Back to game');
  mode='ready';await click('Install Features');await click('Review games');
- await page.getByLabel('Split Render').selectOption({label:'Characters + world'});
- await page.locator('#review-trust').check();await click('Install Features');
- await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();
- expect(calls.some(c=>c.method==='nr_review')).toBe(false);
- await finishExecution();await expect(page.getByRole('heading',{name:'Review Split Render',exact:true})).toBeVisible();
+ await page.locator('#review-trust').check();
+ await page.locator('#split-install-options summary').click();
+ await page.locator('#split-install-preset').selectOption('auto');
+ await expect(page.getByRole('button',{name:'Install Features',exact:true})).toBeDisabled();
+ await expect.poll(()=>Boolean(splitRelease)).toBe(true);splitRelease();splitRelease=undefined;
  await expect(page.getByText('Environment: Skynizz · Character detail: ShortFuse')).toBeVisible();
+ await expect(page.locator('#review-trust')).toBeChecked();
+ const split=calls.find(c=>c.method==='split_render_routes_review');
+ expect(split.params).toEqual({token:'exact-install-review',choice:{auto:true,model:'new'},revision:1});
+ await click('Install Features');
+ await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();
+ await finishExecution();
+ await expect(page.getByText('Reviewed installation completed.',{exact:true})).toBeVisible();
+ expect(calls.some(c=>c.method==='nr_review')).toBe(false);
+ await click('Back to game');
+ await click('Packages');
+ await page.locator('#split-packages summary').click();
+ await page.locator('#split-packages-preset').selectOption('auto');
+ await expect(page.locator('[data-nr-target]')).toHaveCount(2);
+ await page.getByRole('searchbox',{name:'Search games'}).fill(source.games[0].name);
+ await expect(page.locator('[data-nr-target]')).toHaveCount(1);
+ await click('Select all results');await expect(page.locator('[data-nr-target]:checked')).toHaveCount(1);
+ await click('Review selection');
+ await expect(page.getByRole('heading',{name:'Review Split Render',exact:true})).toBeVisible();
  expect(calls.find(c=>c.method==='nr_review').params.rows.map(row=>row.game)).toEqual([source.games[0].path]);
- expect(calls.some(c=>c.method==='run'&&c.params.token==='exact-nr-review')).toBe(false);
- await click('Install Split Render');await expect(page.getByText('Split Render installed in 1 game.')).toBeVisible();await click('Back to game');
+ await click('Back');
+ await expect(page.locator('[data-nr-target]:checked')).toHaveCount(1);
+ await click('Clear selection');await expect(page.locator('[data-nr-target]:checked')).toHaveCount(0);
+ await page.locator('#split-packages-model-old').check();
+ await expect(page.getByText('No games can use this setup.')).toBeVisible();
+ await expect(page.locator('[data-nr-target]')).toHaveCount(0);
+ await click('Library');await page.locator('.game-card').first().click();await click('Tools');
+ await expect(page.locator('#split-tools-character-build')).toBeVisible();
+ await click('Review Split Render');
+ await expect(page.getByRole('heading',{name:'Review Split Render',exact:true})).toBeVisible();
+ await expect(page.locator('.flow-review-row input[type=checkbox]')).toHaveCount(0);
+ await click('Back');
+ expect(calls.filter(c=>c.method==='nr_review').at(-1).params.row.game).toBe(source.games[0].path);
+ splitInstalled=true;await click('Overview');await click('Tools');
+ await expect(page.getByText('Installed · Environment: Skynizz · Character detail: ShortFuse · DLSS 5 model shared with Skynizz')).toBeVisible();
+ await click('Remove Split Render');await expect(page.getByRole('heading',{name:'Remove Split Render',exact:true})).toBeVisible();
+ expect(calls.filter(c=>c.method==='nr_review').at(-1).params.remove).toBe(true);await click('Back');
  mode='ready';installed=true;await page.reload();await page.locator('.game-card').first().click();await click('Restore Original Files');await expect(page.getByRole('button',{name:'Restore files',exact:true})).toBeVisible();await screenshot('restore');await click('Back');
  await expect.poll(()=>calls.filter(c=>c.method==='discard_routes').at(-1)?.params.tokens).toEqual(['exact-install-review']);
- expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['startup before preparation','original runtime units and exact targets','responsive startup controls','checking/progress/results with artwork','real progress events preserve Cancel focus','trust gates and explicit supported subsets','exact cancel/discard tokens','honest cancellation and failure','NR add-ons get a separate review for the exact installed games','restore review','fixture-only no game mutation']}));
-}finally{prepareRelease?.();executeRelease?.();await browser.close();}
+ expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['startup before preparation','original runtime units and exact targets','responsive startup controls','checking/progress/results with artwork','real progress events preserve Cancel focus','trust gates and explicit supported subsets','exact cancel/discard tokens','honest cancellation and failure','Split Render reviewed before one install run','compatibility filtering and bulk controls in Packages','per-game Tools review without selection checkboxes','restore review','fixture-only no game mutation']}));
+}finally{prepareRelease?.();executeRelease?.();splitRelease?.();await browser.close();}

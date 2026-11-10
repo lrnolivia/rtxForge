@@ -892,7 +892,7 @@ def _run_hdr(plan):
     return renodx_hdr.apply(_config(), plan)
 
 
-# ---------- DLSS5 NR add-ons: Environment and Character slots ----------
+# ---------- Split Render: Environment and Character detail ----------
 
 
 def nr_catalog(params):
@@ -937,15 +937,13 @@ def nr_review(params):
     else:
         import hardware
         plan = nr_install.prepare(_config(), params['row'], params['setup'], hardware.detect().get('family') or 'ada')
-    changes = '\n'.join(('Remove ' if c['after'] is None else 'Update ' if c['before'] else 'Add ') + c['path']
-                        + ('\nSHA-256: ' + c['after'] if c['after'] else '') for c in plan['changes'])
-    slots = ' · '.join(f'{slot.capitalize()}: {spec["addon"]}' for slot, spec in (params.get('setup') or {}).items() if spec)
+    changes = nr_install.describe_changes(plan)
+    slots = plan.get('selection', '')
     return _review('nr-addons', 'Remove Split Render' if remove else 'Install Split Render',
                    [_item(plan['name'], 'Remove Split Render and keep the rest of the setup.' if remove else slots,
                           'Remove' if remove else 'Install', plan['game'], changes)],
                    action='Remove' if remove else 'Install', payload=plan,
-                   summary='Existing game files and your ReShade settings are kept; only recorded keys are restored.',
-                   note=' '.join(plan.get('notes', [])))
+                   summary='Existing game files and your ReShade settings are kept; only recorded keys are restored.')
 
 
 def _run_nr(plan):

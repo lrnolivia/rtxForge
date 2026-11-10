@@ -480,6 +480,7 @@ def prepare(config,rows,mode,operation,settings):
     selected_provider=dict(e.Y4MY_PROVIDER)
     ready=[];blocked=[];seen=[]
     for index,row in enumerate(rows,1):
+        projection = {}
         ui.progress('Checking game files',phase='review-check',game=row['name'],checked=index-1,total=len(rows))
         try:
             import overlay_settings
@@ -613,7 +614,7 @@ def prepare(config,rows,mode,operation,settings):
 
                 check_switch(e,installed_package(baseline),mode)
                 with _without_baseline(e,g) if retired else contextlib.nullcontext():
-                    preview=e.install_target(g,target_data,target_meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,nr_on_launch=settings.get('nr_on_launch',False) if operation=='install' else None,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,feature_controls=controls,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True,repair_changed=operation=='repair')
+                    preview=e.install_target(g,target_data,target_meta,'ada',nr_runtime_payload=nr,nr_runtime_meta=nrmeta,feature_mode=mode,enable_effects=True,nr_on_launch=settings.get('nr_on_launch',False) if operation=='install' else None,native_mfg_fallback=bool(settings.get('native_mfg_fallback',False)),nr_strength=strength,mfg_multiplier=multiplier,sharpening_strength=sharpening,feature_controls=controls,preserve_visual_settings=not settings.get("apply_requested_presets",False),dry_run=True,repair_changed=operation=='repair',projection=projection if operation=='install' else None)
                 if selected=='skynizz':
                     model=preview.get('nr_runtime') or {}
                     route='Combined NR + MFG bridge · target runtime validation pending' if mode=='nr-mfg' else 'MFG Only · neural rendering disabled' if mode=='mfg-only' else 'NR Only · requires D3D12/DLSS'
@@ -662,6 +663,8 @@ def prepare(config,rows,mode,operation,settings):
             ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route,'retire':retired,'linux_extras':extras,
                           'provider':dict(e.Y4MY_PROVIDER),'payload':target_data,'meta':target_meta,'nr':nr,'nrmeta':nrmeta,
                           'proton_stack':stack,'settings':dict(settings)})
+            if projection:
+                ready[-1]['package_projection'] = projection
         except (e.Stop,t.Refusal,OSError,ValueError) as ex:blocked.append({'name':row['name'],'reason':str(ex)})
         ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
     return {'kind':'engine','operation':operation,'title':'Update NR + MFG bridge' if upgrade else operation.title(),'rows':[{'name':p['row']['name'],'game':p['row']['game'],'detail':p['preview']['launch_options'] if operation=='reset' else f"{e.Y4MY_PROVIDER['name']} · {len(p['preview']['files'])} managed files · "+p['preview']['launch_options']} for p in ready],
@@ -751,6 +754,13 @@ def execute(review):
                     else:names.add('OptiScaler')
                     paths=[g.target_dir/name for name in names]+[e.state_dir_for(g.target_dir),g.target_dir/cross_os.MARKER,g.target_dir/cross_os.SHARED]
                     paths.extend(item.get('extra_checkpoint_paths', []))
+                    if split := item.get('split_render'):
+                        root = g.root.resolve()
+                        for change in split[1]['changes']:
+                            path = t.safe(root / t.relative(change['path']))
+                            while path.parent != root and not path.parent.exists():
+                                path = path.parent
+                            paths.append(path)
                     if review['operation']!='reset':
                         paths.extend([e.STATE_ROOT/'steam-config-backups',e._steam_transaction_root(),prefix_state(e,g)])
                         account=e.choose_steam_user_config([g],assume_yes=True)
@@ -845,6 +855,10 @@ def execute(review):
                     share_install(e,g,review)
                 if item.get('after_game'):
                     item['after_game']()
+                if split := item.get('split_render'):
+                    import nr_install
+                    report('Installing Split Render',0.95)
+                    record['split_render'] = nr_install.apply_after_package(*split)
                 results.append({'name':g.name,'status':'complete','record':record})
             except Exception as ex:
                 results.append({'name':g.name,'status':'failed','error':str(ex)})

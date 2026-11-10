@@ -498,6 +498,15 @@ def review_prepare(params):
     return {'steps': result['steps'], 'supported': result['offers'], 'blocked': result['blocked'], 'warnings': result['warnings']}
 
 
+def split_render_review(params):
+    import nr_install
+    tokens = params.get('tokens')
+    if not isinstance(tokens, list) or any(not isinstance(token, str) or token not in reviews for token in tokens):
+        raise ValueError('The installation review expired. Review the games again.')
+    return nr_install.revise_package_reviews(service.config, [reviews[token] for token in tokens],
+                                             params, service.hardware().get('family') or 'ada')
+
+
 def prefetch_install(params):
     import install_prefetch
     hardware = service.hardware()
@@ -637,7 +646,7 @@ def steam_remove(params):
 
 running: dict[str, dict] = {}
 METHODS = {"hello": hello, "hardware": lambda _p: service.hardware(), "scan": scan, "prepare": prepare,
-           "prefetch_install": prefetch_install, "review_prepare": review_prepare,
+           "prefetch_install": prefetch_install, "review_prepare": review_prepare, "split_render_review": split_render_review,
            "execute": execute, "cancel": cancel, "discard_operation": discard_operation, "save_defaults": save_defaults,
            "prepare_dlss": prepare_dlss, "update_dlss": update_dlss,
            "steam_status": steam_status, "steam_review": steam_review, "steam_install": steam_install,
@@ -717,7 +726,7 @@ win_features.live_status = METHODS['companion_status']
 
 
 _download_gate = threading.RLock()
-_DOWNLOAD_METHODS = {'prefetch_install', 'review_prepare', 'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'update_stage', 'update_apply', 'storage_review', 'feeder_storage',
+_DOWNLOAD_METHODS = {'split_render_review', 'prefetch_install', 'review_prepare', 'prepare', 'execute', 'prepare_dlss', 'update_dlss', 'run', 'update_stage', 'update_apply', 'storage_review', 'feeder_storage',
                      'nr_review'}
 # Reviews and writes take turns (writer_gate) instead of racing the background
 # overlay update or each other. Reads, scans and live in-game tuning stay free;

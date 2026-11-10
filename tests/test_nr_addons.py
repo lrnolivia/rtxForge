@@ -88,6 +88,14 @@ class NrAddonTests(unittest.TestCase):
             self.assertIsNone(nr.catalog_view({}, DLSS_GAME)['runtime_nr'])
             self.assertEqual(nr.catalog_view({}, DLSS_GAME)['combos']['characters-and-world']['environment']['addon'], 'lecram')
 
+    def test_feeder_game_is_blocked_even_with_a_stale_native_dlss_flag(self):
+        game = {'native_dlss': True, 'runtime_provider': 'feeder'}
+        setup = nr.builtin_combos()['characters-and-world']
+        result = nr.check(game, setup)
+        self.assertFalse(result['ok'])
+        self.assertIn('ShortFuse hooks the game’s native DLSS', result['reason'])
+        self.assertIn('second pass', result['reason'])
+
     def test_shortfuse_needs_the_games_own_dlss(self):
         combo = nr.builtin_combos()['characters-and-world']
         result = nr.apply_combo(PLAIN_GAME, combo)

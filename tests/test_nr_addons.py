@@ -1,6 +1,7 @@
 from pathlib import Path
 import re
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
@@ -93,8 +94,33 @@ class NrAddonTests(unittest.TestCase):
         setup = nr.builtin_combos()['characters-and-world']
         result = nr.check(game, setup)
         self.assertFalse(result['ok'])
-        self.assertIn('ShortFuse hooks the game’s native DLSS', result['reason'])
-        self.assertIn('second pass', result['reason'])
+        self.assertIn('ShortFuse requires native DLSS hooks', result['reason'])
+        self.assertIn('Passes to 2', result['reason'])
+
+    def test_feeder_guidance_uses_live_hooks_even_when_the_library_row_is_stale(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as folder:
+            game_dir = Path(folder).resolve()
+            (game_dir / 'Game.exe').touch()
+            (game_dir / 'dlss5-feed.addon64').touch()
+            row = dict(DLSS_GAME, game=str(game_dir), exe='Game.exe')
+            with mock.patch.object(nr, 'saved_combos', return_value={}):
+                catalog = nr.catalog_view({}, row)
+            result = nr.check(row, nr.builtin_combos()['characters-and-world'])
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['reason'], catalog['blocked'])
+            for instruction in ('Passes to 2', 'Pass 2', 'Use main settings', 'Skin detail'):
+                self.assertIn(instruction, result['reason'])
+
+    def test_picker_refuses_an_occupied_addon_before_install_review(self):
+        with tempfile.TemporaryDirectory() as folder:
+            game_dir = Path(folder).resolve()
+            (game_dir / 'Game.exe').touch()
+            (game_dir / 'renodx-dlss5.addon64').write_bytes(b'another build')
+            row = dict(DLSS_GAME, game=str(game_dir), exe='Game.exe')
+            result = nr.check(row, nr.builtin_combos()['characters-and-world'])
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['reason'], nr.occupied_file('renodx-dlss5.addon64'))
 
     def test_shortfuse_needs_the_games_own_dlss(self):
         combo = nr.builtin_combos()['characters-and-world']

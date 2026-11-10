@@ -79,7 +79,7 @@ verified before use.
 - **Feeder NR games use their existing renderer.** ShortFuse hooks native DLSS,
   so it cannot use the inputs Feeder supplies to its own RenoDX renderer. For
   a second pass in a Feeder game, open the in-game NR panel and set **Passes**
-  to 2. Adjust skin detail under **Pass 2**.
+  to 2. Open **Pass 2**, turn off **Use main settings**, and adjust **Skin detail**.
 - **Another tool's files are kept.** rtxForge refuses the install rather than
   replace them.
 

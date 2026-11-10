@@ -227,7 +227,7 @@ class NrInstallTests(unittest.TestCase):
 
     def test_another_tools_model_or_loader_is_never_overwritten(self):
         (self.game / 'nvngx_dlssnr.dll').write_bytes(pe(b'someone else'))
-        with self.assertRaisesRegex(t.Refusal, 'Another tool owns nvngx_dlssnr.dll'):
+        with self.assertRaisesRegex(t.Refusal, r'A different nvngx_dlssnr\.dll'):
             nr_install.prepare({}, self.row, COMBO)
         with self.assertRaisesRegex(t.Refusal, 'Feeder NR'):
             nr_install.prepare({}, dict(self.row, native_dlss=False), {'environment': {'addon': 'lecram'}})
@@ -275,6 +275,16 @@ class NrInstallTests(unittest.TestCase):
             self.assertEqual([item['index'] for item in matches], [1])
             self.assertIn('Environment: Lecram', matches[0]['summary'])
             self.assertEqual(nr_install.match_batch({}, rows, new, 'ampere'), [])
+        self.assertEqual(self.files(), before)
+
+    def test_batch_picker_filters_an_occupied_addon(self):
+        (self.game / 'renodx-dlss5.addon64').write_bytes(pe(b'different renderer'))
+        before = self.files()
+        with (patch.object(nr_install.engine_bridge, 'module', return_value=self.engine),
+              patch.object(nr_install, '_payload') as payload):
+            choice = {'setup': COMBO, 'adapt': False}
+            self.assertEqual(nr_install.match_batch({}, [self.row], choice), [])
+            payload.assert_not_called()
         self.assertEqual(self.files(), before)
 
     def test_auto_matches_the_same_setup_that_batch_review_prepares(self):

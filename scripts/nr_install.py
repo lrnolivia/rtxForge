@@ -162,11 +162,8 @@ def _value(value):
 
 def _target(row, exe, e, projection=None):
     t.need(not _receipt(row).exists(), 'A Split Render setup is already installed. Remove it before choosing another.')
-    import feeder_provider
     if reason := nr_addons.split_render_block(row):
         raise t.Refusal(reason)
-    if feeder_provider.has_feeder_hook(exe.parent):
-        raise t.Refusal(nr_addons.FEEDER_SPLIT_RENDER_BLOCK)
     arch = hdr.architecture(exe)
     route, host, optiscaler_ini = hdr._route(e, exe, arch, projection=projection)
     # The game folder, not the library row, says whether OptiScaler is here and runs its own NR.
@@ -232,7 +229,7 @@ def _prepare_choice(config, row, choice, gpu, projection=None):
     for rel, data in files.items():
         path = t.safe(directory / t.relative(rel))
         if (before := digest(path)) is not None:
-            t.need(before == t.sha(data), f'Another tool owns {rel}; its file was kept.')
+            t.need(before == t.sha(data), nr_addons.occupied_file(rel))
             checks[str(path)] = before
             continue
         writes[path] = data
@@ -425,6 +422,7 @@ def match_batch(config, rows, choice, gpu='ada'):
             _, exe, _ = hdr._location(row)
             game, _, _, _ = _target(row, exe, e)
             _, plan, model = _choose(game, choice, gpu)
+            nr_addons.check_addon_files(game, plan)
         except (t.Refusal, OSError, ValueError, configparser.Error):
             continue
         matches.append({'index': index, 'summary': selection(plan, model[0] if model else None)})

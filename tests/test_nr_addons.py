@@ -95,7 +95,7 @@ class NrAddonTests(unittest.TestCase):
         result = nr.check(game, setup)
         self.assertFalse(result['ok'])
         self.assertIn('ShortFuse requires native DLSS hooks', result['reason'])
-        self.assertIn('Passes to 2', result['reason'])
+        self.assertIn('any of its four full-frame passes', result['reason'])
 
     def test_feeder_guidance_uses_live_hooks_even_when_the_library_row_is_stale(self):
         from unittest import mock
@@ -109,7 +109,7 @@ class NrAddonTests(unittest.TestCase):
             result = nr.check(row, nr.builtin_combos()['characters-and-world'])
             self.assertFalse(result['ok'])
             self.assertEqual(result['reason'], catalog['blocked'])
-            for instruction in ('Passes to 2', 'Pass 2', 'Use main settings', 'Skin detail'):
+            for instruction in ('native DLSS hooks', 'Character mask', 'four full-frame passes'):
                 self.assertIn(instruction, result['reason'])
 
     def test_picker_refuses_an_occupied_addon_before_install_review(self):

@@ -388,7 +388,7 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
     }),"ShortFuse live setter did not receive the whole percent");
     scale->SetValue("90");
     scale->DispatchEvent("change",{});
-    Require(!c.addons.FlushLive([](const ForgeGlass::HdrField&,float){return false;})&&scale->GetValue()=="82",
+    Require(!c.addons.FlushLive([](const ForgeGlass::HdrField&,float){return false;})&&std::stof(scale->GetValue())==82,
         "A refused ShortFuse change remained displayed");
     auto* environment=dynamic_cast<Rml::ElementFormControl*>(c.Element("addon-environment_character_mask"));
     environment->SetValue("0");
@@ -708,6 +708,8 @@ int wmain(int argc,wchar_t** argv)
             Require(controller.Element("feeder-split-context")->IsVisible(true),"Feeder Split Render preview did not open");
         }
         if(shortFusePreview) {
+            controller.values["passes"]=1;
+            controller.passesMax=8;
             controller.Layout(requestedLayout);
             controller.addons.Set({
                 {"character_character_mask","Character mask","Character detail · ShortFuse","choice",

@@ -959,6 +959,7 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .feeder-passes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .feeder-passes button{display:grid;justify-items:start;align-content:center;gap:4px;min-height:62px;padding:8px 10px;text-align:left}
 .feeder-passes button span,.feeder-roles button,.feeder-skin strong{display:inline-flex;align-items:center;gap:7px}
+.feeder-passes button[aria-pressed="true"]{box-shadow:inset 0 0 0 1px var(--game-accent,var(--accent))}
 .feeder-passes small{color:var(--muted);white-space:normal}
 .feeder-roles{display:flex;flex-wrap:wrap;gap:8px}
 .feeder-choices button[aria-pressed="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}

@@ -56,7 +56,7 @@ struct NrAddonControls {
             const auto end=std::find_if(first,fields.end(),[&](const auto& f){return f.section!=first->section;});
             const auto glyph=first->key.starts_with("character_")?"circle-half":"app-window";
             markup+=std::string("<div class=\"option-group\"><h3 class=\"split-addon-title\"><img class=\"glyph\" src=\"icons/")+
-                glyph+"-light.png\"/>"+Escape(first->section)+"</h3>";
+                glyph+"-light.png\"/><span>"+Escape(first->section)+"</span></h3>";
             for(int priority=0;priority<4;++priority)
                 for(auto field=first;field!=end;++field)
                     if(rank(field->key)==priority)markup+=Control(*field);

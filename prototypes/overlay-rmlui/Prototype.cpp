@@ -556,7 +556,7 @@ static void TestController(Controller& c,Rml::Context* context)
 int wmain(int argc,wchar_t** argv)
 {
     try {
-        fs::path assets,background,output,font,gameCatalog,preferencesPath,posterPath;DWORD parentProcess=0;int onboardingMenus=1;int width=2560,height=1440,appearance=4,requestedCopy=22,requestedScale=100;bool onboardingScroll=false,onboardingNative=false,longDropdown=false,dropdownOpen=false,colorSpectrumOpen=false,colorPickerOpen=false,benchmark=false;bool gameCapture=false,thumbnail=false,desktopPreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=10,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedAccentMode="adaptive";std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
+        fs::path assets,background,output,font,gameCatalog,preferencesPath,posterPath;DWORD parentProcess=0;int onboardingMenus=1;int width=2560,height=1440,appearance=4,requestedCopy=22,requestedScale=100;bool onboardingScroll=false,onboardingNative=false,longDropdown=false,dropdownOpen=false,colorSpectrumOpen=false,colorPickerOpen=false,benchmark=false;bool gameCapture=false,thumbnail=false,desktopPreview=false,feederSplitPreview=false,pickerPreview=false,onboarding=false,productionUI=false,appearanceOpen=false,detailsOpen=false,inspector=false,blur=true,selfTest=false,layoutTest=false,customMfg=false,reduceMotion=false,welcome=false,settings=false;float crop=0,requestedTint=-1,requestedCharacter=10,requestedSaturation=100;std::array<float,3> accent{.19f,.46f,.80f};std::string requestedAccentMode="adaptive";std::string gameTitle,requestedLayout="floating",requestedBlend,requestedPage;
         for(int i=1;i<argc;++i) {
             const std::wstring arg=argv[i];
             const auto next=[&] {Require(i+1<argc,"Missing argument value");return std::wstring(argv[++i]);};
@@ -568,6 +568,7 @@ int wmain(int argc,wchar_t** argv)
             else if(arg==L"--layout-picker")pickerPreview=true;else if(arg==L"--onboarding")onboarding=true;else if(arg==L"--self-test")selfTest=true;else if(arg==L"--reduce-motion")reduceMotion=true;else if(arg==L"--welcome")welcome=true;else if(arg==L"--settings")settings=true;
             else if(arg==L"--page")requestedPage=Utf8(next());
             else if(arg==L"--desktop-preview"){desktopPreview=productionUI=true;}
+            else if(arg==L"--feeder-split-render"){feederSplitPreview=desktopPreview=productionUI=true;}
             else if(arg==L"--game-title")gameTitle=Utf8(next());
             else if(arg==L"--game-catalog")gameCatalog=next();
             else if(arg==L"--parent-process")parentProcess=std::stoul(next());
@@ -622,13 +623,13 @@ int wmain(int argc,wchar_t** argv)
         Require(Rml::LoadFontFace(Utf8(inter)),"Inter could not load");
         auto* context=Rml::CreateContext("overlay",{width,height});Require(context!=nullptr,"RmlUi context could not be created");inputContext=context;
         auto* document=context->LoadDocument(Utf8(assets/L"overlay.rml"));Require(document!=nullptr,"Overlay document could not load");
-        Controller controller;controller.document=document;controller.preview=!productionUI;controller.appearance=appearance;controller.accent=accent;controller.accentMode=requestedAccentMode;controller.UseTheme(appearance);if(appearance==4){controller.accentCharacter=requestedCharacter;controller.accentOpacity=100*MaterialColor::AccentOpacity(requestedCharacter);controller.accentSaturation=requestedSaturation;}if(window||desktopPreview)controller.LoadPreferences(false,preferencesPath);
+        Controller controller;controller.document=document;controller.preview=!productionUI;controller.appearance=appearance;controller.accent=accent;controller.accentMode=requestedAccentMode;controller.UseTheme(appearance);if(appearance==4){controller.accentCharacter=requestedCharacter;controller.accentOpacity=100*MaterialColor::AccentOpacity(requestedCharacter);controller.accentSaturation=requestedSaturation;}if((window||desktopPreview)&&!feederSplitPreview)controller.LoadPreferences(false,preferencesPath);
         if(desktopPreview){controller.preferences.clear();controller.setupComplete=true;controller.closePreview=[]{closed=true;};controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("desktop-preview",true);if(library.names.empty())document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");else document->QuerySelector(".preview-label")->SetInnerRML("Game");if(window){SetWindowTextW(window,L"rtxForge · Overlay preview");controller.Element("preview-chrome")->SetProperty("display","block");}}
         Image posterImage{};
         const auto changePoster=[&](const fs::path& path){posterImage={};controller.Poster("");if(!path.empty())try{posterImage=LoadImage(path);controller.Poster(Utf8(path));}catch(const std::exception&){};};
         changePoster(posterPath);controller.samplePoster=[&](float x,float y){if(posterImage.rgba.empty())return std::string();const auto px=std::clamp(int(x*posterImage.width),0,int(posterImage.width)-1),py=std::clamp(int(y*posterImage.height),0,int(posterImage.height)-1);const auto i=(size_t(py)*posterImage.width+px)*4;return Controller::Hex(posterImage.rgba[i]/255.f,posterImage.rgba[i+1]/255.f,posterImage.rgba[i+2]/255.f).substr(0,7);};
         if(!gameTitle.empty())controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("preview-thumbnail",thumbnail);
-        if(!window&&!desktopPreview){controller.copySize=requestedCopy;controller.overlayScale=requestedScale;}if(customMfg)controller.values["multiplier"]=3;
+        if(feederSplitPreview||(!window&&!desktopPreview)){controller.copySize=requestedCopy;controller.overlayScale=requestedScale;}if(customMfg)controller.values["multiplier"]=3;
         controller.monitorPreviewFocus=window!=nullptr;controller.InstallExtraControls();
         std::vector<ForgeGlass::HdrField> hdrPreview;for(const auto& f:PreviewHdrFields)hdrPreview.push_back({f.key,f.label,f.section,f.kind,f.options,f.unit,f.minimum,f.maximum,f.step,f.initial,f.initial,f.reset,!f.reset});
         if(!desktopPreview)controller.hdr.Set(std::move(hdrPreview),true,true,"Preview HDR preferences. These sample controls do not change a game; connected controls save startup preferences for verified add-on builds.");
@@ -649,6 +650,26 @@ int wmain(int argc,wchar_t** argv)
         document->GetElementById("welcome")->SetProperty("backdrop-filter","none");
         document->Show();
         controller.Layout((window||desktopPreview)?controller.layout:requestedLayout);if(!requestedPage.empty()){Require(requestedPage=="overview"||requestedPage=="frame"||requestedPage=="neural"||requestedPage=="hdr"||requestedPage=="look"||requestedPage=="passes","Use --page overview, frame, neural, hdr, look, or passes");document->SetClass("overview-page",requestedPage=="overview");document->SetClass("frame-page",requestedPage=="frame");document->SetClass("neural-page",requestedPage=="neural");document->SetClass("hdr-page",requestedPage=="hdr");controller.Navigation("nav-"+requestedPage);if(requestedPage=="look"||requestedPage=="passes")controller.Open(requestedPage);controller.Visible("type-panel",false);}if(inspector)controller.Open("passes");if(settings)controller.Settings(true);if(colorPickerOpen){controller.accentMode="custom";controller.colorEditorOpen=true;controller.spectrumOpen=colorSpectrumOpen;controller.spectrumHsv=MaterialColor::ToHsv(accent);}if(appearanceOpen){controller.moreOpen=detailsOpen;controller.Materials();controller.ShowAppearance();}
+        if(feederSplitPreview) {
+            controller.values["enabled"]=1;
+            controller.values["passes"]=2;
+            controller.values["pass2_inherit"]=0;
+            controller.passesMax=4;
+            controller.Capabilities(true,false);
+            controller.SetFeederSplitRender(true);
+            controller.edits.Start(controller.values);
+            controller.Layout(requestedLayout);
+            if(controller.layout=="centered")controller.Page("nav-addons");
+            else {
+                controller.Page("nav-neural");
+                context->Update();
+                controller.Element("open-addons")->ScrollIntoView(false);
+                controller.Open("addons");
+            }
+            controller.Message("Preview · changes stay in this window.");
+            context->Update();
+            Require(controller.Element("feeder-split-context")->IsVisible(true),"Feeder Split Render preview did not open");
+        }
         if(onboarding){controller.nativeShortcuts.clear();if(onboardingMenus>0)controller.nativeShortcuts.push_back({"OptiScaler","Insert",true});if(onboardingMenus>1)controller.nativeShortcuts.push_back({"ReShade","Ctrl+Shift+Home",true});controller.BeginSetup();if(onboardingNative){controller.setupStep=2;controller.UpdateSetup();}}
         if(thumbnail&&controller.layout=="centered")controller.Page("nav-neural");
         auto image=LoadImage(background);

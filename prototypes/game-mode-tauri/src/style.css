@@ -953,3 +953,9 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .split-section.inner-card{padding:16px}
 .split-section .split-results:not(:empty){margin-top:14px}
 @media(max-width:700px){.split-layout{grid-template-columns:minmax(0,1fr)}}
+
+.feeder-passes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0;margin-block:14px;list-style:none}
+.feeder-passes li{display:grid;gap:4px;padding:12px;border:1px solid var(--rim);border-radius:10px}
+.feeder-passes small{color:var(--muted)}
+.feeder-skin input{min-width:120px;max-width:250px;width:100%;accent-color:var(--accent)}
+@media(max-width:680px){.feeder-passes{grid-template-columns:minmax(0,1fr)}}

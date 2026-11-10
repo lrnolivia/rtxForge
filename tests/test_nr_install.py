@@ -2,6 +2,7 @@
 import contextlib
 import io
 from pathlib import Path
+import shutil
 import struct
 import sys
 import tempfile
@@ -11,7 +12,9 @@ from unittest.mock import patch
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+import feeder_character as character
 import nr_install
+import operation_session
 import renodx_hdr as hdr
 import transactions as t
 
@@ -227,7 +230,7 @@ class NrInstallTests(unittest.TestCase):
 
     def test_another_tools_model_or_loader_is_never_overwritten(self):
         (self.game / 'nvngx_dlssnr.dll').write_bytes(pe(b'someone else'))
-        with self.assertRaisesRegex(t.Refusal, 'Another tool owns nvngx_dlssnr.dll'):
+        with self.assertRaisesRegex(t.Refusal, r'A different nvngx_dlssnr\.dll'):
             nr_install.prepare({}, self.row, COMBO)
         with self.assertRaisesRegex(t.Refusal, 'Feeder NR'):
             nr_install.prepare({}, dict(self.row, native_dlss=False), {'environment': {'addon': 'lecram'}})
@@ -277,6 +280,16 @@ class NrInstallTests(unittest.TestCase):
             self.assertEqual(nr_install.match_batch({}, rows, new, 'ampere'), [])
         self.assertEqual(self.files(), before)
 
+    def test_batch_picker_filters_an_occupied_addon(self):
+        (self.game / 'renodx-dlss5.addon64').write_bytes(pe(b'different renderer'))
+        before = self.files()
+        with (patch.object(nr_install.engine_bridge, 'module', return_value=self.engine),
+              patch.object(nr_install, '_payload') as payload):
+            choice = {'setup': COMBO, 'adapt': False}
+            self.assertEqual(nr_install.match_batch({}, [self.row], choice), [])
+            payload.assert_not_called()
+        self.assertEqual(self.files(), before)
+
     def test_auto_matches_the_same_setup_that_batch_review_prepares(self):
         choice = {'auto': True, 'model': 'old'}
         with patch.object(nr_install.engine_bridge, 'module', return_value=self.engine):
@@ -324,6 +337,90 @@ class NrInstallTests(unittest.TestCase):
             archive.writestr('bin/nvngx_dlssnr.dll', blob)
         with self.assertRaisesRegex(t.Refusal, 'valid Windows library'):
             nr_install._model(small.getvalue(), {})
+
+
+class FeederCharacterTests(unittest.TestCase):
+    def setUp(self):
+        temporary = self.enterContext(tempfile.TemporaryDirectory())
+        self.base = Path(temporary).resolve()
+        self.game = self.base / 'game'
+        self.game.mkdir()
+        self.exe = self.game / 'Game.exe'
+        self.exe.write_bytes(b'MZ')
+        self.ini = self.game / 'ReShade.ini'
+        self.row = {'name': 'Game', 'game': str(self.game), 'exe': self.exe.name}
+        self.e = SimpleNamespace(STATE_ROOT=self.base / 'state', mutation_lock=contextlib.nullcontext,
+                                 scan_game_files=lambda _root: (None, None, None))
+        self.running = False
+        stack = self.enterContext(contextlib.ExitStack())
+        stack.enter_context(patch.object(character.engine_bridge, 'module', return_value=self.e))
+        stack.enter_context(patch.object(character.feeder, 'target', return_value=(self.game, self.exe, self.game)))
+        self.record = stack.enter_context(patch.object(character.feeder, 'state', return_value={'status': 'active'}))
+        stack.enter_context(patch.object(character.feeder, 'inspect', return_value={'managed': True}))
+        stack.enter_context(patch.object(character.feeder, 'running_under', side_effect=lambda *_: self.running))
+        # Desktop Windows supplies this same copy operation through its host.
+        stack.enter_context(patch.object(operation_session, 'subprocess',
+            SimpleNamespace(run=lambda args, **_: shutil.copy2(args[-2], args[-1]))))
+
+    def write(self, passes=1, extra=''):
+        self.ini.write_bytes(('[RenoDX.DLSS5]\nNeuralUplift=0\nNRIntensity=1.25\nNRStyle=1\n'
+                              f'NRPasses={passes}\n{extra}[OTHER]\nKeep=yes\n').encode())
+
+    def test_default_is_prefilled_and_only_pass_two_settings_change(self):
+        self.write()
+        before = self.ini.read_bytes()
+        preview = character.snapshot({}, self.row)
+        self.assertEqual(self.ini.read_bytes(), before)
+        self.assertEqual((preview['passes'], preview['target_passes'], preview['target_skin']), (1, 2, .5))
+        character.apply({}, self.row, preview['stamp'], preview['target_skin'])
+        saved = t.ini(self.ini.read_text(encoding='utf-8'))
+        self.assertEqual(dict(saved['RenoDX.DLSS5']), {
+            'NeuralUplift': '0', 'NRIntensity': '1.25', 'NRStyle': '1',
+            'NRPasses': '2', 'NRPass2FollowPass1': '0', 'NRPass2Skin': '0.50',
+        })
+        self.assertEqual(saved['OTHER']['Keep'], 'yes')
+        self.assertFalse(character.snapshot({}, self.row)['changes'])
+
+    def test_keeps_extra_passes_and_existing_skin_tuning(self):
+        self.write(4, 'NRPass2FollowPass1=1\nNRPass2Skin=0.72\nNRPass3Skin=0.85\n')
+        preview = character.snapshot({}, self.row)
+        self.assertEqual((preview['target_passes'], preview['target_skin']), (4, .72))
+        character.apply({}, self.row, preview['stamp'], preview['target_skin'])
+        saved = t.ini(self.ini.read_text(encoding='utf-8'))['RenoDX.DLSS5']
+        self.assertEqual((saved['NRPasses'], saved['NRPass2Skin'], saved['NRPass3Skin']), ('4', '0.72', '0.85'))
+
+    def test_stale_preview_and_running_game_are_refused_without_writes(self):
+        self.write()
+        preview = character.snapshot({}, self.row)
+        self.write(3)
+        before = self.ini.read_bytes()
+        with self.assertRaisesRegex(t.Refusal, 'settings changed'):
+            character.apply({}, self.row, preview['stamp'], .5)
+        fresh = character.snapshot({}, self.row)
+        self.running = True
+        self.assertIn('Close the game', character.snapshot({}, self.row)['reason'])
+        with self.assertRaisesRegex(t.Refusal, 'Close the game'):
+            character.apply({}, self.row, fresh['stamp'], .5)
+        self.assertEqual(self.ini.read_bytes(), before)
+
+    def test_linux_accepts_a_verified_standard_shared_feeder_install(self):
+        self.write()
+        self.record.return_value = None
+        marker = {'provider': {'id': 'feeder'}}
+        with (patch.object(character.cross_os, 'THIS_OS', 'linux'),
+              patch.object(character.cross_os, 'read', return_value=marker)):
+            preview = character.snapshot({}, self.row)
+            self.assertTrue(preview['available'])
+            character.apply({}, self.row, preview['stamp'], .5)
+        self.assertIn(b'NRPasses=2', self.ini.read_bytes())
+
+    def test_unrecognized_feeder_only_gets_the_guide(self):
+        self.write()
+        self.record.return_value = None
+        with patch.object(character.cross_os, 'read', return_value=None):
+            self.assertFalse(character.snapshot({}, self.row)['available'])
+            with self.assertRaisesRegex(t.Refusal, 'Install or recognize'):
+                character.apply({}, self.row, '', .5)
 
 
 if __name__ == '__main__':

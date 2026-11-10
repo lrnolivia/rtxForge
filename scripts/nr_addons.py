@@ -287,15 +287,54 @@ def combo_setup(game, combo):
 
 
 FEEDER_SPLIT_RENDER_BLOCK = (
-    'Feeder NR already provides the environment. ShortFuse hooks the game’s native DLSS and '
-    'cannot use Feeder NR’s inputs. Use Passes in the in-game Feeder NR panel to tune a second pass.'
+    'Feeder NR already renders the environment. ShortFuse requires native DLSS hooks. '
+    'For character detail with Feeder NR, open the in-game NR panel and set Passes to 2. '
+    'Open Pass 2, turn off Use main settings, then adjust Skin detail.'
 )
+
+
+def _executable_directory(game):
+    if not game.get('game') or not game.get('exe'):
+        return None
+    exe = t.safe(t.safe(game['game']) / t.relative(game['exe']))
+    return exe.parent if exe.is_file() else None
 
 
 def split_render_block(game):
     if game.get('runtime_provider') == 'feeder' or game.get('feeder_detected'):
         return FEEDER_SPLIT_RENDER_BLOCK
+    # The library can still be showing an older scan while Feeder is on disk.
+    # Use the same hook names that identify Feeder in the installation review.
+    try:
+        directory = _executable_directory(game)
+        if directory is not None:
+            import feeder_provider
+            if feeder_provider.has_feeder_hook(directory):
+                return FEEDER_SPLIT_RENDER_BLOCK
+    except (t.Refusal, OSError, ValueError, TypeError):
+        pass  # The exact-file review checks paths and executable availability.
     return None
+
+
+def occupied_file(name):
+    return (f'A different {name} is already installed. Its file was kept. '
+            'Restore it through the tool that installed it, then review Split Render again.')
+
+
+def check_addon_files(game, plan):
+    """Check the pinned add-on binaries already in the game, without downloading."""
+    directory = _executable_directory(game)
+    if directory is None:
+        return
+    addons = catalog()['addons']
+    for item in plan['install']:
+        addon = addons[item['addon']]
+        name = addon['file']
+        path = t.safe(directory / t.relative(name))
+        if path.exists():
+            members = addon['builds'][item['build']].get('members', {})
+            pin = next((spec for member, spec in members.items() if Path(member).name == name), None)
+            t.need(pin and path.is_file() and t.digest(path) == pin['sha256'], occupied_file(name))
 
 
 def catalog_view(config, game=None):
@@ -354,9 +393,10 @@ def check(game, setup):
     """Whether this setup works in this game, without changing anything."""
     try:
         p = install_plan(game, setup)
+        check_addon_files(game, p)
         return {'ok': True, 'verified': p['verified'], 'feeder': p['feeder'], 'skipped': p['skipped'],
                 'install': p['install'], 'model': p['model'], 'optiscaler_nr': p['optiscaler_nr'], 'world': p['world']}
-    except t.Refusal as error:
+    except (t.Refusal, OSError, ValueError) as error:
         return {'ok': False, 'reason': str(error)}
 
 

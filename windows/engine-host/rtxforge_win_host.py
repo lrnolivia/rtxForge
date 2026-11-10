@@ -731,7 +731,7 @@ _DOWNLOAD_METHODS = {'split_render_review', 'prefetch_install', 'review_prepare'
 # Reviews and writes take turns (writer_gate) instead of racing the background
 # overlay update or each other. Reads, scans and live in-game tuning stay free;
 # overlay_refresh_retry holds the gate itself.
-_WRITER_METHODS = {'prepare', 'review_prepare', 'execute', 'prepare_dlss', 'update_dlss', 'update_stage', 'update_apply',
+_WRITER_METHODS = {'feeder_character_apply', 'prepare', 'review_prepare', 'execute', 'prepare_dlss', 'update_dlss', 'update_stage', 'update_apply',
                    'feeder_storage', 'save_defaults', 'package_use', 'hdr_settings', 'hdr_settings_flush',
                    'nr_addon_settings', 'nr_addon_settings_flush', 'companion_reset', 'companion_forget', 'test_start', 'launch_offline'}
 

@@ -6,12 +6,17 @@ type Role = keyof typeof roles;
 type Slot = { addon: string; model?: string; build?: string };
 export type Setup = Partial<Record<Role, Slot>>;
 type Combo = Setup & { name: string; builtin: boolean; beside_runtime_nr?: Setup };
+export type FeederCharacter = { available: false; reason: string } | {
+  available: true; reason?: string; stamp: string; passes: number; target_passes: number;
+  inherit: boolean; skin: number | null; target_skin: number; nr_enabled: boolean; changes: boolean;
+};
 export type Catalog = {
   addons: { id: string; name: string; builds: { id: string; label: string; default: boolean }[] }[];
   models: { id: string; label: string }[];
   combos: Record<string, Combo>;
   runtime_nr?: { id: string; name: string } | null;
   blocked?: string | null;
+  feeder_character?: FeederCharacter;
 };
 export type Choice = { auto: true; model: string } | { setup: Setup & { beside_runtime_nr?: Setup }; adapt: boolean };
 export type Picker = { preset: string; model: string; manualModel: string; manual: Setup };

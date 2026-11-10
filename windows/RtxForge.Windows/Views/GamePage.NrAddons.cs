@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using RtxForge.Windows.Controls;
 using RtxForge.Windows.Models;
+using RtxForge.Windows.Services;
 
 namespace RtxForge.Windows.Views;
 
@@ -12,6 +13,68 @@ namespace RtxForge.Windows.Views;
 /// game before Install is offered.</summary>
 public sealed partial class GamePage
 {
+    void ShowFeederCharacter(Game g, EngineForgeService engine, PreferencesGroup group, Border status,
+        JsonObject settings, string guide)
+    {
+        if (settings["available"]?.GetValue<bool>() != true)
+        {
+            SetSubtitle(status, guide + "\n" + settings["reason"]?.GetValue<string>());
+            return;
+        }
+
+        SetSubtitle(status, "ShortFuse requires native DLSS. Use Feeder NR’s second pass to tune character detail with the existing setup.");
+        group.Add(Prefs.Row("Pass 1 · Environment", "Feeder NR keeps the main pass and its current tuning.", glyph: "\uE81E"));
+        var passes = settings["passes"]!.GetValue<int>();
+        var target = settings["target_passes"]!.GetValue<int>();
+        group.Add(Prefs.Row("Pass 2 · Character detail", passes == target ? $"Passes · {passes}"
+            : $"Passes · {passes} → {target}", glyph: "\uE77B"));
+        var inherit = settings["inherit"]!.GetValue<bool>();
+        group.Add(Prefs.Row("Use main settings", inherit ? "On → Off · Tune Pass 2 independently." : "Off · Pass 2 has its own settings."));
+        var savedSkin = settings["skin"]?.GetValue<double>();
+        var slider = new Slider { Minimum = -1, Maximum = 1, StepFrequency = .01, MinWidth = 180,
+            Value = settings["target_skin"]!.GetValue<double>(), IsEnabled = !shell.Service.IsPreview };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, "Pass 2 Skin detail");
+        var skin = group.Add(Prefs.Row("Skin detail", "", slider));
+        var blocked = settings["reason"]?.GetValue<string>();
+        var needsChanges = settings["changes"]!.GetValue<bool>();
+        var busy = false;
+        var note = settings["nr_enabled"]!.GetValue<bool>() ? "Saves to ReShade.ini for the next launch."
+            : "Saves for the next launch. NR is off in the saved setup. Enable it in the in-game Feeder panel.";
+        var apply = new Button
+        {
+            Content = "Apply character detail", Style = Prefs.GetStyle("AccentButtonStyle"),
+            HorizontalAlignment = HorizontalAlignment.Right, MinHeight = 32, Padding = new Thickness(12, 6, 12, 6),
+        };
+        var action = group.Add(Prefs.Row("Save character detail", blocked ?? note, apply, "\uE74E"));
+        apply.Click += async (_, _) =>
+        {
+            if (busy || shell.Busy) return;
+            busy = true;
+            Refresh();
+            SetSubtitle(action, "Saving Pass 2…");
+            try
+            {
+                var result = await engine.ApplyFeederCharacterAsync(g, settings["stamp"]!.GetValue<string>(), slider.Value);
+                shell.ShowToast(result);
+                if (g == game && section == "Tools") Build("Tools");
+            }
+            catch (Exception error) when (error is IOException or InvalidOperationException or UnauthorizedAccessException)
+            {
+                SetSubtitle(action, error.Message);
+            }
+            finally { busy = false; Refresh(); }
+        };
+        void Refresh()
+        {
+            SetSubtitle(skin, $"Current · {(savedSkin is double value ? value.ToString("0.00") : "Default")}   /   Proposed · {slider.Value:0.00}");
+            slider.IsEnabled = !busy && !shell.Service.IsPreview;
+            apply.IsEnabled = !busy && !shell.Busy && !shell.Service.IsPreview && blocked is null
+                && (needsChanges || savedSkin is not double before || Math.Abs(before - slider.Value) > .005);
+        }
+        slider.ValueChanged += (_, _) => Refresh();
+        Refresh();
+    }
+
     sealed record NrSlot(ComboBox Addon, ComboBox Build, Border BuildRow, List<JsonObject> Choices, bool Optional);
 
     UIElement NrAddonsGroup(Game g)
@@ -67,7 +130,10 @@ public sealed partial class GamePage
 
         if (catalog["blocked"]?.GetValue<string>() is { Length: > 0 } reason)
         {
-            SetSubtitle(status, reason);
+            if (catalog["feeder_character"] is JsonObject feeder && shell.Service is EngineForgeService engine)
+                ShowFeederCharacter(g, engine, group, status, feeder, reason);
+            else
+                SetSubtitle(status, reason);
             return;
         }
 

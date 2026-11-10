@@ -6771,6 +6771,72 @@ class Window(Adw.ApplicationWindow):
         control.add_suffix(buttons)
         return control,choices
 
+    def populate_feeder_character(self,group,status,game,settings,guide):
+        import feeder_character
+        if not settings['available']:
+            status.set_subtitle(guide+'\n'+settings.get('reason',''))
+            return
+        status.set_subtitle('ShortFuse requires native DLSS. Use Feeder NR’s second pass to tune character detail with the existing setup.')
+        group.add(row('Pass 1 · Environment','Feeder NR keeps the main pass and its current tuning.'))
+        pass_row=row('Pass 2 · Character detail')
+        inherit=row('Use main settings')
+        skin=row('Skin detail')
+        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,-1,1,.01)
+        scale.set_digits(2);scale.set_draw_value(True);scale.set_size_request(180,-1)
+        scale.set_valign(Gtk.Align.CENTER)
+        scale.update_property([Gtk.AccessibleProperty.LABEL],['Pass 2 Skin detail'])
+        skin.add_suffix(scale)
+        action=row('Save character detail')
+        working=False
+
+        def ready(result,current,error):
+            nonlocal working,settings
+            working=False
+            if current and current.get('available'):
+                settings=current
+                show()
+            else:refresh()
+            action.set_subtitle(error or result['message'])
+            return False
+
+        def apply(*_):
+            nonlocal working
+            if working or self.busy:return
+            working=True;refresh()
+            action.set_subtitle('Saving Pass 2…')
+            stamp,value=settings['stamp'],scale.get_value()
+            def work():
+                try:result=feeder_character.apply(self.service.config,game,stamp,value)
+                except Exception as error:GLib.idle_add(ready,None,None,str(error))
+                else:
+                    current=feeder_character.snapshot(self.service.config,game)
+                    GLib.idle_add(ready,result,current,None)
+            threading.Thread(target=work,daemon=False).start()
+
+        apply_button=button('Apply character detail',apply,'suggested-action')
+        apply_button.set_valign(Gtk.Align.CENTER)
+        action.add_suffix(apply_button)
+        for control in (pass_row,inherit,skin,action):group.add(control)
+
+        def refresh(*_):
+            saved=settings['skin']
+            current='Default' if saved is None else f'{saved:.2f}'
+            skin.set_subtitle(f'Current · {current}   /   Proposed · {scale.get_value():.2f}')
+            scale.set_sensitive(not working)
+            apply_button.set_sensitive(not working and not settings.get('reason') and
+                (settings['changes'] or saved is None or abs(saved-scale.get_value())>.005))
+
+        def show():
+            current,target=settings['passes'],settings['target_passes']
+            pass_row.set_subtitle(f'Passes · {current}' if current==target else f'Passes · {current} → {target}')
+            inherit.set_subtitle('On → Off · Tune Pass 2 independently.' if settings['inherit'] else 'Off · Pass 2 has its own settings.')
+            action.set_subtitle(settings.get('reason') or ('Saves to ReShade.ini for the next launch.' if settings['nr_enabled']
+                else 'Saves for the next launch. Enable NR in the in-game Feeder panel to see the effect.'))
+            scale.set_value(settings['target_skin'])
+            refresh()
+        scale.connect('value-changed',refresh)
+        show()
+
     def populate_nr_addons(self,body,game):
         """Split Render roles, pinned builds and a shared DLSS 5 model."""
         import nr_addons,nr_install
@@ -6779,7 +6845,7 @@ class Window(Adw.ApplicationWindow):
         status=row('Split Render','Checking…');group.add(status)
         if self.options.demo:status.set_subtitle('Split Render is checked in the installed app.');return
         def load():
-            try:result=(nr_addons.catalog_view(self.service.config,game),nr_install.status(game))
+            try:result=(nr_install.catalog_view(self.service.config,game),nr_install.status(game))
             except Exception as error:result=error
             GLib.idle_add(show,result)
         def show(result):
@@ -6806,7 +6872,9 @@ class Window(Adw.ApplicationWindow):
                 action=button('Remove Split Render',lambda *_:self.review_nr(game,None,remove=True));action.set_valign(Gtk.Align.CENTER);remove.add_suffix(action);group.add(remove)
                 return
             if reason:=catalog.get('blocked'):
-                status.set_subtitle(reason)
+                if feeder:=catalog.get('feeder_character'):
+                    self.populate_feeder_character(group,status,game,feeder,reason)
+                else:status.set_subtitle(reason)
                 return
             status.set_subtitle('Not installed in this game.')
             combos=[(key,value) for key,value in catalog['combos'].items()]

@@ -285,6 +285,7 @@ def bind(root, send):
     import overview_summary
     import nr_addons
     import nr_install
+    import feeder_character
 
     def split_render_review(params):
         try:
@@ -324,7 +325,8 @@ def bind(root, send):
                    prepare=prepare, execute=execute, cancel=cancel, discard_operation=discard, discard=discard, run=execute,
                    settings_get=lambda _p: library_media.load_settings(service.config), settings_review=settings_review,
                    packages=lambda _p: {'catalog': package_catalog.catalog(service.hardware())},
-                   nr_catalog=lambda p: nr_addons.catalog_view(service.config, p.get('row')), nr_review=nr_review,
+                   nr_catalog=lambda p: nr_install.catalog_view(service.config, p.get('row')), nr_review=nr_review,
+                   feeder_character_apply=lambda p: feeder_character.apply(service.config, p['row'], p.get('stamp'), p.get('skin')),
                    nr_match=lambda p: nr_install.match_batch(service.config, p['rows'], p['choice'], service.hardware().get('family') or 'ada'),
                    nr_check=lambda p: nr_addons.check(p['row'], p['setup']), nr_status=lambda p: nr_install.status(p['row']),
                    nr_combo_save=nr_combo_save,

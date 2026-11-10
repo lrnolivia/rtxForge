@@ -898,7 +898,7 @@ def _run_hdr(plan):
 def nr_catalog(params):
     """The add-on catalog; for a row, its combos as they apply there and the world Skynizz provides."""
     row = (params or {}).get('row')
-    catalog = nr_addons.catalog_view(_config(), row)
+    catalog = nr_install.catalog_view(_config(), row)
     if row is None:
         catalog['install_choices'] = nr_addons.install_choices(_config())
     return catalog
@@ -913,6 +913,11 @@ def nr_match(params):
     """Match a Split Render choice against library rows without staging downloads."""
     return nr_install.match_batch(_config(), params['rows'], params['choice'],
                                   service.hardware().get('family') or 'ada')
+
+
+def feeder_character_apply(params):
+    import feeder_character
+    return feeder_character.apply(_config(), params['row'], params.get('stamp'), params.get('skin'))
 
 
 def nr_status(params):
@@ -1175,7 +1180,7 @@ METHODS = {
     'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush,
     'nr_addon_settings': nr_addon_settings_snapshot, 'nr_addon_settings_flush': nr_addon_settings_flush,
     'nr_catalog': nr_catalog, 'nr_check': nr_check, 'nr_match': nr_match, 'nr_status': nr_status, 'nr_review': nr_review,
-    'nr_combo_save': nr_combo_save, 'nr_combo_delete': nr_combo_delete,
+    'nr_combo_save': nr_combo_save, 'nr_combo_delete': nr_combo_delete, 'feeder_character_apply': feeder_character_apply,
     "packages": packages, "package_inspect": package_inspect, "package_use": package_use,
     "update_check": update_check, "update_stage": update_stage, "update_apply": update_apply,
     "storage_inventory": storage_inventory, "storage_review": storage_review,

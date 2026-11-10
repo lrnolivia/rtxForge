@@ -13,66 +13,97 @@ namespace RtxForge.Windows.Views;
 /// game before Install is offered.</summary>
 public sealed partial class GamePage
 {
-    void ShowFeederCharacter(Game g, EngineForgeService engine, PreferencesGroup group, Border status,
-        JsonObject settings, string guide)
+    void ShowFeederCharacter(Game g, EngineForgeService engine, PreferencesGroup group, JsonObject settings)
     {
+        var passes = new PreferencesGroup("Feeder NR passes",
+            "Each pass processes the whole frame. Character turns on the mask so Skin detail can affect detected people.");
+        group.Root.Children.Clear();
+        group.Root.Children.Add(passes.Root);
         if (settings["available"]?.GetValue<bool>() != true)
         {
-            SetSubtitle(status, guide + "\n" + settings["reason"]?.GetValue<string>());
+            passes.Add(Prefs.Row("Pass roles", settings["reason"]?.GetValue<string>() ?? ""));
             return;
         }
 
-        SetSubtitle(status, "ShortFuse requires native DLSS. Use Feeder NR’s second pass to tune character detail with the existing setup.");
-        group.Add(Prefs.Row("Pass 1 · Environment", "Feeder NR keeps the main pass and its current tuning.", glyph: "\uE81E"));
-        var passes = settings["passes"]!.GetValue<int>();
-        var target = settings["target_passes"]!.GetValue<int>();
-        group.Add(Prefs.Row("Pass 2 · Character detail", passes == target ? $"Passes · {passes}"
-            : $"Passes · {passes} → {target}", glyph: "\uE77B"));
-        var inherit = settings["inherit"]!.GetValue<bool>();
-        group.Add(Prefs.Row("Use main settings", inherit ? "On → Off · Tune Pass 2 independently." : "Off · Pass 2 has its own settings."));
-        var savedSkin = settings["skin"]?.GetValue<double>();
-        var slider = new Slider { Minimum = -1, Maximum = 1, StepFrequency = .01, MinWidth = 180,
-            Value = settings["target_skin"]!.GetValue<double>(), IsEnabled = !shell.Service.IsPreview };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, "Pass 2 Skin detail");
-        var skin = group.Add(Prefs.Row("Skin detail", "", slider));
+        var current = settings["passes"]!.GetValue<int>();
+        var options = ((JsonArray)settings["options"]!).OfType<JsonObject>().ToArray();
+        var (passRow, passChoice) = Prefs.ComboRow("Pass", $"{current} of {options.Length} full-frame passes configured.",
+            options.Select(option => $"Pass {option["number"]!.GetValue<int>()}").ToArray(), 0);
+        var (roleRow, roleChoice) = Prefs.ComboRow("Role", "", ["Standard", "Character"], 0);
+        var slider = new Slider { Minimum = -1, Maximum = 1, StepFrequency = .01, MinWidth = 180 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, "Skin detail for the selected pass");
+        var skinRow = Prefs.Row("Skin detail", "", slider);
+        passes.Add(passRow);
+        passes.Add(roleRow);
+        passes.Add(skinRow);
+
         var blocked = settings["reason"]?.GetValue<string>();
-        var needsChanges = settings["changes"]!.GetValue<bool>();
         var busy = false;
-        var note = settings["nr_enabled"]!.GetValue<bool>() ? "Saves to ReShade.ini for the next launch."
-            : "Saves for the next launch. NR is off in the saved setup. Enable it in the in-game Feeder panel.";
         var apply = new Button
         {
-            Content = "Apply character detail", Style = Prefs.GetStyle("AccentButtonStyle"),
+            Content = "Save pass role", Style = Prefs.GetStyle("AccentButtonStyle"),
             HorizontalAlignment = HorizontalAlignment.Right, MinHeight = 32, Padding = new Thickness(12, 6, 12, 6),
         };
-        var action = group.Add(Prefs.Row("Save character detail", blocked ?? note, apply, "\uE74E"));
+        var action = passes.Add(Prefs.Row("Apply next launch", "", apply, "\uE74E"));
+        JsonObject Selected() => options[passChoice.SelectedIndex];
+        double Skin() => slider.Value < 0 ? -1 : slider.Value;
+        bool Changed(JsonObject option, int number, bool character) => number > current ||
+            character != option["character"]!.GetValue<bool>() ||
+            (character && Math.Abs(Skin() - option["skin"]!.GetValue<double>()) > .005);
+
+        void Refresh()
+        {
+            var option = Selected();
+            var number = option["number"]!.GetValue<int>();
+            var character = roleChoice.SelectedIndex == 1;
+            var available = !busy && !shell.Busy && !shell.Service.IsPreview && blocked is null;
+            var roleChanged = character != option["character"]!.GetValue<bool>();
+            var skinChanged = character && Math.Abs(Skin() - option["skin"]!.GetValue<double>()) > .005;
+            SetSubtitle(roleRow, option["inherited"]!.GetValue<bool>() && (roleChanged || skinChanged)
+                ? "Copies the main pass’s model settings before assigning this pass its own settings."
+                : number == 1 ? "Passes that follow the main settings also use this role." : "");
+            SetSubtitle(skinRow, Skin() < 0 ? "Stock" : $"Selected · {Skin():0.00}");
+            skinRow.Visibility = character ? Visibility.Visible : Visibility.Collapsed;
+            SetSubtitle(action, blocked ?? (number > current
+                ? $"Full-frame passes · {current} → {number}. Extra passes can lower frame rate."
+                : "Saves the selected pass settings for the next launch."));
+            passChoice.IsEnabled = roleChoice.IsEnabled = slider.IsEnabled = available;
+            apply.IsEnabled = available && Changed(option, number, character);
+        }
+        void SelectPass()
+        {
+            var option = Selected();
+            roleChoice.SelectedIndex = option["character"]!.GetValue<bool>() ? 1 : 0;
+            slider.Value = option["skin"]!.GetValue<double>();
+            Refresh();
+        }
+        passChoice.SelectionChanged += (_, _) => SelectPass();
+        roleChoice.SelectionChanged += (_, _) => Refresh();
+        slider.ValueChanged += (_, _) => Refresh();
         apply.Click += async (_, _) =>
         {
             if (busy || shell.Busy) return;
+            var number = Selected()["number"]!.GetValue<int>();
+            var character = roleChoice.SelectedIndex == 1;
             busy = true;
             Refresh();
-            SetSubtitle(action, "Saving Pass 2…");
+            SetSubtitle(action, $"Saving Pass {number}…");
             try
             {
-                var result = await engine.ApplyFeederCharacterAsync(g, settings["stamp"]!.GetValue<string>(), slider.Value);
+                var result = await engine.ApplyFeederCharacterAsync(g, settings["stamp"]!.GetValue<string>(),
+                    number, character, character ? Skin() : null);
                 shell.ShowToast(result);
                 if (g == game && section == "Tools") Build("Tools");
             }
             catch (Exception error) when (error is IOException or InvalidOperationException or UnauthorizedAccessException)
             {
+                busy = false;
+                Refresh();
                 SetSubtitle(action, error.Message);
             }
-            finally { busy = false; Refresh(); }
+            finally { busy = false; }
         };
-        void Refresh()
-        {
-            SetSubtitle(skin, $"Current · {(savedSkin is double value ? value.ToString("0.00") : "Default")}   /   Proposed · {slider.Value:0.00}");
-            slider.IsEnabled = !busy && !shell.Service.IsPreview;
-            apply.IsEnabled = !busy && !shell.Busy && !shell.Service.IsPreview && blocked is null
-                && (needsChanges || savedSkin is not double before || Math.Abs(before - slider.Value) > .005);
-        }
-        slider.ValueChanged += (_, _) => Refresh();
-        Refresh();
+        SelectPass();
     }
 
     sealed record NrSlot(ComboBox Addon, ComboBox Build, Border BuildRow, List<JsonObject> Choices, bool Optional);
@@ -131,7 +162,7 @@ public sealed partial class GamePage
         if (catalog["blocked"]?.GetValue<string>() is { Length: > 0 } reason)
         {
             if (catalog["feeder_character"] is JsonObject feeder && shell.Service is EngineForgeService engine)
-                ShowFeederCharacter(g, engine, group, status, feeder, reason);
+                ShowFeederCharacter(g, engine, group, feeder);
             else
                 SetSubtitle(status, reason);
             return;

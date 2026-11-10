@@ -6771,71 +6771,99 @@ class Window(Adw.ApplicationWindow):
         control.add_suffix(buttons)
         return control,choices
 
-    def populate_feeder_character(self,group,status,game,settings,guide):
+    def populate_feeder_character(self, group, status, game, settings):
         import feeder_character
+        group.set_title('Feeder NR passes')
+        group.set_description('Each pass processes the whole frame. Character enables the mask so Skin detail can affect detected people.')
         if not settings['available']:
-            status.set_subtitle(guide+'\n'+settings.get('reason',''))
+            status.set_title('Pass roles')
+            status.set_subtitle(settings.get('reason', ''))
             return
-        status.set_subtitle('ShortFuse requires native DLSS. Use Feeder NR’s second pass to tune character detail with the existing setup.')
-        group.add(row('Pass 1 · Environment','Feeder NR keeps the main pass and its current tuning.'))
-        pass_row=row('Pass 2 · Character detail')
-        inherit=row('Use main settings')
-        skin=row('Skin detail')
-        scale=Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,-1,1,.01)
-        scale.set_digits(2);scale.set_draw_value(True);scale.set_size_request(180,-1)
+        group.remove(status)
+        options = settings['options']
+        pass_row = safe_combo_row(title='Pass', model=Gtk.StringList.new([f"Pass {item['number']}" for item in options]))
+        role = safe_combo_row(title='Role', model=Gtk.StringList.new(['Standard', 'Character']))
+        skin = row('Skin detail')
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -1, 1, .01)
+        scale.set_size_request(180, -1)
         scale.set_valign(Gtk.Align.CENTER)
-        scale.update_property([Gtk.AccessibleProperty.LABEL],['Pass 2 Skin detail'])
+        scale.update_property([Gtk.AccessibleProperty.LABEL], ['Skin detail for the selected pass'])
         skin.add_suffix(scale)
-        action=row('Save character detail')
-        working=False
+        action = row('Apply next launch')
+        working = False
 
-        def ready(result,current,error):
-            nonlocal working,settings
-            working=False
+        def selection():
+            option = settings['options'][pass_row.get_selected()]
+            character = role.get_selected() == 1
+            value = scale.get_value()
+            value = -1.0 if value < 0 else value
+            tuning = character != option['character'] or character and abs(value - option['skin']) > .005
+            return option, character, value, tuning
+
+        def refresh(*_):
+            option, character, value, tuning = selection()
+            count, number = settings['passes'], option['number']
+            blocked = settings.get('reason')
+            locked = working or bool(blocked)
+            pass_row.set_subtitle(f"{count} of {len(options)} full-frame passes configured.")
+            role.set_subtitle('Copies the main pass’s model settings before assigning this pass its own settings.'
+                              if option['inherited'] and tuning else
+                              'Passes that follow the main settings also use this role.' if number == 1 else '')
+            skin.set_visible(character)
+            skin.set_subtitle('Stock' if value < 0 else f'Selected · {value:.2f}')
+            action.set_subtitle(blocked or (f'Full-frame passes · {count} → {number}. Extra passes can lower frame rate.'
+                                          if number > count else 'Saves the selected pass settings for the next launch.'))
+            for control in (pass_row, role, scale):
+                control.set_sensitive(not locked)
+            apply_button.set_sensitive(not locked and (number > count or tuning))
+
+        def select_pass(*_):
+            option = settings['options'][pass_row.get_selected()]
+            role.set_selected(int(option['character']))
+            scale.set_value(option['skin'])
+            refresh()
+
+        def ready(result, current, error):
+            nonlocal working, settings
+            working = False
             if current and current.get('available'):
-                settings=current
-                show()
-            else:refresh()
+                settings = current
+                select_pass()
+            else:
+                refresh()
             action.set_subtitle(error or result['message'])
             return False
 
         def apply(*_):
             nonlocal working
-            if working or self.busy:return
-            working=True;refresh()
-            action.set_subtitle('Saving Pass 2…')
-            stamp,value=settings['stamp'],scale.get_value()
-            def work():
-                try:result=feeder_character.apply(self.service.config,game,stamp,value)
-                except Exception as error:GLib.idle_add(ready,None,None,str(error))
-                else:
-                    current=feeder_character.snapshot(self.service.config,game)
-                    GLib.idle_add(ready,result,current,None)
-            threading.Thread(target=work,daemon=False).start()
+            if working or self.busy:
+                return
+            option, character, value, _ = selection()
+            working = True
+            refresh()
+            number = option['number']
+            action.set_subtitle(f'Saving Pass {number}…')
+            stamp = settings['stamp']
 
-        apply_button=button('Apply character detail',apply,'suggested-action')
+            def work():
+                try:
+                    result = feeder_character.apply(self.service.config, game, stamp,
+                                                    value if character else None, number, character)
+                except Exception as error:
+                    GLib.idle_add(ready, None, None, str(error))
+                else:
+                    GLib.idle_add(ready, result, feeder_character.snapshot(self.service.config, game), None)
+            threading.Thread(target=work, daemon=False).start()
+
+        apply_button = button('Save pass role', apply, 'suggested-action')
         apply_button.set_valign(Gtk.Align.CENTER)
         action.add_suffix(apply_button)
-        for control in (pass_row,inherit,skin,action):group.add(control)
-
-        def refresh(*_):
-            saved=settings['skin']
-            current='Default' if saved is None else f'{saved:.2f}'
-            skin.set_subtitle(f'Current · {current}   /   Proposed · {scale.get_value():.2f}')
-            scale.set_sensitive(not working)
-            apply_button.set_sensitive(not working and not settings.get('reason') and
-                (settings['changes'] or saved is None or abs(saved-scale.get_value())>.005))
-
-        def show():
-            current,target=settings['passes'],settings['target_passes']
-            pass_row.set_subtitle(f'Passes · {current}' if current==target else f'Passes · {current} → {target}')
-            inherit.set_subtitle('On → Off · Tune Pass 2 independently.' if settings['inherit'] else 'Off · Pass 2 has its own settings.')
-            action.set_subtitle(settings.get('reason') or ('Saves to ReShade.ini for the next launch.' if settings['nr_enabled']
-                else 'Saves for the next launch. Enable NR in the in-game Feeder panel to see the effect.'))
-            scale.set_value(settings['target_skin'])
-            refresh()
-        scale.connect('value-changed',refresh)
-        show()
+        for control in (pass_row, role, skin, action):
+            group.add(control)
+        pass_row.connect('notify::selected', select_pass)
+        role.connect('notify::selected', refresh)
+        scale.connect('value-changed', refresh)
+        select_pass()
 
     def populate_nr_addons(self,body,game):
         """Split Render roles, pinned builds and a shared DLSS 5 model."""
@@ -6873,7 +6901,7 @@ class Window(Adw.ApplicationWindow):
                 return
             if reason:=catalog.get('blocked'):
                 if feeder:=catalog.get('feeder_character'):
-                    self.populate_feeder_character(group,status,game,feeder,reason)
+                    self.populate_feeder_character(group,status,game,feeder)
                 else:status.set_subtitle(reason)
                 return
             status.set_subtitle('Not installed in this game.')

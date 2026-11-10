@@ -287,9 +287,7 @@ def combo_setup(game, combo):
 
 
 FEEDER_SPLIT_RENDER_BLOCK = (
-    'Feeder NR already renders the environment. ShortFuse requires native DLSS hooks. '
-    'For character detail with Feeder NR, open the in-game NR panel and set Passes to 2. '
-    'Open Pass 2, turn off Use main settings, then adjust Skin detail.'
+    'ShortFuse requires native DLSS hooks. Feeder NR can use its own Character mask on any of its four full-frame passes.'
 )
 
 

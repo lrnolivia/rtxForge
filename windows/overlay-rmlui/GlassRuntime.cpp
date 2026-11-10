@@ -1,6 +1,7 @@
 #include <atomic>
 #include <windows.h>
 #include <psapi.h>
+#include <bcrypt.h>
 #include <d3d11_1.h>
 #include <d3d11on12.h>
 #include <wincodec.h>
@@ -13,6 +14,8 @@
 #include <OverlayController.h>
 #include "GlassAssets.generated.h"
 #include <chrono>
+#include <fstream>
+#include <string_view>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -45,6 +48,57 @@ bool WithEffects(const std::function<bool(EffectRead,EffectWrite)>& use) {
         const int result=UseEffectsModule(modules[i],use);
         if(result>=0){found=modules[i];return result==1;}
     }
+    return false;
+}
+using ShortFuseSetter=bool(__cdecl*)(const char*,float);
+constexpr auto shortFuseModule=L"renodx-dlss.addon64";
+
+bool UseVerifiedShortFuse(const std::function<bool(ShortFuseSetter)>& use) {
+    HMODULE loaded{};
+    if(!GetModuleHandleExW(0,shortFuseModule,&loaded))return false;
+    const std::unique_ptr<std::remove_pointer_t<HMODULE>,decltype(&FreeLibrary)> module(loaded,FreeLibrary);
+    const auto setter=reinterpret_cast<ShortFuseSetter>(GetProcAddress(module.get(),"RenoDXUpdateSetting"));
+    if(!setter)return false;
+    wchar_t path[32768]{};
+    const DWORD length=GetModuleFileNameW(module.get(),path,DWORD(std::size(path)));
+    if(length==0||length>=std::size(path))return false;
+
+    // The numeric setter and keys were inspected in SF 26.1025.0009.
+    // An export with the same name in another build does not establish its ABI.
+    constexpr std::array<unsigned char,32> expected{
+        0xdd,0x5e,0xd7,0xba,0x67,0x73,0xa6,0x16,0x83,0x90,0xf3,0xa5,0x3e,0x75,0x7f,0x09,
+        0xb5,0x63,0xec,0xdf,0x1a,0x9f,0x4f,0xcd,0xec,0x6d,0xd3,0x12,0x9d,0x93,0xba,0xce,
+    };
+    std::ifstream binary(std::filesystem::path(path),std::ios::binary|std::ios::ate);
+    if(binary.tellg()!=3661312)return false;
+    std::vector<unsigned char> bytes(3661312);
+    binary.seekg(0);
+    if(!binary.read(reinterpret_cast<char*>(bytes.data()),std::streamsize(bytes.size())))return false;
+    std::array<unsigned char,32> digest{};
+    BCRYPT_ALG_HANDLE sha{};
+    if(BCryptOpenAlgorithmProvider(&sha,BCRYPT_SHA256_ALGORITHM,nullptr,0)<0)return false;
+    const auto result=BCryptHash(sha,nullptr,0,bytes.data(),ULONG(bytes.size()),digest.data(),ULONG(digest.size()));
+    BCryptCloseAlgorithmProvider(sha,0);
+    return result>=0&&digest==expected&&use(setter);
+}
+
+bool ApplyShortFuse(const ForgeGlass::HdrField& field,float value) {
+    constexpr std::pair<std::string_view,const char*> keys[]{
+        {"character_mask","DirectNeuralRenderingAutoMask"},
+        {"character","DirectNeuralRenderingSkinStructureStrength"},
+        {"resolution_scale","DirectNeuralRenderingProcessingScale"},
+        {"intensity","DirectNeuralRenderingIntensity"},
+        {"style","DirectNeuralRenderingStyle"},
+        {"local_tone","DirectNeuralRenderingLocalToneStrength"},
+        {"structure","DirectNeuralRenderingLocalStructureStrength"},
+        {"ui_correction","DirectNeuralRenderingUiCorrectionMode"},
+        {"passes","DirectNeuralRenderingPassCount"},
+        {"block_hudless","DirectNeuralRenderingBlockHudless"},
+        {"diffuse_white_nits","DirectNeuralRenderingDiffuseWhiteNits"},
+    };
+    const auto suffix=std::string_view(field.key).substr(field.key.find('_')+1);
+    for(const auto& [name,key]:keys)
+        if(suffix==name)return UseVerifiedShortFuse([&](ShortFuseSetter setter){return setter(key,value);});
     return false;
 }
 void Check(HRESULT n){if(FAILED(n))throw std::runtime_error("Glass renderer operation failed: "+std::to_string(n));}
@@ -117,7 +171,8 @@ struct Runtime {
     Rml::Context* context{};Rml::ElementDocument* document{};bool initialized=false,mouse[3]{},keys[256]{},hostVisible=false;int width{},height{};DXGI_FORMAT format{};
     ForgeWorkbench::Values lastValues;
     ForgeWorkbench::History history;double historyPaint=-1;
-    double nextTelemetry=0,nextPreferences=0,nextIdlePoll=0;std::string lastHelper,lastEffects;ULONGLONG nextEffects{};
+    double nextTelemetry=0,nextPreferences=0,nextIdlePoll=0;std::string lastHelper,lastEffects;ULONGLONG nextEffects{}, nextShortFuseCheck{};
+    HMODULE shortFuseCandidate{};
     unsigned outputSpace=0;
     bool receivedSnapshot=false,messageInitialized=false,dx12Interop=false,systemReducedMotion=false;
     bool nrActivationPending=false,nrActivationAnnounced=false;
@@ -395,6 +450,16 @@ struct Runtime {
         c.effects.send=[](const std::string& text){return WithEffects([&](EffectRead,EffectWrite write){return write(text.c_str());});};
         c.CheckPreviewFocus();const auto afterSettings=SettingsValues();for(const auto& [key,value]:afterSettings.items())if(beforeSettings.at(key)!=value)pendingSettings[key]=value;
         if(oldShortcut!=c.shortcut||oldModifiers!=c.shortcutModifiers){const auto key=c.shortcut;int vk=0;if(key!=Rml::Input::KI_UNKNOWN)for(int candidate=1;candidate<256;++candidate)if(Key(candidate)==key){vk=candidate;break;}if(vk||key==Rml::Input::KI_UNKNOWN)pendingSettings["panel_binding"]={{"key",vk},{"modifiers",(c.shortcutModifiers&Rml::Input::KM_ALT?1:0)|(c.shortcutModifiers&Rml::Input::KM_CTRL?2:0)|(c.shortcutModifiers&Rml::Input::KM_SHIFT?4:0)}};}
+        const auto ticks=GetTickCount64();
+        if(c.addons.HasShortFuse()&&ticks>=nextShortFuseCheck) {
+            nextShortFuseCheck=ticks+2000;
+            const auto module=GetModuleHandleW(shortFuseModule);
+            if(module!=shortFuseCandidate) {
+                shortFuseCandidate=module;
+                c.addons.SetShortFuseLive(module&&UseVerifiedShortFuse([](ShortFuseSetter){return true;}));
+            }
+        }
+        if(!mouse[0])c.addons.FlushLive(ApplyShortFuse);
         if(helperReady){c.hdr.Flush(c.requestJson);c.addons.Flush(c.requestJson);}
         if(settingInFlight&&now-settingSentAt>10){
             settingInFlight=false;badgeResult="Couldn’t confirm save";badgeUntil=now+2.5;

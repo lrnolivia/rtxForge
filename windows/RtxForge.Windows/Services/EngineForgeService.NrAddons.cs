@@ -28,13 +28,14 @@ public sealed partial class EngineForgeService
         await CallAsync("nr_check", new JsonObject { ["row"] = Row(game), ["setup"] = setup.DeepClone() }) as JsonObject
             ?? throw new InvalidOperationException("The Split Render check is unavailable.");
 
-    public async Task<string> ApplyFeederCharacterAsync(Game game, string stamp, double skin)
+    public async Task<string> ApplyFeederCharacterAsync(Game game, string stamp, int passNumber, bool character, double? skin)
     {
         var result = await CallAsync("feeder_character_apply", new JsonObject
         {
-            ["row"] = Row(game), ["stamp"] = stamp, ["skin"] = skin,
+            ["row"] = Row(game), ["stamp"] = stamp, ["pass_number"] = passNumber,
+            ["character"] = character, ["skin"] = skin,
         });
-        return result?["message"]?.GetValue<string>() ?? throw new InvalidOperationException("Could not save character detail.");
+        return result?["message"]?.GetValue<string>() ?? throw new InvalidOperationException("Could not save the Feeder NR pass role.");
     }
 
     public async Task<JsonObject> NrStatusAsync(Game game) =>

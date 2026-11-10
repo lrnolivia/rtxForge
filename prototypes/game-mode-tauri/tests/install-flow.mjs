@@ -16,11 +16,12 @@ await page.route('**/api/engine',async route=>{
   combos:{'characters-and-world':{name:'Characters + world',builtin:true,character:{addon:'shortfuse',model:'new'}}},
   runtime_nr:request.params.row&&!feederMode?{id:'optiscaler',name:'Skynizz'}:null,
   ...(feederMode&&request.params.row?{blocked:'Feeder NR provides the environment.',feeder_character:{
-    available:true,stamp:'fixture-ini-stamp',passes:feederSaved?2:1,target_passes:2,inherit:!feederSaved,
-    skin:feederSaved ? .5 : null,target_skin:.5,nr_enabled:true,changes:!feederSaved
+    available:true,stamp:'fixture-ini-stamp',passes:feederSaved?4:1,nr_enabled:true,
+    options:[1,2,3,4].map(number=>({number,inherited:number!==1&&!(feederSaved&&number===4),
+      character:feederSaved&&number===4,skin:-1}))
   }}:{})
  };
- else if(request.method==='feeder_character_apply'){feederSaved=true;result={message:'Character detail saved for the next launch.'};}
+ else if(request.method==='feeder_character_apply'){feederSaved=true;result={message:'Pass 4 saved as Character for the next launch.'};}
  else if(request.method==='nr_match')result=request.params.choice.model==='old'?[]:request.params.rows.slice(0,2).map((_,index)=>({index,summary:'Environment: Lecram · Model: 310.9.16'}));
  else if(request.method==='nr_status')result={installed:splitInstalled,setup:splitInstalled?{environment:{addon:'optiscaler'},character:{addon:'shortfuse'}}:undefined};
  else if(request.method==='nr_check')result={ok:true,verified:true};
@@ -110,13 +111,19 @@ try{
  await click('Remove Split Render');await expect(page.getByRole('heading',{name:'Remove Split Render',exact:true})).toBeVisible();
  expect(calls.filter(c=>c.method==='nr_review').at(-1).params.remove).toBe(true);await click('Back');
  splitInstalled=false;feederMode=true;await click('Overview');await click('Tools');
- await expect(page.getByText('Pass 2 · Character detail',{exact:true})).toBeVisible();
- await expect(page.locator('#feeder-skin')).toHaveValue('0.5');
- await click('Apply character detail');
- expect(calls.find(c=>c.method==='feeder_character_apply').params).toMatchObject({row:{game:source.games[0].path},stamp:'fixture-ini-stamp',skin:.5});
- await expect(page.getByRole('button',{name:'Apply character detail',exact:true})).toBeDisabled();
+ await expect(page.getByRole('heading',{name:'Feeder NR passes',exact:true})).toBeVisible();
+ await expect(page.locator('[data-feeder-pass]')).toHaveCount(4);
+ await page.locator('[data-feeder-pass="4"]').click();
+ await page.locator('[data-feeder-role="character"]').click();
+ await expect(page.getByText('Full-frame passes · 1 → 4. Extra passes can lower frame rate.')).toBeVisible();
+ await expect(page.locator('#feeder-skin')).toHaveValue('-1');
+ await screenshot('feeder-character-pass');
+ await click('Save pass role');
+ expect(calls.find(c=>c.method==='feeder_character_apply').params).toMatchObject(
+   {row:{game:source.games[0].path},stamp:'fixture-ini-stamp',pass_number:4,character:true,skin:-1});
+ await expect(page.getByRole('button',{name:'Save pass role',exact:true})).toBeDisabled();
  await expect(page.locator('.operation-modal')).toHaveCount(0);
  mode='ready';installed=true;await page.reload();await page.locator('.game-card').first().click();await click('Restore Original Files');await expect(page.getByRole('button',{name:'Restore files',exact:true})).toBeVisible();await screenshot('restore');await click('Back');
  await expect.poll(()=>calls.filter(c=>c.method==='discard_routes').at(-1)?.params.tokens).toEqual(['exact-install-review']);
- expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['startup before preparation','original runtime units and exact targets','responsive startup controls','checking/progress/results with artwork','real progress events preserve Cancel focus','trust gates and explicit supported subsets','exact cancel/discard tokens','honest cancellation and failure','Split Render reviewed before one install run','compatibility filtering and bulk controls in Packages','per-game Tools review without selection checkboxes','prefilled Feeder Pass 2 applies in one click','restore review','fixture-only no game mutation']}));
+ expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['startup before preparation','original runtime units and exact targets','responsive startup controls','checking/progress/results with artwork','real progress events preserve Cancel focus','trust gates and explicit supported subsets','exact cancel/discard tokens','honest cancellation and failure','Split Render reviewed before one install run','compatibility filtering and bulk controls in Packages','per-game Tools review without selection checkboxes','Feeder can assign Character to any full-frame pass','restore review','fixture-only no game mutation']}));
 }finally{prepareRelease?.();executeRelease?.();splitRelease?.();await browser.close();}

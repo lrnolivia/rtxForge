@@ -917,7 +917,8 @@ def nr_match(params):
 
 def feeder_character_apply(params):
     import feeder_character
-    return feeder_character.apply(_config(), params['row'], params.get('stamp'), params.get('skin'))
+    return feeder_character.apply(_config(), params['row'], params.get('stamp'), params.get('skin'),
+                                  params.get('pass_number', 2), params.get('character', True))
 
 
 def nr_status(params):

@@ -77,13 +77,14 @@ verified before use.
   Switching windows can stall the game. Lower Character detail's resolution
   scale if it does.
 - **Feeder NR games use their existing renderer.** ShortFuse hooks native DLSS,
-  so it cannot use the inputs Feeder supplies to its own RenoDX renderer. For
-  a second pass in a Feeder game, open the in-game NR panel and set **Passes**
-  to 2. Open **Pass 2**, turn off **Use main settings**, and adjust **Skin detail**.
-  On a verified Feeder installation, **Tools → Split Render** shows the main
-  and character passes and prefills Skin detail. **Apply character detail**
-  saves those settings for the next launch. The main pass keeps its tuning,
-  and setups with more than two passes keep their pass count.
+  so it cannot use the inputs Feeder supplies to its own RenoDX renderer.
+  On a verified Feeder installation, open **Tools → Feeder NR passes** in
+  Desktop or Game Mode. Choose any pass from **1** through **4**, choose
+  **Character** to enable its mask, and leave Skin detail at the game's
+  current value or set your own. Each pass processes the whole frame. The
+  mask lets Skin detail target detected skin, and one pass can use it.
+  Selecting an inactive pass shows the additional full-frame work before
+  you save the role for the next launch.
 - **Another tool's files are kept.** rtxForge refuses the install rather than
   replace them.
 
@@ -121,15 +122,16 @@ each add-on rtxForge installed, under its role: **Environment · Lecram** and
 installed. Where Skynizz is the world, its NR settings stay in the overlay's own
 Skynizz NR controls.
 
-In a Feeder NR game, **Split Render** opens the same **Pass 2** controls as
-**Pass tuning**. Set **Passes** to at least **2** in Neural rendering and turn
-off **Use main settings** to tune Pass 2 independently.
+In a Feeder NR game, **Feeder NR passes** opens the live tuning controls
+for active additional full-frame passes. Turn off **Use main settings** to
+tune a pass independently. The game's Tools screen configures the Character
+mask role for each pass.
 
-The add-ons read these settings when the game starts, and ShortFuse writes them
-back while it runs. So, like HDR preferences, a change is saved after the game
-closes and applies at the next launch. A value changed in the add-on's own
-ReShade panel in the meantime wins: rtxForge keeps your change and says so
-instead of overwriting it. Live adjustments stay in each add-on's own panel.
+With the verified ShortFuse 26.1025.0009 module loaded, its overlay controls
+apply while the game is running. The overlay reports whether ShortFuse
+accepted the adjustment. Other providers' overlay preferences are saved
+after the game closes and apply at the next launch. A value changed in
+one of those providers' own ReShade panels in the meantime takes precedence.
 
 Only settings whose key and value encoding are verified appear. ShortFuse's
 resolution scale is a whole percent. A setting the game's ReShade.ini doesn't

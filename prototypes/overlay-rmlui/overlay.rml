@@ -275,7 +275,7 @@
               </section>
               <section id="addons-section" style="display: none">
                 <div class="section-heading">
-                  <h2><img class="glyph" src="icons/stack-light.png" /><span>SPLIT RENDER</span></h2>
+                  <h2><img class="glyph" src="icons/stack-light.png" /><span id="split-render-title">SPLIT RENDER</span></h2>
                 </div>
                 <p id="split-render-description" class="hint" />
                 <div class="inspector-links">
@@ -330,10 +330,10 @@
         <div id="settings-modal-host" style="display: none"/>
         <div id="effects-inspector" style="display: none"><p id="effects-note" class="hint"/><p id="effects-result" class="hint" style="display: none"/><div id="effects-fields"/></div>
         <div id="hdr-inspector" style="display: none"><p id="hdr-popup-note" class="hint"/><div id="hdr-popup-fields"/></div>
-        <div id="addons-inspector" style="display: none"><p id="addons-note" class="hint split-note"/><div id="addons-fields"/></div>
+        <div id="addons-inspector" style="display: none"><div id="addons-live" class="split-live" style="display: none"><img class="glyph" src="icons/lightning-light.png" /><p id="addons-live-status" class="hint"/></div><p id="addons-note" class="hint split-note"/><div id="addons-fields"/></div>
         <div id="pass-inspector">
           <div id="feeder-split-context" style="display: none">
-            <h3 class="split-role">Character detail · Feeder NR</h3>
+            <h3 id="feeder-pass-title" class="split-role">Pass 1 · Full frame</h3>
             <p id="feeder-split-note" class="hint split-note" />
           </div>
           <div id="pass-tabs" class="segments pass-tabs">

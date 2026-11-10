@@ -7,8 +7,8 @@ type Slot = { addon: string; model?: string; build?: string };
 export type Setup = Partial<Record<Role, Slot>>;
 type Combo = Setup & { name: string; builtin: boolean; beside_runtime_nr?: Setup };
 export type FeederCharacter = { available: false; reason: string } | {
-  available: true; reason?: string; stamp: string; passes: number; target_passes: number;
-  inherit: boolean; skin: number | null; target_skin: number; nr_enabled: boolean; changes: boolean;
+  available: true; reason?: string; stamp: string; passes: number; nr_enabled: boolean;
+  options: { number: number; inherited: boolean; character: boolean; skin: number }[];
 };
 export type Catalog = {
   addons: { id: string; name: string; builds: { id: string; label: string; default: boolean }[] }[];

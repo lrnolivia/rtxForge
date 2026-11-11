@@ -129,7 +129,7 @@ struct Controller : Rml::EventListener
     Rml::Element* statusHome=nullptr;Rml::Element* compactLiveHome=nullptr;
     void UpdateBack() {
         auto* back=Element("window-back");
-        const bool hasDestination=(settingsOpen&&!BarSettings()) ||
+        const bool hasDestination=(settingsOpen&&!StandaloneSettings()) ||
             (layout=="centered"&&activeNavigation!="nav-overview");
         if(hasDestination)back->RemoveProperty("display");else back->SetProperty("display","none");
     }
@@ -167,6 +167,7 @@ struct Controller : Rml::EventListener
         auto* mirror=Element("select-menu");Rml::Element* popup=nullptr;auto* select=document->GetContext()->GetFocusElement();while(select&&select->GetTagName()!="select")select=select->GetParentNode();
         if(select&&select->IsVisible(true))for(int i=0;i<select->GetNumChildren(true);++i){auto* child=select->GetChild(i);if(child->GetTagName()=="selectbox"&&child->IsVisible(true)){popup=child;break;}}
         if(!popup){const bool was=mirror->IsVisible();if(was)mirror->SetProperty("display","none");return was;}
+        mirror->SetClass("game-picker-menu",select->GetId()=="scene-select"&&document->IsClassSet("desktop-preview"));
         selectMenuOwner="main-panel";for(auto* e=popup;e;e=e->GetParentNode())if(e->GetId()=="main-panel"||e->GetId()=="inspector"||e->GetId()=="type-panel"){selectMenuOwner=e->GetId();break;}
         const auto at=popup->GetAbsoluteOffset(Rml::BoxArea::Border),size=popup->GetBox().GetSize(Rml::BoxArea::Border);
         mirror->SetProperty("display","block");mirror->SetProperty("left",std::to_string(at.x)+"px");mirror->SetProperty("top",std::to_string(at.y)+"px");mirror->SetProperty("width",std::to_string(size.x)+"px");mirror->SetProperty("height",std::to_string(size.y)+"px");
@@ -202,8 +203,8 @@ struct Controller : Rml::EventListener
                 markup+="<div class=\"option-group\"><button id=\"group-toggle-"+body+"\" class=\"group-heading"+(index==0 && std::string(page)!="look"?" expanded":"")+"\"><img class=\"glyph\" src=\"icons/sliders-horizontal-light.png\"/><span class=\"button-label\">"+title+"</span><span class=\"chevron\"/></button><div id=\""+body+"\" class=\"group-body\""+(index==0 && std::string(page)!="look"?"":" style=\"display: none\"")+">";
                 for(const auto& c:ExtraControls)if(std::string(c.page)==page && c.section==group){if(prefix=="extra-main-"&&(std::string(c.key)=="work_scale"||std::string(c.key)=="pre_sr"))continue;const auto id=prefix+c.key;extraFields[id]=&c;const auto label=Rml::StringUtilities::EncodeRml(c.label);const auto reset="<button id=\"reset-"+id+"\" class=\"reset-value\" title=\"Reset value\"><img class=\"glyph\" src=\"icons/arrow-counter-clockwise-light.png\"/></button>";
                     if(std::string(c.kind)=="toggle")markup+="<div class=\"inherit-row option-toggle\"><label data-control=\""+std::string(c.key)+"\">"+label+"</label><button id=\""+id+"\" class=\"switch\"><span/></button>"+reset+"</div>";
-                    else if(std::string(c.kind)=="choice")markup+="<div class=\"slider-field\"><div class=\"field-heading\"><label data-control=\""+std::string(c.key)+"\">"+label+"</label>"+reset+"</div><select id=\""+id+"\">"+c.options+"</select></div>";
-                    else markup+="<div class=\"slider-field\"><div class=\"field-heading\"><label data-control=\""+std::string(c.key)+"\">"+label+"</label><span id=\""+id+"-value\"/>"+reset+"</div><input id=\""+id+"\" class=\"range\" type=\"range\" min=\""+std::to_string(c.minimum)+"\" max=\""+std::to_string(c.maximum)+"\" step=\""+std::to_string(c.step)+"\" value=\""+std::to_string(values.at(c.key))+"\"/></div>";
+                    else if(std::string(c.kind)=="choice")markup+="<div id=\"field-"+id+"\" class=\"slider-field\"><div class=\"field-heading\"><label data-control=\""+std::string(c.key)+"\">"+label+"</label>"+reset+"</div><select id=\""+id+"\">"+c.options+"</select></div>";
+                    else markup+="<div id=\"field-"+id+"\" class=\"slider-field\"><div class=\"field-heading\"><label data-control=\""+std::string(c.key)+"\">"+label+"</label><span id=\""+id+"-value\"/>"+reset+"</div><input id=\""+id+"\" class=\"range\" type=\"range\" min=\""+std::to_string(c.minimum)+"\" max=\""+std::to_string(c.maximum)+"\" step=\""+std::to_string(c.step)+"\" value=\""+std::to_string(values.at(c.key))+"\"/></div>";
                 }markup+="<p id=\""+body+"-availability\" class=\"hint group-availability\" style=\"display: none\"/>";if(group=="Area")markup+="<p class=\"hint\">Uses distance, not character recognition.</p>";markup+="</div></div>";++index;
             }Element(container)->SetInnerRML(markup);
         };
@@ -212,7 +213,7 @@ struct Controller : Rml::EventListener
     void BeginNrPreview() {if(nrPreviewActive||values["enabled"]==0||Element("nr-toggle")->IsPseudoClassSet("disabled"))return;nrBeforePreview=values["enabled"];nrPreviewActive=true;values["enabled"]=0;Sync();}
     void EndNrPreview() {if(!nrPreviewActive)return;nrPreviewActive=false;values["enabled"]=nrBeforePreview;Sync();}
     void CheckPreviewFocus() {if(!nrPreviewActive||!monitorPreviewFocus)return;DWORD owner=0;GetWindowThreadProcessId(GetForegroundWindow(),&owner);if(owner!=GetCurrentProcessId())EndNrPreview();}
-    bool BarSettings() const {return layout=="bar"&&settingsOpen;}
+    bool StandaloneSettings() const {return layout!="centered"&&settingsOpen;}
     std::string RenderResolutionText() const {
         std::string text=std::to_string(int(std::round(values.at("work_scale")*100)))+"%";
         if(session.nrKnown&&session.nrRunning&&session.nrWidth&&session.nrHeight)return text+" ("+std::to_string(session.nrWidth)+" × "+std::to_string(session.nrHeight)+")";
@@ -224,14 +225,14 @@ struct Controller : Rml::EventListener
 
     // The connected runtime reports its own pass ceiling (Feeder NR allows 4,
     // OptiScaler 3); the preview keeps OptiScaler's.
-    int pass=2,passesMax=3;
-    bool feederSplitSupported{};
-    bool SplitRenderAvailable() const {return feederSplitSupported||addons.available;}
-    bool FeederSplitActive() const {return feederSplitSupported&&inspectorPanel=="addons";}
+    int pass=2,passesMax=3,feederResumePasses=2;
+    bool feederSplitSupported{},splitRenderEnabled{true};
+    bool SplitRenderAvailable() const {return splitRenderEnabled&&(feederSplitSupported||addons.available);}
+    bool FeederSplitActive() const {return splitRenderEnabled&&feederSplitSupported&&inspectorPanel=="addons";}
     std::string PassPrefix() const {return "pass"+std::to_string(pass)+"_";}
 
     void RefreshSplitRenderEntry() {
-        Visible("addons-section",SplitRenderAvailable());
+        Visible("addons-section",layout!="centered"&&SplitRenderAvailable());
         auto* nav=Element("nav-addons");
         if(SplitRenderAvailable())nav->RemoveProperty("display");else nav->SetProperty("display","none");
         const auto label=feederSplitSupported?"Feeder NR passes":"Split Render";
@@ -298,6 +299,7 @@ struct Controller : Rml::EventListener
         show("frame-section",fg);show("nav-frame",fg);
         for(const auto* id:{"neural-section","nav-neural","nav-look","nav-passes","preview-original"})show(id,nr);
         show("tuning-footer",nr||fg);
+        Visible("game-presets",nr||fg);
         Element("presets")->GetParentNode()->SetProperty("display",nr||fg?"flex":"none");
         for(const auto* id:{"overview-nr","popup-nr"}){auto* row=Element(id)->GetParentNode();if(nr)row->RemoveProperty("display");else row->SetProperty("display","none");}
         for(const auto* id:{"overview-displayed","popup-displayed"}){auto* row=Element(id)->GetParentNode();if(fg)row->RemoveProperty("display");else row->SetProperty("display","none");}
@@ -306,18 +308,29 @@ struct Controller : Rml::EventListener
         Session(session);Reflow();
     }
     void Welcome() {if(!showWelcome)return;Visible("toast-icon",false);Element("welcome")->SetClass("with-icon",false);Element("toast-message")->SetInnerRML("Press <span class=\"keycap\">"+Rml::StringUtilities::EncodeRml(shortcutLabel)+"</span> for controls");Element("welcome")->SetProperty("width","500dp");Visible("welcome",true);PositionWelcome();Raise("welcome");Enter("welcome");toastUntil=0;}
-    void ToggleOverlay() {if(primaryMenu=="optiscaler")return;if(setupStep>=0){if(Element("type-panel")->IsVisible()){Visible("type-panel",false);Visible("main-panel",false);}else UpdateSetup();return;}EndNrPreview();if(BarSettings())Settings(false);const bool show=!Element("main-panel")->IsVisible();Visible("main-panel",show);if(show){Raise("main-panel");Enter("main-panel");}else{Visible("inspector",false);Visible("type-panel",false);Welcome();}}
+    void ToggleOverlay() {if(primaryMenu=="optiscaler")return;if(setupStep>=0){if(Element("type-panel")->IsVisible()){Visible("type-panel",false);Visible("main-panel",false);}else UpdateSetup();return;}EndNrPreview();if(StandaloneSettings())Settings(false);const bool show=!Element("main-panel")->IsVisible();Visible("main-panel",show);if(show){Raise("main-panel");Enter("main-panel");}else{Visible("inspector",false);Visible("type-panel",false);Welcome();}}
     void Settings(bool show) {
         EndNrPreview();const bool leaving=settingsOpen&&!show;if(show&&!settingsOpen)beforeSettingsNavigation=activeNavigation;
         auto* screen=Element("settings-screen");if(!settingsHome)settingsHome=screen->GetParentNode();
-        settingsOpen=show;const bool modal=BarSettings();if(modal)for(const auto* id:{"pass-inspector","look-inspector","extra-processing","extra-frame-popup","popup-metadata","hdr-inspector","effects-inspector","addons-inspector"})Visible(id,false);auto* destination=modal?Element("settings-modal-host"):settingsHome;
+        settingsOpen=show;const bool modal=StandaloneSettings();if(modal)for(const auto* id:{"pass-inspector","look-inspector","extra-processing","extra-frame-popup","popup-metadata","hdr-inspector","effects-inspector","addons-inspector"})Visible(id,false);auto* destination=modal?Element("settings-modal-host"):settingsHome;
         if(screen->GetParentNode()!=destination)destination->AppendChild(screen->GetParentNode()->RemoveChild(screen));
-        document->SetClass("settings-page",show);document->SetClass("bar-settings",modal);Visible("settings-modal-host",modal);
+        document->SetClass("settings-page",show);document->SetClass("standalone-settings",modal);Visible("settings-modal-host",modal);
         Visible("settings-screen",show);Visible("overview",!show||modal);Visible("inspector",modal);inspectorAnchored=false;Element("inspector")->SetClass("anchored",false);
         screen->SetScrollTop(0);Element("inspector")->SetScrollTop(0);if(show)Navigation("nav-settings");else if(leaving){if(!navigationHistory.empty()&&navigationHistory.back()==beforeSettingsNavigation)navigationHistory.pop_back();navigatingBack=true;Page(beforeSettingsNavigation);navigatingBack=false;}UpdateBack();
         fittedLayout.clear();SyncSettings();Reflow();if(modal){Raise("inspector");Enter("inspector");}if(show&&layout=="centered")Element("nav-settings")->ScrollIntoView();
     }
     void SyncSettings() {Select("side-panel-side","side-"+sidePanelSide);Select("bar-position","bar-"+barPosition);const bool was=typographySync;typographySync=true;for(const auto& [id,on]:menuSettings)Element(("setting-"+id).c_str())->SetClass("on",on);Element("setting-helper")->SetClass("on",helperEnabled);Element("setting-startup")->SetClass("on",startWithWindows);Element("setting-stats")->SetClass("on",showStats);Element("setting-welcome")->SetClass("on",showWelcome);Element("setting-notifications")->SetClass("on",showNotifications);Element("shortcut-key")->SetInnerRML(bindingShortcut?"…":Rml::StringUtilities::EncodeRml(shortcutLabel));dynamic_cast<Rml::ElementFormControl*>(Element("welcome-position"))->SetValue(welcomePosition);dynamic_cast<Rml::ElementFormControl*>(Element("primary-menu"))->SetValue(primaryMenu);dynamic_cast<Rml::ElementFormControl*>(Element("opti-shortcut"))->SetValue(optiShortcut);PositionWelcome();typographySync=was;}
+    bool scopedNeuralLabel=false;
+    std::string NeuralStateText(bool enabled) const {
+        return std::string(scopedNeuralLabel?"Skynizz NR":"Neural rendering")+(enabled?" on":" off");
+    }
+    void SetNeuralProviderLabel(bool separate) {
+        if(scopedNeuralLabel==separate)return;
+        scopedNeuralLabel=separate;
+        Element("nr-section-title")->SetInnerRML(separate?"SKYNIZZ NR":"NEURAL RENDERING");
+        Element("nr-toggle")->SetAttribute("aria-label",separate?"Skynizz neural rendering":"Neural rendering");
+        Element("compact-nr-title")->SetInnerRML(separate?"Skynizz NR":"Neural rendering");
+    }
     void Session(const ForgeSession::Snapshot& snapshot) {session=snapshot;RenderResolutionLabel();Element("compact-frame-time")->SetInnerRML("Frame "+(ForgeSession::Available(snapshot.gameFps)&&snapshot.gameFps>0?ForgeSession::Number(1000/snapshot.gameFps,2)+" ms":"—"));Element("compact-nr-size")->SetInnerRML(snapshot.nrRunning&&snapshot.nrWidth&&snapshot.nrHeight?std::to_string(snapshot.nrWidth)+" × "+std::to_string(snapshot.nrHeight):"Dimensions not reported");Element("compact-frames")->SetInnerRML(ForgeSession::Frames(snapshot));Element("compact-neural")->SetInnerRML(ForgeSession::Neural(snapshot));Element("compact-ratio")->SetInnerRML(snapshot.framesKnown&&snapshot.measuredRatio>=1&&snapshot.measuredRatio<=8?ForgeSession::Number(snapshot.measuredRatio,1)+"×":"");for(const auto* p:{"overview","popup"}){const std::string prefix=p;Element((prefix+"-nr").c_str())->SetInnerRML(ForgeSession::Neural(snapshot));Element((prefix+"-frame").c_str())->SetInnerRML(ForgeSession::Available(snapshot.gameFps)&&snapshot.gameFps>0?ForgeSession::Number(1000/snapshot.gameFps,2)+" ms":"—");Element((prefix+"-rendered").c_str())->SetInnerRML(ForgeSession::Number(snapshot.gameFps));Element((prefix+"-displayed").c_str())->SetInnerRML(snapshot.framesKnown?ForgeSession::Number(snapshot.displayedFps):"—");}if(showStats&&(nrAvailable||fgAvailable))Element("compact-live")->RemoveProperty("display");else Element("compact-live")->SetProperty("display","none");if(showStats)Element("bar-live")->RemoveProperty("display");else Element("bar-live")->SetProperty("display","none");}
     void PositionWelcome() {
         if(!document->IsVisible())return;
@@ -360,6 +373,19 @@ struct Controller : Rml::EventListener
         if(auto* toolbar=document->QuerySelector(".prototype-toolbar")){const auto size=toolbar->GetBox().GetSize(Rml::BoxArea::Border);if(toolbar->IsVisible())return size.y>0?toolbar->GetAbsoluteOffset(Rml::BoxArea::Border).y+size.y+12*dp:78*dp;}
         return 24*dp;
     }
+    Rml::Element* neuralPrimaryHome=nullptr;
+    void PlaceNeuralControls() {
+        auto* primary=Element("nr-primary");
+        if(!neuralPrimaryHome)neuralPrimaryHome=primary->GetParentNode();
+        const bool popup=layout=="bar"&&!StandaloneSettings()&&inspectorPanel=="processing"&&Element("inspector")->IsVisible();
+        auto* destination=popup?Element("processing-primary"):neuralPrimaryHome;
+        if(primary->GetParentNode()!=destination) {
+            auto content=primary->GetParentNode()->RemoveChild(primary);
+            if(popup)destination->AppendChild(std::move(content));
+            else destination->InsertBefore(std::move(content),destination->QuerySelector(".inspector-links"));
+        }
+        document->SetClass("neural-core-popup",popup);
+    }
     void Reflow() {
         if(!document->IsVisible())return;
         auto* context=document->GetContext();const auto view=context->GetDimensions();const float dp=context->GetDensityIndependentPixelRatio(),inset=TopInset(),contentTop=view.y/dp<700?112.f:184.f;
@@ -373,7 +399,7 @@ struct Controller : Rml::EventListener
             const auto customSize=layoutSizes[layout];const float defaultWidth=centered?std::max(1160.f*dp,std::min(1760.f*dp,view.x*.60f*overlayScale/100.f)):660.f*dp;
             const float width=bar?maxWidth:std::clamp(customSize.x>0?customSize.x*dp:defaultWidth,minimumWidth,limitWidth);
             const float top=std::max(inset,std::min(76*dp,view.y*.08f)),available=view.y-inset-24*dp;
-            const float defaultHeight=std::min(available,std::max(900*dp,available*.86f));
+            const float defaultHeight=std::min(available,780*dp);
             main->SetProperty("width",std::to_string(width)+"px");const float maxHeight=bar?std::min(view.y*.68f,available):available;main->SetProperty("height",customSize.y>0?std::to_string(std::clamp(customSize.y*dp,std::min(280*dp,maxHeight),maxHeight))+"px":centered?std::to_string(defaultHeight)+"px":"auto");
             main->SetProperty("max-height",std::to_string(centered?available:bar?std::min(view.y*.68f,available):view.y-top-24*dp)+"px");
             main->SetProperty("margin-left","0px");main->SetProperty("margin-top","0px");
@@ -386,12 +412,13 @@ struct Controller : Rml::EventListener
                 for(const auto* id:{"overview","settings-screen"}){auto* e=Element(id);e->SetProperty("left",std::to_string(left)+"px");e->SetProperty("top",std::to_string(contentTop)+"dp");e->SetProperty("width",std::to_string(contentWidth)+"px");e->SetProperty("height",std::to_string(height)+"px");}
                 auto* navElement=document->QuerySelector(".sidebar");navElement->SetProperty("width",std::to_string(nav)+"px");navElement->SetProperty("top",std::to_string(contentTop)+"dp");navElement->SetProperty("height",std::to_string(height)+"px");
                 auto* editor=Element("inspector");editor->SetProperty("width",std::to_string(contentWidth)+"px");editor->SetProperty("height",std::to_string(height)+"px");editor->SetProperty("max-height",std::to_string(height)+"px");
-            }else{for(const auto* property:{"left","width","right"})Element("tuning-footer")->RemoveProperty(property);for(const auto* id:{"overview","settings-screen"})for(const auto* property:{"left","top","width","height"})Element(id)->RemoveProperty(property);auto* editor=Element("inspector");editor->SetProperty("width",std::to_string(std::min((BarSettings()?660.f:560.f)*dp,view.x-48*dp))+"px");editor->SetProperty("height","auto");editor->SetProperty("max-height",std::to_string(BarSettings()?available:view.y*.76f)+"px");}
+            }else{for(const auto* property:{"left","width","right"})Element("tuning-footer")->RemoveProperty(property);for(const auto* id:{"overview","settings-screen"})for(const auto* property:{"left","top","width","height"})Element(id)->RemoveProperty(property);auto* editor=Element("inspector");editor->SetProperty("width",std::to_string(std::min((StandaloneSettings()?1100.f:560.f)*dp,view.x-48*dp))+"px");editor->SetProperty("height","auto");editor->SetProperty("max-height",std::to_string(StandaloneSettings()?std::min(available,900*dp):view.y*.76f)+"px");}
             auto* appearancePanel=Element("type-panel");appearancePanel->SetProperty("width",std::to_string(std::min(480*dp,view.x-48*dp))+"px");appearancePanel->SetProperty("max-height",std::to_string(available)+"px");
             document->QuerySelector(".appearance-body")->SetProperty("max-height",std::to_string(std::max(80*dp,available-136*dp))+"px");
             context->Update();PositionWelcome();
         }
         context->Update();
+        PlaceNeuralControls();
         // Put the scroll rail in the panel's outer padding, preserving the
         // same card edges as the header and footer even when scrolling starts.
         for(const auto* id:{"overview","settings-screen"}){auto* e=Element(id);const auto* margin=e->GetLocalProperty("margin-right");if(layout=="centered"){if(margin)e->RemoveProperty("margin-right");}else{const float gutter=std::max(0.f,e->GetBox().GetSize(Rml::BoxArea::Padding).x-e->GetClientWidth());if(!margin||std::abs(margin->Get<float>()+gutter)>.1f)e->SetProperty("margin-right",std::to_string(-gutter)+"px");}}
@@ -404,11 +431,13 @@ struct Controller : Rml::EventListener
         if(layout=="centered"){const auto footerHeight=Element("tuning-footer")->IsVisible()?Element("tuning-footer")->GetBox().GetSize(Rml::BoxArea::Border).y+44*dp:32*dp;const float height=std::max(48*dp,size.y-contentTop*dp-footerHeight);for(const auto* id:{"overview","settings-screen","inspector"}){auto* e=Element(id);if(std::fabs(e->GetBox().GetSize(Rml::BoxArea::Border).y-height)>.1f)e->SetProperty("height",std::to_string(height)+"px");if(std::string(id)=="inspector")e->SetProperty("max-height",std::to_string(height)+"px");}document->QuerySelector(".sidebar")->SetProperty("height",std::to_string(height)+"px");}
         if(changed)RestorePosition("main-panel");
         if(inspectorAnchored&&!inspectorSource.empty()&&Element("inspector")->IsVisible()&&!dragStarted)PlaceAnchoredInspector();
-        if(BarSettings()){context->Update();auto* modal=Element("inspector");const auto bounds=modal->GetBox().GetSize(Rml::BoxArea::Border);modal->SetProperty("left",std::to_string((view.x-bounds.x)*.5f)+"px");modal->SetProperty("top",std::to_string(inset+(view.y-inset-24*dp-bounds.y)*.5f)+"px");modal->SetProperty("margin-left","0px");modal->SetProperty("margin-top","0px");}
+        if(StandaloneSettings()){context->Update();auto* modal=Element("inspector");const auto bounds=modal->GetBox().GetSize(Rml::BoxArea::Border);modal->SetProperty("left",std::to_string((view.x-bounds.x)*.5f)+"px");modal->SetProperty("top",std::to_string(inset+(view.y-inset-24*dp-bounds.y)*.5f)+"px");modal->SetProperty("margin-left","0px");modal->SetProperty("margin-top","0px");}
         if(layout=="centered"){const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border);const float left=(copySize*11.f+64)*dp+56*dp;auto* editor=Element("inspector");const auto before=editor->GetAbsoluteOffset(Rml::BoxArea::Border);if(std::fabs(before.x-at.x-left)>.1f||std::fabs(before.y-at.y-contentTop*dp)>.1f){editor->SetProperty("margin-left","0px");editor->SetProperty("margin-top","0px");editor->SetProperty("left",std::to_string(at.x+left)+"px");editor->SetProperty("top",std::to_string(at.y+contentTop*dp)+"px");}}
         for(const auto* id:{"inspector","type-panel"}){auto* e=Element(id);if((std::string(id)=="inspector"&&inspectorAnchored)||!e->IsVisible()||(layout=="centered"&&std::string(id)=="inspector")||dragged==e||entrances.contains(id)||pendingEntrance.contains(id)||coasting.contains(id))continue;const auto at=e->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=e->GetBox().GetSize(Rml::BoxArea::Border);const float x=std::clamp(at.x,12*dp,std::max(12*dp,view.x-bounds.x-12*dp)),y=std::clamp(at.y,inset,std::max(inset,view.y-bounds.y-12*dp));if(std::fabs(x-at.x)>.1f||std::fabs(y-at.y)>.1f){e->SetProperty("margin-left","0px");e->SetProperty("margin-top","0px");e->SetProperty("left",std::to_string(x)+"px");e->SetProperty("top",std::to_string(y)+"px");}}
         if(auto* body=Element("nr-body");body->IsVisible()){const std::string display=document->IsClassSet("wide-content")?"flex":"block";const auto* local=body->GetLocalProperty("display");if(!local||local->Get<Rml::String>()!=display)body->SetProperty("display",display);}
-        for(const auto* id:{"hdr-main-fields","extra-neural","extra-frame","extra-look","pass-fields","settings-cards"})balancedCards.Arrange(Element(id),document->IsClassSet("wide-content"));
+        const bool wide=document->IsClassSet("wide-content");
+        for(const auto* id:{"hdr-main-fields","extra-neural","extra-frame","extra-look","pass-fields"})balancedCards.Arrange(Element(id),wide);
+        balancedCards.Arrange(Element("settings-cards"),wide||(StandaloneSettings()&&view.x/dp>=900));
         PlaceSetup();PlaceQuickLayouts();PlaceColorEditor();
     }
     void Enter(const std::string& id) {pendingEntrance.insert(id);coasting.erase(id);}
@@ -630,7 +659,16 @@ struct Controller : Rml::EventListener
         auto* status=Element("feature-status");if(!statusHome)statusHome=status->GetParentNode();auto* statusTarget=mode=="centered"?Element("overview-metadata"):statusHome;if(status->GetParentNode()!=statusTarget){auto moved=status->GetParentNode()->RemoveChild(status);if(mode=="centered")statusTarget->InsertBefore(std::move(moved),statusTarget->QuerySelector(".session-facts"));else statusTarget->AppendChild(std::move(moved));}
         auto* live=Element("compact-live");if(!compactLiveHome)compactLiveHome=live->GetParentNode();auto* liveTarget=mode=="bar"?Element("bar-live"):compactLiveHome;if(live->GetParentNode()!=liveTarget)liveTarget->AppendChild(live->GetParentNode()->RemoveChild(live));
         if(mode=="floating"&&status->GetParentNode()==statusHome){auto moved=statusHome->RemoveChild(status);statusHome->InsertBefore(std::move(moved),Element("compact-live"));}
-        layout=mode;document->SetClass("overview-page",mode=="centered");document->SetClass("layout-centered",mode=="centered");document->SetClass("layout-bar",mode=="bar");document->SetClass("bar-top",barPosition=="top");
+        layout=mode;
+        auto* presets=Element("game-presets");
+        auto* presetHome=mode=="centered"?Element("overview-metadata"):Element("tuning-content");
+        if(presets->GetParentNode()!=presetHome){
+            auto row=presets->GetParentNode()->RemoveChild(presets);
+            if(mode=="centered")presetHome->InsertBefore(std::move(row),presetHome->GetChild(0));
+            else presetHome->InsertBefore(std::move(row),presetHome->QuerySelector(".tuning-sections"));
+        }
+        RefreshSplitRenderEntry();
+        document->SetClass("overview-page",mode=="centered");document->SetClass("layout-centered",mode=="centered");document->SetClass("layout-bar",mode=="bar");document->SetClass("bar-top",barPosition=="top");
         hdr.EntryVisibility();
         document->SetClass("frame-page",false);document->SetClass("neural-page",false);document->SetClass("hdr-page",false);Navigation("nav-overview");navigationHistory.clear();UpdateBack();
         for(const auto* id:{"main-panel","inspector"})for(const auto* property:{"left","top","margin-left","margin-top"})Element(id)->RemoveProperty(property);
@@ -652,7 +690,7 @@ struct Controller : Rml::EventListener
     }
     void BarEdge(const std::string& edge) {
         barPosition=edge=="top"?"top":"bottom";prefsDirty=true;Select("bar-position","bar-"+barPosition);document->SetClass("bar-top",barPosition=="top");
-        if(layout=="bar"){mainMoved=false;fittedLayout.clear();coasting.clear();entrances.clear();pendingEntrance.clear();inspectorAnchored=false;if(!BarSettings())Visible("inspector",false);Reflow();Enter("main-panel");}
+        if(layout=="bar"){mainMoved=false;fittedLayout.clear();coasting.clear();entrances.clear();pendingEntrance.clear();inspectorAnchored=false;if(!StandaloneSettings())Visible("inspector",false);Reflow();Enter("main-panel");}
     }
     static std::string Hex(float r,float g,float b,float a=1) {char text[16];std::snprintf(text,sizeof(text),"#%02x%02x%02x%02x",int(std::clamp(r,0.f,1.f)*255),int(std::clamp(g,0.f,1.f)*255),int(std::clamp(b,0.f,1.f)*255),int(std::clamp(a,0.f,1.f)*255));return text;}
     static float Luma(Backdrop::SceneColor c) {const auto linear=[](float x){return x<=.04045f?x/12.92f:std::pow((x+.055f)/1.055f,2.4f);};return .2126f*linear(c.r)+.7152f*linear(c.g)+.0722f*linear(c.b);}
@@ -715,6 +753,11 @@ struct Controller : Rml::EventListener
         Element("inspector")->SetClass("split-no-reset",inspectorPanel=="addons"&&(!feederSplit||passCount<2));
         Element("inspector")->SetClass("split-pass-unavailable",feederSplit&&passCount<2);
         if(feederSplit) {
+            const bool extraPasses=passCount>=2;
+            auto* toggle=Element("feeder-extra-passes");
+            toggle->SetClass("on",extraPasses);
+            toggle->SetAttribute("aria-pressed",extraPasses?"true":"false");
+            Disabled("feeder-extra-passes",passesMax<2);
             auto* note=Element("feeder-split-note");
             auto* title=Element("feeder-pass-title");
             const auto heading="Pass "+std::to_string(passCount==1?1:pass)+" · Full frame";
@@ -754,7 +797,7 @@ struct Controller : Rml::EventListener
     }
     void Open(const std::string& panel) {
         if(panel=="addons"&&!SplitRenderAvailable())return;
-        if(BarSettings())Settings(false);
+        if(StandaloneSettings())Settings(false);
         if(layout=="bar"&&inspectorAnchored&&Element("inspector")->IsVisible()&&inspectorPanel==panel){Visible("inspector",false);inspectorAnchored=false;return;}
         inspectorPanel=panel;Element("inspector")->SetProperty("margin-left","0px");Element("inspector")->SetProperty("margin-top","0px");
         Element("inspector")->SetScrollTop(0);
@@ -800,11 +843,11 @@ struct Controller : Rml::EventListener
         const bool previewTarget=inside("preview-original");
         if(event.GetType()=="mouseup"||(event.GetType()=="blur"&&previewTarget)||(event.GetType()=="keyup"&&(event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_SPACE||event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_RETURN)))EndNrPreview();
         if(previewTarget&&(event.GetType()=="mousedown"||(event.GetType()=="keydown"&&(event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_SPACE||event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_RETURN)))){BeginNrPreview();event.StopPropagation();return;}
-        if(event.GetType()=="keydown"&&event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_ESCAPE){EndNrPreview();if(colorEditorOpen){colorEditorOpen=false;ColorEditor();Element("accent-swatch")->Focus();}else if(setupStep>=0)FinishSetup();else if(Element("layout-picker")->IsVisible())QuickLayouts(false);else if(BarSettings())Settings(false);else if(inspectorAnchored){Visible("inspector",false);inspectorAnchored=false;}event.StopPropagation();return;}
+        if(event.GetType()=="keydown"&&event.GetParameter<int>("key_identifier",0)==Rml::Input::KI_ESCAPE){EndNrPreview();if(colorEditorOpen){colorEditorOpen=false;ColorEditor();Element("accent-swatch")->Focus();}else if(setupStep>=0)FinishSetup();else if(Element("layout-picker")->IsVisible())QuickLayouts(false);else if(StandaloneSettings())Settings(false);else if(inspectorAnchored){Visible("inspector",false);inspectorAnchored=false;}event.StopPropagation();return;}
         if(event.GetType()=="mousedown"&&colorEditorOpen&&!inside("accent-editor")&&!inside("accent-swatch")){colorEditorOpen=false;ColorEditor();}
         if(event.GetType()=="mousedown"&&!inside("open-layout")&&!inside("layout-picker"))QuickLayouts(false);
         if(event.GetType()=="mousedown"&&inspectorAnchored&&!inside("inspector")&&!inside(inspectorSource.c_str())){Visible("inspector",false);inspectorAnchored=false;}
-        if(event.GetType()=="mousedown"&&BarSettings()&&!inside("inspector")&&!inside("type-panel")&&!inside("accent-editor")){Settings(false);event.StopPropagation();return;}
+        if(event.GetType()=="mousedown"&&StandaloneSettings()&&!inside("inspector")&&!inside("type-panel")&&!inside("accent-editor")){Settings(false);event.StopPropagation();return;}
         if(event.GetType()=="keydown") {
             const int key=event.GetParameter<int>("key_identifier",0);const int mods=event.GetParameter<int>("key_modifier_state",0)&7;
             if(bindingShortcut){
@@ -845,7 +888,7 @@ struct Controller : Rml::EventListener
             auto* glass=target;bool interactive=false;
             while(glass && !glass->IsClassSet("glass")) {const auto tag=glass->GetTagName();if(tag=="button"||tag=="input"||tag=="select"||tag=="option"||tag.find("slider")!=std::string::npos||tag.find("scrollbar")!=std::string::npos)interactive=true;glass=glass->GetParentNode();}
             if(glass) {const auto id=glass->GetId();if(id=="game-picker"||id=="accent-editor")return;Raise(id);
-                if(!interactive&&!(BarSettings()&&glass==Element("inspector"))) {dragStarted=false;dragThreshold=(glass==Element("inspector")&&inspectorAnchored?18.f:4.f)*document->GetContext()->GetDensityIndependentPixelRatio();dragged=layout=="centered" && (id=="main-panel"||id=="inspector")?Element("main-panel"):glass;coasting.erase(dragged->GetId());entrances.erase(dragged->GetId());dragStart={event.GetParameter<float>("mouse_x",0),event.GetParameter<float>("mouse_y",0)};dragOrigin=dragged->GetAbsoluteOffset(Rml::BoxArea::Border);dragLast=dragOrigin;dragVelocity={};dragTime=Rml::GetSystemInterface()->GetElapsedTime();dragged->SetProperty("margin-left","0px");dragged->SetProperty("margin-top","0px");dragged->SetProperty("left",std::to_string(dragOrigin.x)+"px");dragged->SetProperty("top",std::to_string(dragOrigin.y)+"px");
+                if(!interactive&&!(StandaloneSettings()&&glass==Element("inspector"))) {dragStarted=false;dragThreshold=(glass==Element("inspector")&&inspectorAnchored?18.f:4.f)*document->GetContext()->GetDensityIndependentPixelRatio();dragged=layout=="centered" && (id=="main-panel"||id=="inspector")?Element("main-panel"):glass;coasting.erase(dragged->GetId());entrances.erase(dragged->GetId());dragStart={event.GetParameter<float>("mouse_x",0),event.GetParameter<float>("mouse_y",0)};dragOrigin=dragged->GetAbsoluteOffset(Rml::BoxArea::Border);dragLast=dragOrigin;dragVelocity={};dragTime=Rml::GetSystemInterface()->GetElapsedTime();dragged->SetProperty("margin-left","0px");dragged->SetProperty("margin-top","0px");dragged->SetProperty("left",std::to_string(dragOrigin.x)+"px");dragged->SetProperty("top",std::to_string(dragOrigin.y)+"px");
                     if((layout=="centered" || (layout=="bar" && inspectorAnchored)) && dragged==Element("main-panel") && Element("inspector")->IsVisible()){dragFollower=Element("inspector");followerOrigin=dragFollower->GetAbsoluteOffset(Rml::BoxArea::Border);followerAnchorOrigin=inspectorAnchorX;dragFollower->SetProperty("margin-left","0px");dragFollower->SetProperty("margin-top","0px");}}
             }
             return;
@@ -906,7 +949,7 @@ struct Controller : Rml::EventListener
             if(id=="preview-close"&&closePreview)closePreview();
             else if(id=="close"){if(closePreview)closePreview();else ToggleOverlay();}
             else if(id=="window-back")Back();
-            else if(id=="inspector-back"){if(BarSettings())Settings(false);else if(layout=="centered")Back();else{Visible("inspector",false);inspectorAnchored=false;}}
+            else if(id=="inspector-back"){if(StandaloneSettings())Settings(false);else if(layout=="centered")Back();else{Visible("inspector",false);inspectorAnchored=false;}}
             else if(id=="appearance-back"){if(setupStep>=0){setupStep=0;UpdateSetup();}else Visible("type-panel",false);}
             else if(id=="setup-next"){if(setupStep==1){setupStep=0;UpdateSetup();}else FinishSetup();}
             else if(id=="setup-appearance"){setupStep=1;UpdateSetup();}
@@ -918,6 +961,10 @@ struct Controller : Rml::EventListener
             else if(id.rfind("quick-",0)==0)Layout(id.substr(6));
             else if(id=="setting-original-labels"){originalLabels=!originalLabels;prefsDirty=true;Labels();}
             else if(id=="pass-minus"||id=="pass-plus")Put("passes",std::clamp(values.at("passes")+(id=="pass-minus"?-1.f:1.f),1.f,float(passesMax)));
+            else if(id=="feeder-extra-passes"&&FeederSplitActive()&&passesMax>=2) {
+                if(values["passes"]>=2){feederResumePasses=int(values["passes"]);Put("passes",1.f);}
+                else Put("passes",float(std::clamp(feederResumePasses,2,passesMax)));
+            }
             else if(id.rfind("group-toggle-",0)==0){auto* group=Element(id.substr(13).c_str());group->SetProperty("display",group->IsVisible()?"none":"flex");target->SetClass("expanded",group->IsVisible());}
             else if(id.rfind("reset-extra-",0)==0 && extraFields.contains(id.substr(6)))Put(extraFields.at(id.substr(6))->key,defaults.at(extraFields.at(id.substr(6))->key));
             else if(extraFields.contains(id)) {const auto* control=extraFields.at(id);if(std::string(control->kind)=="toggle")Put(control->key,values.at(control->key)==0?1.f:0.f);}
@@ -963,7 +1010,7 @@ struct Controller : Rml::EventListener
             else if(id=="inspector-close") {Visible("inspector",false);Visible("overview",true);if(layout=="centered")Page(inspectorPanel=="look"||inspectorPanel=="passes"||inspectorPanel=="addons"?"nav-neural":"nav-overview");Element("inspector")->SetClass("opening",false);}
             else if(id=="pass-2" || id=="pass-3" || id=="pass-4")pass=id.back()-'0';
             else if(id=="inherit"){const auto key=PassPrefix()+"inherit";Put(key,values[key]?0.f:1.f);}
-            else if(id=="nr-toggle") {Put("enabled",values["enabled"] ? 0.f:1.f);Notify(values["enabled"]?(preview?"Neural rendering on · Preview":"Neural rendering on"):(preview?"Neural rendering off · Preview":"Neural rendering off"),"cpu");}
+            else if(id=="nr-toggle") {Put("enabled",values["enabled"] ? 0.f:1.f);Notify(NeuralStateText(values["enabled"]!=0)+(preview?" · Preview":""),"cpu");}
             else if(id=="mfg-toggle")Put("mfg_enabled",values["mfg_enabled"] ? 0.f:1.f);
             else if(id=="undo")values=edits.Undo(values);else if(id=="redo")values=edits.Redo(values);
             else if(id=="defaults") {edits.Record(values,defaults);values=defaults;Notify(preview?"Settings reset · Preview":"Settings reset for this game","arrow-counter-clockwise");}
@@ -980,6 +1027,7 @@ struct Controller : Rml::EventListener
                 const std::string page=inspectorPanel=="processing"?"neural":inspectorPanel=="frame"?"frame":inspectorPanel=="look"?"look":"";
                 for(auto& [key,value]:values) {
                     bool reset=inspectorPanel=="look"&&(key=="detail"||key=="colour"||key=="tone");
+                    reset|=layout=="bar"&&inspectorPanel=="processing"&&(key=="intensity"||key=="preset"||key=="passes");
                     reset|=resetPass&&key.starts_with(passPrefix);
                     for(const auto& control:ExtraControls)if(key==control.key&&page==control.page)reset=true;
                     if(reset)value=defaults.at(key);

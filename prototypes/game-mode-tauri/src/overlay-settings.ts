@@ -5,6 +5,11 @@ export function mergeOverlay(defaults: Values, local: Values = {}, draft: Values
     ...draft.overlay_appearance as Values,
   }};
 }
+export function previewAccent(glass: Values, game?: { accent?: string; artworkAccent?: string | null }): string {
+  if (glass.AccentMode === 'theme') return '#d8d5ce';
+  const colors = [glass.AccentMode === 'custom' ? glass.AccentColor : null, game?.accent, game?.artworkAccent];
+  return colors.find((color): color is string => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) ?? '#78b9cf';
+}
 export function overlaySurface(glass: Values): 'clear' | 'light' | 'dark' {
   return glass.Theme === 4 ? Number(glass.AccentCharacter) < 20 ? 'clear'
     : Number(glass.AccentCharacter) < 72 ? 'light' : 'dark'

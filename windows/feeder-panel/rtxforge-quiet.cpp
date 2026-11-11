@@ -11,31 +11,64 @@ extern "C" __declspec(dllexport) const char *DESCRIPTION = "Integrates overlay n
 
 namespace
 {
-bool quiet = true, read = false, nativeMenuRestored=false;
-
-void on_overlay(reshade::api::effect_runtime *)
+struct __declspec(uuid("506F6A90-A36C-4E7C-83C5-F7DE4E83D870")) MenuPolicy
 {
-    if (!read)
-    {
-        char text[8] = "";
-        size_t size = sizeof(text);
-        quiet = !(reshade::get_config_value(nullptr, "rtxForge.UI", "QuietStartup", text, &size) && text[0] == '0');
-        read = true;
-    }
+    bool quiet = true;
+    bool disabled = false;
+    bool appliedDisabled = false;
+    bool nativeMenuRestored = false;
+};
+
+void on_init(reshade::api::effect_runtime *runtime)
+{
+    auto *policy = runtime->create_private_data<MenuPolicy>();
+    reshade::get_config_value(runtime, "rtxForge.UI", "QuietStartup", policy->quiet);
+    reshade::get_config_value(runtime, "rtxForge.UI", "ReShadeDisabled", policy->disabled);
+}
+
+void on_destroy(reshade::api::effect_runtime *runtime)
+{
+    runtime->destroy_private_data<MenuPolicy>();
+}
+
+int live_policy(HMODULE glass)
+{
+    const auto read = glass ? reinterpret_cast<int (__cdecl*)()>(GetProcAddress(glass, "ForgeGlassReShadeUiV1")) : nullptr;
+    return read ? read() : -1;
+}
+
+bool on_open(reshade::api::effect_runtime *runtime, bool open, reshade::api::input_source)
+{
+    if (!open) return false;
+    const auto live = live_policy(GetModuleHandleW(L"rtxforge-glass.dll"));
+    const auto *policy = runtime->get_private_data<MenuPolicy>();
+    return live >= 0 ? (live & 1) == 0 : policy && policy->disabled;
+}
+
+void on_overlay(reshade::api::effect_runtime *runtime)
+{
+    auto *policy = runtime->get_private_data<MenuPolicy>();
+    if (!policy) return;
     // RenoDX 8.5 rc10 uses this window for its transient status card. When
     // the glass renderer owns notifications, suppress that duplicate card.
     // Its separate ##issue_notice diagnostic window is deliberately untouched.
     const auto glass=GetModuleHandleW(L"rtxforge-glass.dll");
+    const auto live = live_policy(glass);
+    const bool disabled = live >= 0 ? (live & 1) == 0 : policy->disabled;
+    if (disabled && !policy->appliedDisabled)
+        runtime->open_overlay(false, reshade::api::input_source::none);
+    policy->appliedDisabled = disabled;
     const auto useNative=glass?reinterpret_cast<bool (__cdecl*)()>(GetProcAddress(glass,"ForgeGlassNativeOverlaysSelected")):nullptr;
-    if(!nativeMenuRestored&&useNative&&useNative()){
+    if(!policy->nativeMenuRestored&&!disabled&&useNative&&useNative()){
         // The confirmed handoff is per game. Restore ReShade's saved binding
         // through its own configuration API, without replacing a custom key.
         char key[80]="";size_t size=sizeof(key);
-        if(!reshade::get_config_value(nullptr,"rtxForge.UI","ReShadeShortcut",key,&size)||key[0]=='0'||key[0]==0)lstrcpyA(key,"36,0,0,0");
+        if(!reshade::get_config_value(runtime,"rtxForge.UI","ReShadeShortcut",key,&size)||key[0]=='0'||key[0]==0)lstrcpyA(key,"36,0,0,0");
         char current[80]="";size=sizeof(current);
-        if(reshade::get_config_value(nullptr,"INPUT","KeyOverlay",current,&size)&&current[0]!='0'&&current[0]!=0)lstrcpyA(key,current);
-        reshade::set_config_value(nullptr,"INPUT","KeyOverlay",static_cast<const char*>(key));
-        reshade::set_config_value(nullptr,"rtxForge.UI","ReShadeDisabled",static_cast<const char*>("0"));nativeMenuRestored=true;
+        if(reshade::get_config_value(runtime,"INPUT","KeyOverlay",current,&size)&&current[0]!='0'&&current[0]!=0)lstrcpyA(key,current);
+        reshade::set_config_value(runtime,"INPUT","KeyOverlay",static_cast<const char*>(key));
+        reshade::set_config_value(runtime,"rtxForge.UI","ReShadeDisabled",false);
+        policy->nativeMenuRestored=true;
     }
     const auto ownsNotifications=glass?reinterpret_cast<bool (__cdecl*)()>(GetProcAddress(glass,"ForgeGlassNotificationsActive")):nullptr;
     if (ownsNotifications && ownsNotifications())
@@ -46,7 +79,7 @@ void on_overlay(reshade::api::effect_runtime *)
         for (int i = 0; i < status->CmdBuffer.Size; ++i) status->CmdBuffer[i].ElemCount = 0;
         ImGui::End();
     }
-    if (!quiet) return;
+    if (live >= 0 ? (live & 2) != 0 : !policy->quiet) return;
     // ReShade creates this window before the add-on overlay event.
     ImGui::Begin("Splash Window", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings);
@@ -62,11 +95,17 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
     {
         DisableThreadLibraryCalls(module);
         if (!reshade::register_addon(module)) return FALSE;
+        reshade::register_event<reshade::addon_event::init_effect_runtime>(on_init);
+        reshade::register_event<reshade::addon_event::destroy_effect_runtime>(on_destroy);
+        reshade::register_event<reshade::addon_event::reshade_open_overlay>(on_open);
         reshade::register_event<reshade::addon_event::reshade_overlay>(on_overlay);
     }
     else if (reason == DLL_PROCESS_DETACH)
     {
         reshade::unregister_event<reshade::addon_event::reshade_overlay>(on_overlay);
+        reshade::unregister_event<reshade::addon_event::reshade_open_overlay>(on_open);
+        reshade::unregister_event<reshade::addon_event::destroy_effect_runtime>(on_destroy);
+        reshade::unregister_event<reshade::addon_event::init_effect_runtime>(on_init);
         reshade::unregister_addon(module);
     }
     return TRUE;

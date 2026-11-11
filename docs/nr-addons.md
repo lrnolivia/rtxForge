@@ -1,5 +1,12 @@
 # Split Render
 
+New Split Render setups are paused while we improve performance and image
+quality. To remove existing setups, open **Packages → Remove Split Render**,
+select one or more games, and review the files and settings to restore.
+For one game, the same action is available under **Tools → Split Render**.
+
+The sections below describe the options available when Split Render is enabled.
+
 Split Render uses DLSS 5 NR for the environment and characters, with a
 separate character pass where supported. Open **Packages → Split Render →
 Choose games** to review a setup for one or more games. Changing the setup
@@ -124,9 +131,15 @@ Where the rtxForge overlay runs, its **Split Render** section lists the settings
 each add-on rtxForge installed, under its role: **Environment · Lecram** and
 **Character detail · ShortFuse**. Lecram never appears where OptiScaler is
 installed. Where Skynizz is the world, its NR settings stay in the overlay's own
-Skynizz NR controls.
+Skynizz NR controls. The **Skynizz NR** switch controls that pass.
+ShortFuse can still process the frame when Skynizz NR is off. In Advanced,
+open **Neural rendering → Split Render** for the add-on controls. On the
+supported ShortFuse build, set **ShortFuse processing** to **Off** to stop
+its NR evaluation live. This leaves Skynizz NR and Frame Generation as set.
+Choose a processing stage to turn ShortFuse back on.
 
-In a Feeder NR game, **Feeder NR passes** opens the live tuning controls
+In a Feeder NR game, turn off **Extra NR passes** to keep just the main pass.
+**Feeder NR passes** opens the live tuning controls
 for active additional full-frame passes. Turn off **Use main settings** to
 tune a pass independently. The game's Tools screen configures the Character
 mask role for each pass.

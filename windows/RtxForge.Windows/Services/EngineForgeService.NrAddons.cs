@@ -56,13 +56,13 @@ public sealed partial class EngineForgeService
     public async Task<EngineReview> ReviewNrAsync(Game game, JsonObject? setup, bool remove = false) =>
         ToReview(await CallAsync("nr_review", new JsonObject { ["row"] = Row(game), ["setup"] = setup?.DeepClone(), ["remove"] = remove }));
 
-    public async Task<EngineReview> ReviewNrBatchAsync(IReadOnlyList<Game> games, JsonObject choice, IProgress<PrepareProgress> progress) =>
-        ToReview(await CallAsync("nr_review", new JsonObject { ["rows"] = Rows(games), ["choice"] = choice.DeepClone() },
+    public async Task<EngineReview> ReviewNrBatchAsync(IReadOnlyList<Game> games, JsonObject? choice, bool remove, IProgress<PrepareProgress> progress) =>
+        ToReview(await CallAsync("nr_review", new JsonObject { ["rows"] = Rows(games), ["choice"] = choice?.DeepClone(), ["remove"] = remove },
             message => progress.Report(Phase(message))));
 
-    internal async Task<Dictionary<string, string>> MatchNrGamesAsync(Game[] games, JsonObject choice)
+    internal async Task<Dictionary<string, string>> MatchNrGamesAsync(Game[] games, JsonObject? choice, bool remove)
     {
-        var matches = await CallAsync("nr_match", new JsonObject { ["rows"] = Rows(games), ["choice"] = choice.DeepClone() })
+        var matches = await CallAsync("nr_match", new JsonObject { ["rows"] = Rows(games), ["choice"] = choice?.DeepClone(), ["remove"] = remove })
             as JsonArray ?? throw new InvalidOperationException("Split Render compatibility could not be checked.");
         return matches.OfType<JsonObject>().ToDictionary(match => games[match["index"]!.GetValue<int>()].Id,
             match => match["summary"]!.GetValue<string>());

@@ -1,10 +1,9 @@
 """In-game overlay settings for the Split Render passes rtxForge installed in a game.
 
 Lecram and ShortFuse read their settings from ReShade.ini when the game starts,
-and ShortFuse writes them back while it runs, so the overlay never edits a
-running game's file. Like HDR preferences, a change is queued and written after
-the game closes; the add-on picks it up at the next launch. Live adjustments
-stay in each add-on's own ReShade panel.
+and ShortFuse writes them back while it runs. The overlay uses the verified
+ShortFuse setter for live adjustments. File-based changes are queued and
+written after the game closes.
 
 Only settings whose key and value encoding nr_addons verified are offered, under
 the slot's role: Environment, or Character detail. Lecram is never offered where
@@ -30,13 +29,21 @@ UNITS = {'diffuse_white_nits': 'nits'}
 ROLES = {'environment': 'Environment', 'character': 'Character detail'}
 
 
-def _group(slot, addon_id, second_pass=False):
+def _group(slot, addon_id, second_pass=False, build=None):
     """The verified controls of one slot, as overlay fields with their ReShade.ini key."""
     addon = nr_addons.catalog()['addons'][addon_id]
     section = addon['section']
     percent = addon.get('percent', ())
     title = ROLES[slot] + ' · ' + addon['name'].split(' (')[0]
     fields = []
+    if addon_id == 'shortfuse' and build == '26.1025.0009':
+        # This build's global Hook Method controls whether the add-on evaluates
+        # NR at all. Strength 0 and Character mask Off are not bypasses.
+        fields.append({'key': f'{slot}_hook_point', 'label': 'ShortFuse processing',
+                       'section': title, 'unit': '', 'reset': False,
+                       'ini': [section, addon['settings']['hook_point']], 'whole': True,
+                       'kind': 'choice', 'min': 0, 'max': 3, 'step': 1, 'default': 0,
+                       'choices': ['Off', 'Before upscaling', 'After upscaling', 'Before display']})
     for name, key in addon['settings'].items():
         if not key or not (name in nr_addons.RANGES or name in nr_addons.SWITCHES or name in nr_addons.COUNTS):
             continue  # an unverified encoding is never written
@@ -75,7 +82,7 @@ def _fields(record):
             continue  # Lecram can't run beside OptiScaler
         if same and index == 1 and addon_id != 'lecram':
             continue  # only Lecram's per-pass keys are verified
-        fields += _group(slot, addon_id, second_pass=same and index == 1)
+        fields += _group(slot, addon_id, second_pass=same and index == 1, build=setup[slot].get('build'))
     return fields
 
 

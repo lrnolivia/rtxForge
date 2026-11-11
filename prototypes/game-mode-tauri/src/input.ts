@@ -1,8 +1,8 @@
 type Direction = 'left' | 'right' | 'up' | 'down';
 export function moveFocus(direction: Direction): void {
-  const scope=(document.querySelector('.color-editor:not([hidden])') || document.querySelector('.select-menu') || document.querySelector('.library-size-control[data-open=true]') || document.querySelector('.shell-menu:not([hidden])') || document.querySelector('.game-menu:not([hidden])') || document.querySelector('.operation-flow'))||document;
+  const scope=(document.querySelector('.color-editor:not([hidden])') || document.querySelector('.select-menu') || document.querySelector('.library-size-control[data-open=true]') || document.querySelector('.shell-menu:not([hidden])') || document.querySelector('.game-menu:not([hidden])') || document.querySelector('.operation-modal, .operation-flow'))||document;
   const targets = [...scope.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],summary')]
-    .filter(node => node.getClientRects().length && !node.closest('[hidden]'));
+    .filter(node => node.getClientRects().length && !node.closest('[hidden], [inert]'));
   const active = document.activeElement as HTMLElement;
   if (!targets.includes(active)&&(!active?.closest('main')||!active.getClientRects().length||!scope.contains(active))) { (targets.find(node=>node.closest('main'))||targets[0])?.focus(); return; }
   const rect = active.getBoundingClientRect(), x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
@@ -27,7 +27,7 @@ export function installInput(back: () => void, switchTab: (delta: number) => voi
     }
     const editing = (event.target as HTMLElement).matches('input,select,textarea');
     if (event.key === 'Escape') { back(); return; }
-    if (editing || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (editing || focalField.closest('.review-info-popover') || event.altKey || event.ctrlKey || event.metaKey) return;
     const directions: Record<string, Direction> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
     if (directions[event.key]) { event.preventDefault(); moveFocus(directions[event.key]); }
     if (event.key === '[' || event.key === ']') { event.preventDefault(); switchTab(event.key === '[' ? -1 : 1); }
@@ -38,7 +38,8 @@ export function installInput(back: () => void, switchTab: (delta: number) => voi
     const magnitude = Math.abs(axis);
     if (magnitude < .22) return;
     const modal = document.querySelector('.operation-modal');
-    const candidates = modal ? [modal.querySelector('.flow-body'), modal] :
+    const details = document.querySelector('.review-info-popover:popover-open');
+    const candidates = details ? [details] : modal ? [modal.querySelector('.flow-body, .split-game-list'), modal] :
       [document.querySelector('#game-results'), document.querySelector('.details-scroll'), document.querySelector('#content')];
     const pane = candidates.find((node): node is HTMLElement => node instanceof HTMLElement && node.scrollHeight > node.clientHeight + 1);
     const speed = ((magnitude - .22) / .78) ** 1.5 * 1050;

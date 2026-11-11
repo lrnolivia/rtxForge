@@ -84,6 +84,7 @@ bool UseVerifiedShortFuse(const std::function<bool(ShortFuseSetter)>& use) {
 
 bool ApplyShortFuse(const ForgeGlass::HdrField& field,float value) {
     constexpr std::pair<std::string_view,const char*> keys[]{
+        {"hook_point","DirectNeuralRenderingHookStage"},
         {"character_mask","DirectNeuralRenderingAutoMask"},
         {"character","DirectNeuralRenderingSkinStructureStrength"},
         {"resolution_scale","DirectNeuralRenderingProcessingScale"},
@@ -341,7 +342,7 @@ struct Runtime {
         Rml::Factory::RegisterElementInstancer("paint-root",&roots);
         ForgeGlass::Require(Rml::LoadFontFace("fonts/RobotoVariable.ttf"),"Roboto failed to load");ForgeGlass::Require(Rml::LoadFontFace("fonts/BakbakOne-Regular.ttf"),"Heading font failed to load");ForgeGlass::Require(Rml::LoadFontFace("fonts/InterVariable.ttf"),"Inter failed to load");
         context=Rml::CreateContext("game-overlay",{width,height});ForgeGlass::Require(context!=nullptr,"RmlUi context failed");document=context->LoadDocument("overlay.rml");ForgeGlass::Require(document!=nullptr,"Overlay document failed");
-        controls=std::make_unique<ForgeGlass::Controller>();auto& c=*controls;c.document=document;c.preview=false;c.monitorPreviewFocus=true;c.restorePreview=[host](float enabled){const ForgeGlass::Value value{"enabled",enabled};const bool ok=host.apply&&host.apply(host.user,&value,1);if(!ok&&host.log)host.log(host.user,"NR preview could not restore its previous state during renderer teardown.");return ok;};c.UseTheme(3);c.LoadPreferences(true);if(c.copyFont=="aptos")c.copyFont="roboto";
+        controls=std::make_unique<ForgeGlass::Controller>();auto& c=*controls;c.document=document;c.preview=false;c.splitRenderEnabled=FORGE_SPLIT_RENDER_ENABLED;c.monitorPreviewFocus=true;c.restorePreview=[host](float enabled){const ForgeGlass::Value value{"enabled",enabled};const bool ok=host.apply&&host.apply(host.user,&value,1);if(!ok&&host.log)host.log(host.user,"NR preview could not restore its previous state during renderer teardown.");return ok;};c.UseTheme(3);c.LoadPreferences(true);if(c.copyFont=="aptos")c.copyFont="roboto";
         c.samplePoster=[this](float x,float y){return renderer->PosterColor(x,y);};c.InstallExtraControls();c.Typography();c.Materials();c.Sync();c.SyncSettings();c.Metadata();c.Session({});c.edits.Start(c.values);
         for(const auto* event:{"click","change","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->AddEventListener(event,&c);
         document->AddEventListener("keydown",&c,true);
@@ -385,11 +386,13 @@ struct Runtime {
             for(uint32_t i=0;i<std::min(snapshot.defaultCount,128u);i++)if(snapshot.defaults&&snapshot.defaults[i].key&&current.contains(snapshot.defaults[i].key)&&std::isfinite(snapshot.defaults[i].value))c.defaults[snapshot.defaults[i].key]=snapshot.defaults[i].value;
             supportedKeys.clear();for(const auto& [key,value]:current)supportedKeys.insert(key);
             c.values["mfg_enabled"]=current.contains("multiplier")&&current["multiplier"]!=0;
-            if(receivedSnapshot&&current.contains("enabled")&&beforeValues.at("enabled")!=current.at("enabled"))c.Notify(current.at("enabled")?"Neural rendering on":"Neural rendering off","cpu");receivedSnapshot=true;
+            if(receivedSnapshot&&current.contains("enabled")&&beforeValues.at("enabled")!=current.at("enabled"))c.Notify(c.NeuralStateText(current.at("enabled")!=0),"cpu");receivedSnapshot=true;
             if(c.values!=beforeValues)c.Sync();c.Capabilities(snapshot.nrAvailable,snapshot.fgAvailable);
             if(snapshot.title)Text(document->QuerySelector("h1"),Rml::StringUtilities::EncodeRml(snapshot.title));
             if(snapshot.accent){const std::string color=snapshot.accent;if(color.size()==7&&color[0]=='#'&&color.find_first_not_of("0123456789abcdefABCDEF",1)==std::string::npos){const auto rgb=std::stoul(color.substr(1),nullptr,16);c.accent={float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255};}}
-            const int runtimeKind=current.contains("__runtime_kind")?int(current.at("__runtime_kind")):0;const std::string stack=runtimeKind==1?(ReShadeLoaded()?"OptiScaler + ReShade":"OptiScaler"):runtimeKind==2?"ReShade · Feeder NR":runtimeKind==3?"ReShade":"Not reported";for(const auto* id:{"overview-stack","popup-stack"})Text(c.Element(id),stack);
+            const int runtimeKind=current.contains("__runtime_kind")?int(current.at("__runtime_kind")):0;
+            c.SetNeuralProviderLabel(runtimeKind==1&&c.addons.HasShortFuse());
+const std::string stack=runtimeKind==1?(ReShadeLoaded()?"OptiScaler + ReShade":"OptiScaler"):runtimeKind==2?"ReShade · Feeder NR":runtimeKind==3?"ReShade":"Not reported";for(const auto* id:{"overview-stack","popup-stack"})Text(c.Element(id),stack);
             for(const auto* id:{"compact-api","overview-api","popup-api"})Text(c.Element(id),dx12Interop?"DirectX 12":"DirectX 11");for(const auto* id:{"compact-output","overview-output","popup-output"})Text(c.Element(id),outputSpace==1?"HDR · scRGB":outputSpace==2?"HDR10":"SDR");Text(c.Element("open-session")->QuerySelector(".session-name"),"Live session");
             // Advanced reparents this row into overview-metadata. Resolve it
             // by its stable identity instead of its compact-layout ancestor.
@@ -439,7 +442,7 @@ struct Runtime {
             lastValues=c.values;
         }
         if(c.primaryMenu=="optiscaler"){nrActivationPending=false;frame.visible=false;for(const auto* id:{"main-panel","type-panel","inspector","welcome"})c.Visible(id,false);}
-        if(hostVisible!=frame.visible){if(!frame.visible){c.EndNrPreview();if(c.BarSettings())c.Settings(false);}hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible){c.Enter("main-panel");c.MaybeSetup();}else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
+        if(hostVisible!=frame.visible){if(!frame.visible){c.EndNrPreview();if(c.StandaloneSettings())c.Settings(false);}hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible){c.Enter("main-panel");c.MaybeSetup();}else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
         const auto beforeSettings=SettingsValues();c.PollColorPick();const int oldShortcut=c.shortcut,oldModifiers=c.shortcutModifiers;
         const bool focused=GetForegroundWindow()==frame.window;const int modifiers=focused?((frame.keys[VK_CONTROL]?Rml::Input::KM_CTRL:0)|(frame.keys[VK_SHIFT]?Rml::Input::KM_SHIFT:0)|(frame.keys[VK_MENU]?Rml::Input::KM_ALT:0)):0;
         context->ProcessMouseMove(focused?int(frame.mouseX):-1,focused?int(frame.mouseY):-1,modifiers);
@@ -521,10 +524,12 @@ struct Runtime {
     }
 };
 std::unique_ptr<Runtime> runtime;std::mutex mutex;bool logged=false;std::atomic_bool notificationsActive{false},nativeOverlaysSelected{false};
+std::atomic_int reshadeUi{-1};
 }
 extern "C" bool __cdecl ForgeGlassSkipHiddenFrame(bool visible){std::unique_lock guard(mutex,std::try_to_lock);return guard.owns_lock()&&runtime&&runtime->SkipHidden(visible);}
 extern "C" __declspec(dllexport) bool __cdecl ForgeGlassNotificationsActive(){return notificationsActive.load(std::memory_order_relaxed);}
 extern "C" __declspec(dllexport) bool __cdecl ForgeGlassNativeOverlaysSelected(){return nativeOverlaysSelected.load(std::memory_order_relaxed);}
+extern "C" __declspec(dllexport) int __cdecl ForgeGlassReShadeUiV1(){return reshadeUi.load(std::memory_order_relaxed);}
 extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::Host* host,ForgeGlass::Frame* frame) {
     if(!host||!frame||host->size!=sizeof(*host)||host->abi!=ForgeGlass::Abi||frame->size!=sizeof(*frame)||frame->abi!=ForgeGlass::Abi||!frame->device||!frame->target||frame->colorSpace>2)return false;
     std::unique_lock guard(mutex,std::try_to_lock);if(!guard.owns_lock())return true;
@@ -537,10 +542,15 @@ extern "C" __declspec(dllexport) bool __cdecl ForgeGlassDraw(const ForgeGlass::H
         const bool sdr=desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM||desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB||desc.Format==DXGI_FORMAT_R8G8B8A8_TYPELESS||desc.Format==DXGI_FORMAT_B8G8R8A8_UNORM||desc.Format==DXGI_FORMAT_B8G8R8A8_UNORM_SRGB||desc.Format==DXGI_FORMAT_B8G8R8A8_TYPELESS;
         const bool supported=frame->colorSpace==0?sdr:frame->colorSpace==1?desc.Format==DXGI_FORMAT_R16G16B16A16_FLOAT:desc.Format==DXGI_FORMAT_R10G10B10A2_UNORM;
         if(!supported)throw std::runtime_error("Unsupported glass format and transfer-function pair");
-        if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format||runtime->outputSpace!=frame->colorSpace)){notificationsActive.store(false,std::memory_order_relaxed);nativeOverlaysSelected.store(false,std::memory_order_relaxed);runtime.reset();}
+        if(runtime&&(runtime->device.Get()!=frame->device||runtime->width!=int(desc.Width)||runtime->height!=int(desc.Height)||runtime->format!=desc.Format||runtime->outputSpace!=frame->colorSpace)){notificationsActive.store(false,std::memory_order_relaxed);nativeOverlaysSelected.store(false,std::memory_order_relaxed);reshadeUi.store(-1,std::memory_order_relaxed);runtime.reset();}
         if(!runtime){if(host->log)host->log(host->user,"Initializing glass overlay");runtime=std::make_unique<Runtime>();runtime->Init(*host,*frame,desc);if(host->log)host->log(host->user,runtime->dx12Interop?"Glass overlay ready: DirectX 12":"Glass overlay ready: DirectX 11");}drawn=runtime->Draw(*host,*frame,target.Get());notificationsActive.store(drawn&&runtime->controls->primaryMenu!="optiscaler",std::memory_order_relaxed);nativeOverlaysSelected.store(runtime->controls->primaryMenu=="optiscaler",std::memory_order_relaxed);
-    }catch(const std::exception& error){notificationsActive.store(false,std::memory_order_relaxed);nativeOverlaysSelected.store(false,std::memory_order_relaxed);runtime.reset();if(!logged&&host->log){host->log(host->user,error.what());logged=true;}}
+        const auto& menus = runtime->controls->menuSettings;
+        const int policy = runtime->lastPreferences.contains("reshade_ui")
+            ? (menus.at("reshade-menu") ? 1 : 0) | (menus.at("reshade-intro") ? 2 : 0)
+            : -1;
+        reshadeUi.store(policy, std::memory_order_relaxed);
+    }catch(const std::exception& error){notificationsActive.store(false,std::memory_order_relaxed);nativeOverlaysSelected.store(false,std::memory_order_relaxed);reshadeUi.store(-1,std::memory_order_relaxed);runtime.reset();if(!logged&&host->log){host->log(host->user,error.what());logged=true;}}
     if(uninitialize)CoUninitialize();return drawn;
 }
 void ReleaseGlassBridge12();
-extern "C" __declspec(dllexport) void __cdecl ForgeGlassRelease(){std::lock_guard guard(mutex);notificationsActive.store(false,std::memory_order_relaxed);nativeOverlaysSelected.store(false,std::memory_order_relaxed);runtime.reset();ReleaseGlassBridge12();logged=false;}
+extern "C" __declspec(dllexport) void __cdecl ForgeGlassRelease(){std::lock_guard guard(mutex);notificationsActive.store(false,std::memory_order_relaxed);nativeOverlaysSelected.store(false,std::memory_order_relaxed);reshadeUi.store(-1,std::memory_order_relaxed);runtime.reset();ReleaseGlassBridge12();logged=false;}

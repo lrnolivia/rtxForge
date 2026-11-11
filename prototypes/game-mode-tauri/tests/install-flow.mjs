@@ -3,7 +3,7 @@ import {chromium,expect} from '@playwright/test';
 const browser=await chromium.launch({...(process.env.RTXFORGE_BROWSER?{channel:process.env.RTXFORGE_BROWSER}:{}),headless:true});
 const page=await browser.newPage({viewport:{width:1440,height:990},reducedMotion:'reduce'}),calls=[],errors=[];
 page.on('pageerror',error=>errors.push(error.message));
-let source,prepareRelease,executeRelease,splitRelease,progressId,mode='ready',installed=false,splitInstalled=false,feederMode=false,feederSaved=false,savedPreset;
+let source,prepareRelease,executeRelease,splitRelease,progressId,mode='ready',installed=false,splitInstalled=false,feederMode=false,feederSaved=false,savedPreset,splitEnabled=true;
 await page.addInitScript(()=>{window.fixtureEvents=[];window.EventSource=class{constructor(){window.fixtureEvents.push(this);queueMicrotask(()=>this.onopen?.());}close(){this.onmessage=null;}};});
 await page.route('**/api/snapshot',async route=>{const response=await route.fetch();source=process.env.RTXFORGE_UI_FIXTURE?libraryFixture():await response.json();source.games=source.games.slice(0,3);source.defaults.runtime_provider='skynizz';source.defaults.default_profile='nr-mfg';await route.fulfill({json:source});});
 await page.route('**/api/engine/status',route=>route.fulfill({json:{enabled:true,reason:'Fixture only; no files changed.'}}));
@@ -11,6 +11,7 @@ await page.route('**/api/engine',async route=>{
  const request=route.request().postDataJSON();calls.push(request);let result={};
  if(request.method==='scan_game'){const game=source.games.find(item=>item.path===request.params.folder)||source.games[0];result=[{name:game.name,game:game.path,exe:'fixture.exe',runtime_provider:'skynizz',feature_mode:'nr-mfg',installed,nr_strength:2,feature_controls:{enabled:1,intensity:2},dynamic_mfg_available:true}];}
  else if(request.method==='nr_catalog')result={
+  enabled:splitEnabled,
   addons:[{id:'lecram',name:'Lecram',builds:[{id:'10.8',label:'10.8',default:true}]},{id:'shortfuse',name:'ShortFuse',builds:[{id:'1.0',label:'1.0',default:true},{id:'2.0',label:'2.0'}]}],
   models:[{id:'old',label:'Old DLSS 5 (310.8)'},{id:'new',label:'New DLSS 5 (310.9.16)'}],
   combos:{'characters-and-world':{name:'Characters + world',builtin:true,character:{addon:'shortfuse',model:'new'}},
@@ -25,7 +26,9 @@ await page.route('**/api/engine',async route=>{
   }}:{})
  };
  else if(request.method==='feeder_character_apply'){feederSaved=true;result={message:'Pass 4 saved as Character for the next launch.'};}
- else if(request.method==='nr_match')result=request.params.choice.model==='old'?[]:request.params.rows.slice(0,2).map((_,index)=>({index,summary:'Environment: Lecram · Model: 310.9.16'}));
+ else if(request.method==='nr_match')result=request.params.remove
+  ? request.params.rows.slice(0,2).map((_,index)=>({index,summary:'Split Render installed'}))
+  : request.params.choice.model==='old'?[]:request.params.rows.slice(0,2).map((_,index)=>({index,summary:'Environment: Lecram · Model: 310.9.16'}));
  else if(request.method==='nr_status')result={installed:splitInstalled,setup:splitInstalled?{environment:{addon:'optiscaler'},character:{addon:'shortfuse'}}:undefined};
  else if(request.method==='nr_check')result={ok:true,verified:true};
  else if(request.method==='nr_combo_save'){
@@ -35,7 +38,13 @@ await page.route('**/api/engine',async route=>{
   await new Promise(resolve=>splitRelease=resolve);
   result={rows:[{game:source.games[0].path,name:source.games[0].name,summary:'Environment: Skynizz · Character detail: ShortFuse',details:'Add renodx-dlss.addon64'}]};
  }
- else if(request.method==='nr_review')result={token:'exact-nr-review',title:request.params.remove?'Remove Split Render':'Review Split Render',action:request.params.remove?'Remove Split Render':'Install Split Render',rows:[{game:source.games[0].path,name:source.games[0].name,summary:'Environment: Skynizz · Character detail: ShortFuse',details:'Add renodx-dlss.addon64'}]};
+ else if(request.method==='nr_review'){
+  const remove=request.params.remove,rows=request.params.rows||[request.params.row];
+  result={token:'exact-nr-review',title:remove?(request.params.rows?'Review Split Render removal':'Remove Split Render'):'Review Split Render',
+    action:remove?'Remove Split Render':'Install Split Render',
+    rows:rows.map(row=>({game:row.game,name:row.name,summary:remove?'Remove the recorded setup.':'Environment: Skynizz · Character detail: ShortFuse',
+      details:remove?'Remove renodx-dlss.addon64':'Add renodx-dlss.addon64'}))};
+ }
  else if(request.method==='run'&&request.params.token==='exact-nr-review')result={message:'Split Render installed in 1 game.'};
  else if(['prepare_routes','prepare_dlss'].includes(request.method)){
   if(mode==='delayed')await new Promise(resolve=>prepareRelease=resolve);
@@ -154,5 +163,53 @@ try{
  await expect(page.locator('.operation-modal')).toHaveCount(0);
  mode='ready';installed=true;await page.reload();await page.locator('.game-card').first().click();await click('Restore Original Files');await expect(page.getByRole('button',{name:'Restore files',exact:true})).toBeVisible();await screenshot('restore');await click('Back');
  await expect.poll(()=>calls.filter(c=>c.method==='discard_routes').at(-1)?.params.tokens).toEqual(['exact-install-review']);
+ splitEnabled=false;await click('Packages');
+ await expect(page.getByText('New setups are paused while performance and image quality are improved.')).toBeVisible();
+ await expect(page.getByText('Choose games',{exact:true})).toHaveCount(0);
+ await click('Remove Split Render');
+ const picker=page.getByRole('dialog',{name:'Remove Split Render',exact:true});
+ await expect(picker).toBeVisible();
+ await page.keyboard.press('ArrowDown');
+ await expect(picker.getByRole('searchbox',{name:'Search games'})).toBeFocused();
+ await expect(picker.locator('[data-nr-target]')).toHaveCount(2);
+ await click('Select all');
+ await expect(picker.locator('[data-nr-target]:checked')).toHaveCount(2);
+ await expect(picker.getByRole('button',{name:'Review selection'})).toBeInViewport();
+ expect(await picker.locator('.nr-target-choice').evaluateAll(rows=>rows.every(row=>
+   row.querySelector('.flow-thumbnail').getBoundingClientRect().right <=
+   row.querySelector('.split-game-title').getBoundingClientRect().left))).toBe(true);
+ await screenshot('bulk-removal-picker');
+ await page.setViewportSize({width:480,height:400});
+ await expect(picker.getByRole('button',{name:'Review selection'})).toBeInViewport();
+ await expect(picker.getByRole('searchbox',{name:'Search games'})).toBeInViewport();
+ await expect(page.locator('#toast')).toHaveCSS('z-index','49');
+ await page.setViewportSize({width:1440,height:990});
+ await click('Review selection');
+ await expect(page.getByRole('heading',{name:'Review Split Render removal',exact:true})).toBeVisible();
+ await page.setViewportSize({width:480,height:400});
+ await expect(page.getByRole('button',{name:'Remove Split Render',exact:true})).toBeInViewport();
+ await page.setViewportSize({width:1440,height:990});
+ await expect(page.getByRole('button',{name:'Remove Split Render',exact:true})).toBeEnabled();
+ expect(calls.filter(c=>c.method==='nr_review').at(-1).params).toMatchObject(
+   {remove:true,rows:source.games.slice(0,2).map(game=>({game:game.path}))});
+ const details=page.getByRole('region',{name:'Details for '+source.games[0].name,exact:true});
+ const infoButton=page.getByRole('button',{name:'Show details for '+source.games[0].name,exact:true});
+ await infoButton.hover();
+ await expect(infoButton).toHaveCSS('outline-style','none');
+ await expect(infoButton).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+ await infoButton.click();
+ await expect(details).toContainText('Remove renodx-dlss.addon64');
+ await expect(details).toBeInViewport();
+ await screenshot('bulk-removal-review');
+ await page.keyboard.press('Escape');
+ await expect(details).toBeHidden();
+ await expect(page.getByRole('heading',{name:'Review Split Render removal',exact:true})).toBeVisible();
+ await click('Back');
+ await expect(picker.locator('[data-nr-target]:checked')).toHaveCount(2);
+ await page.keyboard.press('Escape');
+ await expect(picker).toBeHidden();
+ await expect(page.getByRole('button',{name:'Remove Split Render',exact:true})).toBeFocused();
+ await click('Presets');
+ await expect(page.getByRole('heading',{name:'Split Render Presets',exact:true})).toHaveCount(0);
  expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['startup before preparation','original runtime units and exact targets','responsive startup controls','checking/progress/results with artwork','real progress events preserve Cancel focus','trust gates and explicit supported subsets','exact cancel/discard tokens','honest cancellation and failure','Split Render reviewed before one install run','compatibility filtering and bulk controls in Packages','package-specific preset editor feeds install-only Tools','per-game Tools review without selection checkboxes','Feeder can assign Character to any full-frame pass','restore review','fixture-only no game mutation']}));
 }finally{prepareRelease?.();executeRelease?.();splitRelease?.();await browser.close();}

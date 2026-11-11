@@ -222,7 +222,6 @@ select { padding: 10dp 16dp; }
 .prototype-toolbar button { font-size: 16dp; height: 36dp; line-height: 36dp; padding: 0 14dp; }
 .prototype-toolbar button.selected { background: #c7685024; color: #813e2b; }
 #layout-switch { display: flex; }
-.prototype-toolbar select { width: 116dp; height: 36dp; font-size: 16dp; padding: 5dp 10dp; }
 .sidebar { display: none; }
 .welcome { z-index: 3; }
 .layout-centered .main-panel { left: 50vw; top: 50vh; margin-left: -470dp; margin-top: -390dp; width: 940dp; height: 780dp; max-height: 88vh; overflow-y: hidden; }
@@ -336,7 +335,6 @@ button:active { transform: scale(.98); }
 .ratios button { padding: 0 8dp; font-size: 18dp; }
 .preview-label { font-size: 15dp; color: #514b44; margin: 0 8dp; }
 .prototype-toolbar { left: 50vw; padding: 7dp 12dp; }
-#scene-select { width: 230dp; height: 38dp; font-size: 17dp; margin: 0; }
 .settings-menu { width: 280dp; right: 0; top: 46dp; padding: 12dp; }
 .settings-menu button { height: 48dp; line-height: 48dp; font-size: 19dp; padding: 0 14dp; }
 .settings-menu #layout-switch { display: flex; }
@@ -446,7 +444,7 @@ button:active { transform: scale(.98); }
 .layout-bar .metadata-compact .metadata-top { margin-bottom: 3dp; font-size: 16dp; }
 .layout-bar .metadata-compact .metadata-line { font-size: 12dp; gap: 12dp; }
 .layout-bar .metadata-compact .feature-status { display: none; }
-.layout-bar .tuning-sections { margin-top: 24dp; }
+.layout-bar .tuning-sections { margin-top: 30dp; }
 /* The live overlay shows the preset row in Bar when a game lacks NR or FG; keep the Bar's row gap above it. */
 .layout-bar .overview .preset-row { margin-top: 24dp; }
 @media (max-width: 1400dp) {
@@ -484,10 +482,6 @@ button:active { transform: scale(.98); }
 .shortcut-bind .keycap { min-width: 54dp; height: 30dp; line-height: 29dp; }
 .settings-page .main-panel > h1 { display: none; }
 .layout-centered .settings-screen { position: absolute; left: 280dp; top: 154dp; width: 720dp; height: 700dp; overflow-y: auto; padding-right: 24dp; }
-.layout-bar.settings-page .main-panel { width: 660dp; height: auto; max-height: 88vh; left: 32dp; top: 32dp; bottom: auto; margin-left: 0; margin-top: 0; padding: 30dp 38dp; }
-.layout-bar.settings-page .brand-row { position: relative; left: auto; top: auto; width: auto; }
-.layout-bar.settings-page .window-actions { display: flex; }
-.layout-bar.settings-page .settings-screen { display: block; }
 .compact-live { display: flex; gap: 14dp; margin-top: 14dp; }
 .mini-stat { flex: 1; min-width: 0; height: 68dp; padding: 10dp 14dp; border-radius: 10dp; background: #ffffff0b; }
 .mini-stat-label { display: flex; align-items: center; font-size: 12dp; white-space: nowrap; }
@@ -543,7 +537,7 @@ button:active { transform: scale(.98); }
 
 .button-label { display: block; flex-shrink: 0; }
 .count-stepper button .button-label { font-size: 24dp; }
-.layout-bar .model-single { display: none; }
+.layout-bar .overview .model-single { display: none; }
 .layout-bar .hdr-entry { position: absolute; top: 14dp; right: 160dp; width: 110dp; height: 44dp; margin: 0; padding: 8dp 14dp; }
 #hdr-main-fields select, #hdr-popup-fields select { display: block; width: 100%; }
 #hdr-main-fields h3 { text-transform: uppercase; }
@@ -604,12 +598,11 @@ h2 .glyph, .model-field label .glyph, .field-heading label .glyph { margin: 0 10
    inset rather than applying CSS absolute positioning that it overrides. */
 select selectarrow { position: static; margin: 7dp 18dp 0 0; }
 .appearance-panel select selectarrow { margin-top: 6dp; }
-#scene-select selectarrow { margin-top: 9dp; }
 select selectvalue { min-width: 0; padding-right: 28dp; }
 .welcome { max-width: 96vw; }
 .group-heading { height: 50dp; padding: 0 44dp 0 18dp; }
 .group-heading .chevron { right: 18dp; }
-.layout-centered .sidebar #nav-look, .layout-centered .sidebar #nav-passes { padding-left: 26dp; font-size: 17dp; }
+.layout-centered .sidebar .neural-subpage { padding-left: 26dp; font-size: 17dp; }
 .layout-centered .sidebar #nav-frame { margin-top: 18dp; }
 .compact-height .settings-heading { margin-bottom: 18dp; }
 .compact-height .appearance-block { margin-bottom: 18dp; }
@@ -634,12 +627,14 @@ select selectvalue { min-width: 0; padding-right: 28dp; }
 .layout-bar .tuning-footer { display: flex; align-items: center; gap: 18dp; }
 .layout-bar .preview-original { width: auto; margin: 0; padding: 0 20dp; }
 .settings-page .main-panel > .tuning-footer { display: none; }
-.bar-settings .main-panel > .tuning-footer { display: flex; }
-.layout-bar.bar-settings .main-panel { pointer-events: none; }
-.bar-settings #inspector .inspector-heading, .bar-settings #inspector .inspector-footer, .bar-settings #inspector > div { display: none; }
-.bar-settings #inspector #settings-modal-host { display: block; }
-.bar-settings #settings-screen { position: relative; width: 100%; height: auto; padding: 0; overflow-y: visible; }
-.bar-settings #settings-screen .settings-title { margin-top: 0; }
+.standalone-settings .main-panel > .tuning-footer { display: flex; }
+.standalone-settings .main-panel { pointer-events: none; }
+.standalone-settings .main-panel > h1 { display: block; }
+.layout-bar.standalone-settings .main-panel > h1 { display: none; }
+.standalone-settings #inspector .inspector-heading, .standalone-settings #inspector .inspector-footer, .standalone-settings #inspector > div { display: none; }
+.standalone-settings #inspector #settings-modal-host { display: block; }
+.standalone-settings #settings-screen { position: relative; width: 100%; height: auto; padding: 0; overflow-y: visible; }
+.standalone-settings #settings-screen .settings-title { margin-top: 0; }
 .layout-centered #inspector-close, .inspector.anchored #inspector-close { display: none; }
 .production-ui .preview-only { display: none; }
 .brand-lockup { gap: 7dp; }
@@ -650,8 +645,8 @@ select selectvalue { min-width: 0; padding-right: 28dp; }
 .main-panel .window-actions .hdr-entry { position: relative; left: auto; right: auto; top: auto; bottom: auto; display: flex; align-items: center; justify-content: center; width: auto; height: 38dp; margin: 0; padding: 0 14dp; gap: 8dp; font-size: 17dp; border-radius: 9dp; }
 .main-panel .window-actions .hdr-entry .glyph { width: 20dp; height: 20dp; margin: 0; }
 .modal-close { display: none; }
-.bar-settings .modal-close { display: flex; }
-.bar-settings #settings-back { display: none; }
+.standalone-settings .modal-close { display: flex; }
+.standalone-settings #settings-back { display: none; }
 .field-heading label span { font-size: var(--copy-size); }
 .compact-content.layout-centered .tuning-footer { flex-direction: column; align-items: stretch; gap: 10dp; }
 .compact-content.layout-centered .preview-original { width: 100%; }
@@ -660,8 +655,11 @@ select selectvalue { min-width: 0; padding-right: 28dp; }
 
 .main-panel > .overview, .main-panel > .settings-screen { flex: 1 1 auto; }
 .layout-bar .overview { position: static; }
-.layout-bar.bar-settings .main-panel { padding: 22dp 28dp; }
+.layout-bar.standalone-settings .main-panel { padding: 22dp 28dp; }
 .compact-height .main-panel > h1 { display: none; }
+.compact-height .main-panel > .overview { margin-top: 16dp; }
+.layout-centered.compact-height .main-panel > .overview,
+.layout-bar.compact-height .main-panel > .overview { margin-top: 0; }
 .compact-height .main-panel { padding: 24dp 32dp; }
 .layout-bar.compact-height .main-panel { padding: 20dp 24dp; }
 .compact-height .tuning-footer { margin-top: 12dp; padding-top: 12dp; }
@@ -711,7 +709,7 @@ h2, h3 { text-transform: uppercase; }
 /* One type hierarchy across Side Panel, Advanced and Bar. */
 body { --page-size: 30dp; --group-size: 20dp; --meta-size: 16dp; --micro-size: 14dp; --glyph-size: 22dp; --heading-glyph-size: 26dp; --sample-size: 26dp; --sample-small: 23dp; --sample-large: 29dp; }
 .glass label, .glass button, .glass select, .glass .text-link,
-.layout-centered .sidebar button, .layout-centered .sidebar #nav-look, .layout-centered .sidebar #nav-passes,
+.layout-centered .sidebar button, .layout-centered .sidebar .neural-subpage,
 .glass .count-stepper span, .glass .field-heading span, .glass #scale-value,
 .main-panel .window-actions .hdr-entry, .glass .preview-original, .compact-height .preview-original,
 .glass .inspector-footer button, .glass .save-actions button { font-size: var(--copy-size); line-height: 1.3; }
@@ -739,7 +737,6 @@ body { --page-size: 30dp; --group-size: 20dp; --meta-size: 16dp; --micro-size: 1
 .settings-title, .settings-heading, .inspector-heading { gap: 12dp; }
 .settings-title h2, .settings-heading h2, .inspector-heading h2 { flex: 1; min-width: 0; }
 #settings-back { display: none; }
-.bar-settings #settings-back { display: flex; }
 .layout-centered #inspector-back { display: none; }
 .inactive-dependent { opacity: .45; }
 .header-status { display: none; }
@@ -798,7 +795,7 @@ body { --page-size: 30dp; --group-size: 20dp; --meta-size: 16dp; --micro-size: 1
 /* Session cards share their compact and expanded hierarchy. */
 body { --utility-size: 19dp; --segment-size: 20dp; }
 #header-status { display: none; }
-#feature-status { position: relative; left: auto; top: auto; display: flex; align-items: center; width: 350dp; max-width: 100%; box-sizing: border-box; height: auto; min-height: 32dp; padding: 5dp 12dp; margin: 14dp 0; border-radius: 22dp; background: var(--nested-fill); gap: 12dp; }
+#feature-status { position: relative; left: auto; top: auto; display: flex; align-items: center; width: 350dp; max-width: 100%; box-sizing: border-box; height: auto; min-height: 32dp; padding: 5dp 12dp; margin: 14dp 0; border-radius: 10dp; background: var(--nested-fill); gap: 12dp; }
 .metadata-compact #feature-status { margin: 12dp 0; background: var(--nested-fill); }
 .layout-centered #feature-status { margin: 0 0 26dp; }
 .layout-bar .metadata-compact { flex: 0 1 330dp; width: 330dp; min-height: 78dp; padding: 10dp 14dp; background: var(--section-fill); border: 1dp var(--section-rim); border-radius: 16dp; box-shadow: var(--section-shadow); }
@@ -829,9 +826,9 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .layout-bar.compact-height .tuning-footer { flex-wrap: nowrap; gap: 12dp; margin-top: 8dp; padding-top: 8dp; }
 .layout-bar.compact-height .footer { flex: 0 0 auto; }
 .layout-bar.compact-height .footer button, .layout-bar.compact-height .preview-original { height: 34dp; padding-left: 10dp; padding-right: 10dp; }
-.layout-centered .sidebar button, .layout-centered .sidebar #nav-look, .layout-centered .sidebar #nav-passes { padding-left: 20dp; padding-right: 20dp; }
+.layout-centered .sidebar button, .layout-centered .sidebar .neural-subpage { padding-left: 20dp; padding-right: 20dp; }
 .layout-centered .sidebar button { min-height: 50dp; margin-bottom: 6dp; padding-top: 10dp; padding-bottom: 10dp; }
-.layout-centered .sidebar #nav-look, .layout-centered .sidebar #nav-passes { width: auto; min-height: 46dp; margin-left: 14dp; margin-bottom: 4dp; padding-left: 26dp; padding-right: 20dp; }
+.layout-centered .sidebar .neural-subpage { width: auto; min-height: 46dp; margin-left: 14dp; margin-bottom: 4dp; padding-left: 26dp; padding-right: 20dp; }
 /* Utility actions and segmented choices keep a quieter type role. */
 .glass .quiet, .glass .save, .glass .footer button, .glass .preview-original,
 .main-panel .window-actions .hdr-entry { font-size: var(--utility-size); }
@@ -932,9 +929,10 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .layout-picker { background: transparent; box-shadow: none; }
 .quick-layout-open.layout-bar .window-actions { width: var(--quick-layout-width); }
 .quick-layout-open.layout-bar .main-panel .brand-lockup { opacity: 1; }
+.wide-content #nr-primary { display: flex; flex: 1 0 100%; flex-wrap: wrap; gap: 20dp; }
 .wide-content #nr-body { display: flex; flex-wrap: wrap; gap: 18dp 24dp; align-items: flex-start; }
-.wide-content #nr-body > .field-heading, .wide-content #nr-style, .wide-content #nr-body > .model-row, .wide-content #nr-body > .inspector-links { flex: 1 0 100%; }
-.wide-content #nr-body > .slider-field, .wide-content #nr-body > .model-single { flex: 1 1 320dp; min-width: 0; margin-top: 8dp; }
+.wide-content #nr-body > .field-heading, .wide-content #nr-style, .wide-content #nr-primary > .model-row, .wide-content #nr-body > .inspector-links { flex: 1 0 100%; }
+.wide-content #nr-primary > .slider-field, .wide-content #nr-primary > .model-single { flex: 1 1 320dp; min-width: 0; margin-top: 8dp; }
 /* Desktop settings thumbnail is a quiet layout/material sample. */
 .preview-thumbnail .preset-row, .preview-thumbnail .metadata-compact, .preview-thumbnail .metadata-expanded, .preview-thumbnail .section-heading .icon-button, .preview-thumbnail .slider-field, .preview-thumbnail .model-single, .preview-thumbnail .model-row, .preview-thumbnail .inspector-links, .preview-thumbnail .field-heading, .preview-thumbnail .tuning-footer, .preview-thumbnail .hint { display: none; }
 .preview-thumbnail .main-panel { min-height: 0; }
@@ -944,7 +942,21 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .preview-chrome .close { width: 38dp; height: 38dp; border-radius: 19dp; background: #27262466; }
 .side-panel-position { margin-top: 20dp; }
 .side-panel-position .segments { margin-top: 12dp; }
-.desktop-preview .prototype-toolbar select { width: 250dp; }
+.desktop-preview .prototype-toolbar { transform: none; }
+#scene-select { --scene-width: 230dp; --scene-height: 38dp; width: var(--scene-width); height: var(--scene-height); font-size: 17dp; margin: 0; padding: 0; }
+.desktop-preview #scene-select { --scene-width: 352dp; --scene-height: 44dp; }
+#scene-select selectvalue {
+    width: var(--scene-width); box-sizing: border-box; padding: 0 34dp;
+    line-height: var(--scene-height); text-align: center; text-overflow: ellipsis;
+}
+#scene-select selectarrow { margin-top: 14dp; }
+.desktop-preview #scene-select selectarrow { margin-top: 17dp; }
+.desktop-preview .prototype-toolbar .preview-label { min-width: 62dp; }
+.desktop-preview #scene-select selectbox { max-height: 360dp; margin-top: 6dp; margin-bottom: 6dp; }
+.desktop-preview #scene-select option, .select-menu.game-picker-menu .menu-option {
+    box-sizing: border-box; min-height: 36dp; padding: 8dp 12dp; line-height: 20dp; white-space: normal;
+}
+.select-menu.game-picker-menu { border-radius: 10dp; }
 .desktop-preview.preview-picker-left .prototype-toolbar { left: 24dp; right: auto; transform: none; }
 .desktop-preview.preview-picker-right .prototype-toolbar { left: auto; right: 76dp; transform: none; }
 .desktop-preview.preview-picker-bottom .prototype-toolbar { top: auto; bottom: 24dp; }
@@ -1001,9 +1013,9 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 
 .wide-content #nr-body { flex-wrap: wrap; gap: 20dp; align-items: flex-start; }
 .wide-content #nr-body > .field-heading, .wide-content #nr-style, .wide-content #nr-body > .inspector-links { flex: 1 0 100%; }
-.wide-content #nr-body > .slider-field { flex: 1 1 300dp; min-width: 0; margin: 0; }
-.wide-content #nr-body > .model-single { flex: 1 1 300dp; min-width: 0; margin: 0; }
-.wide-content #nr-body > .model-row { flex: 2 1 580dp; min-width: 0; margin: 0; }
+.wide-content #nr-primary > .slider-field { flex: 1 1 300dp; min-width: 0; margin: 0; }
+.wide-content #nr-primary > .model-single { flex: 1 1 300dp; min-width: 0; margin: 0; }
+.wide-content #nr-primary > .model-row { flex: 2 1 580dp; min-width: 0; margin: 0; }
 .welcome .toast-icon { width: 22dp; height: 22dp; margin: 0 2dp 0 auto; }
 /* Only while a notification shows its icon: a hidden icon still matches the
    sibling selector, which left the welcome prompt beside the logo. */
@@ -1054,8 +1066,17 @@ select selectbox { opacity: 0; }
 #addons-fields .addon-choice { display: flex; align-items: center; gap: 12dp; }
 #addons-fields .addon-choice .field-heading { flex: 1; min-width: 0; }
 #addons-fields .addon-choice select { width: 112dp; }
+#addons-fields .addon-processing select { width: 192dp; max-width: 58%; }
 #addons-fields .split-more-trigger { width: 100%; margin-top: 14dp; }
 .split-extra-options { display: none; margin-top: 16dp; }
 .split-extra-options.expanded, .layout-centered .split-extra-options { display: block; }
 .layout-centered #addons-fields .split-more-trigger { display: none; }
 .split-extra-options h4 { font-size: var(--group-size); font-weight: 600; color: var(--accent-ink); }
+.preset-caption { display: block; margin: 0 0 8dp; }
+.layout-centered #game-presets { margin-bottom: 22dp; }
+.layout-bar .overview #game-presets { display: none; }
+.layout-centered #inspector.split-no-reset { background: transparent; border-color: transparent; box-shadow: none; }
+.layout-bar #nr-primary .model-row { gap: 12dp; }
+#processing-primary { display: none; }
+.neural-core-popup #processing-primary { display: block; }
+.neural-core-popup #field-extra-popup-pre_sr, .neural-core-popup #field-extra-popup-work_scale { display: none; }

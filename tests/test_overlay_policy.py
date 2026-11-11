@@ -22,6 +22,7 @@ class OverlayPolicyTest(unittest.TestCase):
             self.assertEqual(result.get('INPUT', 'KeyOverlay'), '45,1,0,0' if settings['reshade_ui'] else '0,0,0,0')
             self.assertEqual(result.get('INPUT', 'GamepadNavigation'), '1' if settings['reshade_ui'] else '0')
             self.assertEqual(result.get('OVERLAY', 'TutorialProgress'), '0' if settings['reshade_intro'] else '4')
+            self.assertEqual(result.getboolean('rtxForge.UI', 'QuietStartup'), not settings['reshade_intro'])
             self.assertEqual(result.get('RenoDX.DLSS5', 'UiWelcomed'), '0' if settings['reshade_intro'] else '1')
             for section in ('DlssNr', 'DLSSG', 'GENERAL'):
                 self.assertEqual(dict(result[section]), dict(t.ini(text)[section]))
@@ -48,7 +49,7 @@ class OverlayPolicyTest(unittest.TestCase):
     def test_unchanged_reshade_policy_keeps_windows_line_endings_and_spacing(self):
         text = ('[INPUT]\r\nKeyOverlay = 45,1,0,0\r\nGamepadNavigation = 1\r\n'
                 '[OVERLAY]\r\nTutorialProgress = 4\r\n[RenoDX.DLSS5]\r\nUiWelcomed = 1\r\n'
-                '[rtxForge.UI]\r\nReShadeDisabled = 0\r\n')
+                '[rtxForge.UI]\r\nReShadeDisabled = 0\r\nQuietStartup = 1\r\n')
         self.assertEqual(policy.reshade(text, {}), text)
 
 

@@ -238,10 +238,50 @@ static void PlacePreviewPicker(Controller& c)
     c.document->SetClass("preview-picker-right",sidePanel&&c.sidePanelSide!="right");
     c.document->SetClass("preview-picker-bottom",desktop&&c.layout=="bar"&&c.barPosition=="top");
     auto* picker=c.Element("game-picker");picker->SetClass("glass",desktop);
-    if(!desktop){picker->RemoveProperty("top");return;}
-    if(sidePanel)picker->SetProperty("top",std::to_string(c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y)+"px");else picker->RemoveProperty("top");
+    if(!desktop){picker->RemoveProperty("top");picker->RemoveProperty("left");return;}
+    if(sidePanel){
+        picker->RemoveProperty("left");
+        picker->SetProperty("top",std::to_string(c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y)+"px");
+    }else{
+        picker->RemoveProperty("top");
+        const auto viewport=c.document->GetContext()->GetDimensions();
+        const float width=picker->GetBox().GetSize(Rml::BoxArea::Border).x;
+        picker->SetProperty("left",std::to_string(std::max(0.f,(viewport.x-width)*.5f))+"px");
+    }
     auto* main=c.Element("main-panel");for(const auto* state:{"dark","clear","accent-theme"})picker->SetClass(state,main->IsClassSet(state));
     for(const auto* name:{"--accent","--accent-ink","--accent-soft","--menu-fill","--menu-ink","--menu-hover"})if(const auto* value=main->GetProperty(name))picker->SetProperty(name,value->Get<Rml::String>());
+}
+static void TestPreviewGameMenu(Rml::Context* context, Rml::ElementFormControlSelect* select)
+{
+    Rml::Element* popup=nullptr;
+    for(int i=0;i<select->GetNumChildren(true);++i){
+        auto* child=select->GetChild(i);
+        if(child->GetTagName()=="selectbox"){popup=child;break;}
+    }
+    Require(popup&&popup->IsVisible(true),"Preview game menu did not open");
+    const float dp=context->GetDensityIndependentPixelRatio();
+    Require(popup->GetBox().GetSize(Rml::BoxArea::Border).y<=380*dp,"Preview game menu is too tall");
+    popup->SetScrollTop(popup->GetScrollHeight());
+    context->Update();
+    const auto at=popup->GetAbsoluteOffset(Rml::BoxArea::Border);
+    const auto bounds=popup->GetBox().GetSize(Rml::BoxArea::Border);
+    const int before=select->GetSelection();
+    for(int i=popup->GetNumChildren()-1;i>=0;--i){
+        auto* option=popup->GetChild(i);
+        const auto position=option->GetAbsoluteOffset(Rml::BoxArea::Border);
+        const auto size=option->GetBox().GetSize(Rml::BoxArea::Border);
+        const Rml::Vector2f point{position.x+size.x*.5f,position.y+size.y*.5f};
+        if(i==before||point.y<=at.y||point.y>=at.y+bounds.y)continue;
+        Require(!PreviewBackgroundAt(point),"Preview game row was treated as window drag space");
+        context->ProcessMouseMove(int(point.x),int(point.y),0);
+        context->ProcessMouseButtonDown(0,0);
+        context->ProcessMouseButtonUp(0,0);
+        context->Update();
+        Require(select->GetSelection()==i&&!select->IsSelectBoxVisible(),"Preview game row did not accept mouse selection");
+        std::cout<<"native_preview_game_menu_mouse_and_scroll=passed\n";
+        return;
+    }
+    throw std::runtime_error("No scrolled preview game row was visible");
 }
 static void TestPreviewPicker(Controller& c,Rml::Context* context)
 {
@@ -260,8 +300,7 @@ static void TestPreviewPicker(Controller& c,Rml::Context* context)
                 if(c.sidePanelSide=="right")Require(std::fabs(at.x-24*dp)<1,"Right Side Panel must put game selection at the far left");
                 else Require(std::fabs(size.x-at.x-bounds.x-76*dp)<1,"Left Side Panel must put game selection at the far right, clear of Close");
             }else{
-                Rml::Vector2f center{size.x*.5f,at.y+bounds.y*.5f};
-                Require(picker->Project(center)&&std::fabs(center.x-at.x-bounds.x*.5f)<1,"Advanced and Bar must restore centered game selection");
+                Require(std::fabs(size.x*.5f-at.x-bounds.x*.5f)<1,"Advanced and Bar must restore centered game selection");
             }
         }
         c.Layout("bar");
@@ -303,12 +342,15 @@ static void TestLayout(Controller& c,Rml::Context* context)
             Require(std::fabs(c.Element("preview-original")->GetComputedValues().font_size()-(copy-3)*context->GetDensityIndependentPixelRatio())<.2f,"Preview action lost its utility type role");
             const auto icon=c.Element("open-settings")->QuerySelector(".glyph");Require(std::fabs(icon->GetBox().GetSize(Rml::BoxArea::Border).x-copyPx)<.2f,"Chrome glyph does not follow the text scale");
             const auto header=rect(c.document->QuerySelector(".brand-row")),footer=rect(c.Element("tuning-footer"));auto* scroll=c.Element("overview");if(scroll->GetClientHeight()<=30)throw std::runtime_error("Tuning scroll region collapsed: "+c.layout+" "+std::to_string(view.x)+"x"+std::to_string(view.y)+" scale="+std::to_string(scale)+" copy="+std::to_string(copy)+" height="+std::to_string(scroll->GetClientHeight()));scroll->SetScrollTop(scroll->GetScrollHeight());settle();const auto headerAfter=rect(c.document->QuerySelector(".brand-row")),footerAfter=rect(c.Element("tuning-footer"));Require(std::fabs(header[1]-headerAfter[1])<2&&std::fabs(footer[1]-footerAfter[1])<2,"Header or footer scrolled with content");scroll->SetScrollTop(0);settle();
+            const float dp=context->GetDensityIndependentPixelRatio();
+            if(c.layout=="floating")Require(rect(c.Element("open-session"))[1]-header[3]>=16*dp-1,"Side Panel cards touch the header");
             if(c.layout=="bar"){
+                Require(rect(c.document->QuerySelector(".tuning-sections"))[1]-header[3]>=30*dp-1,"Bar cards touch the header");
                 settle();contains("feature-status",rect(c.Element("open-session")));contains("bar-live",rect(c.Element("main-panel")));
                 const auto stats=rect(c.Element("bar-live")),actions=rect(c.document->QuerySelector(".window-actions"));Require(stats[2]<=actions[0]+2||stats[3]<=actions[1]+2||actions[3]<=stats[1]+2,"Bar stats overlap window actions");
                 contains("preview-original",rect(c.Element("main-panel")));contains("defaults",rect(c.Element("main-panel")));
                 const auto history=rect(c.Element("defaults")),compare=rect(c.Element("preview-original"));Require(history[2]<=compare[0]+2||history[3]<=compare[1]+2||compare[3]<=history[1]+2,"Bar history and comparison overlap");
-                c.Open("look");c.Settings(true);settle();contains("inspector",viewport);Require(c.Element("settings-screen")->GetParentNode()->GetId()=="settings-modal-host"&&c.Element("overview")->IsVisible()&&!c.Element("look-inspector")->IsVisible(),"Bar Settings is not an isolated modal over its bar");const auto modal=rect(c.Element("inspector"));Require(std::fabs((modal[0]+modal[2])*.5f-view.x*.5f)<2,"Bar Settings must be centered");c.ToggleOverlay();Require(!c.settingsOpen&&!c.document->IsClassSet("bar-settings"),"Closing Bar Settings trapped the overlay");c.ToggleOverlay();settle();Require(c.Element("main-panel")->IsVisible(),"Bar did not reopen after Settings");
+                c.Open("look");c.Settings(true);settle();contains("inspector",viewport);Require(c.Element("settings-screen")->GetParentNode()->GetId()=="settings-modal-host"&&c.Element("overview")->IsVisible()&&!c.Element("look-inspector")->IsVisible(),"Bar Settings is not an isolated modal over its bar");const auto modal=rect(c.Element("inspector"));Require(std::fabs((modal[0]+modal[2])*.5f-view.x*.5f)<2,"Bar Settings must be centered");c.ToggleOverlay();Require(!c.settingsOpen&&!c.document->IsClassSet("standalone-settings"),"Closing Bar Settings trapped the overlay");c.ToggleOverlay();settle();Require(c.Element("main-panel")->IsVisible(),"Bar did not reopen after Settings");
             }
             if(c.layout=="centered"){
                 c.Page("nav-overview");settle();auto* facts=c.document->QuerySelector("#overview-metadata .session-facts");Require(facts->GetScrollWidth()<=facts->GetClientWidth()+2,"Session metadata overflows its content card");
@@ -364,11 +406,33 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
         Require(c.layout!="centered"||c.activeNavigation=="nav-overview","Advanced Back did not return to Overview");
         c.Settings(true);
         context->Update();
-        Require(c.Element("window-back")->IsVisible(true)==(c.layout!="bar"),"Settings Back did not follow the layout");
-        c.Settings(false);
+        Require(c.Element("window-back")->IsVisible(true)==(c.layout=="centered"),"Settings Back did not follow the layout");
+        if(c.layout!="centered") {
+            Require(c.Element("settings-screen")->GetParentNode()->GetId()=="settings-modal-host"&&
+                c.Element("settings-modal-close")->IsVisible(true)&&c.Element("overview")->IsVisible(true),
+                "Compact layout did not open standalone Settings over its controls");
+            activate("settings-modal-close");
+            Require(!c.settingsOpen&&c.layout==layout,"Closing Settings changed the active layout");
+        } else c.Settings(false);
     }
+    c.Layout("bar");
+    c.values["enabled"]=1;
+    c.Sync();
+    activate("open-processing");
+    Require(c.Element("nr-primary")->GetParentNode()->GetId()=="processing-primary","Bar opened processing without its primary controls");
+    for(const auto* id:{"strength","render-resolution","model-preset","processing-stage","pass-count"})
+        Require(c.Element(id)->IsVisible(true),"Bar processing hid a core Neural Rendering control");
+    Require(!c.Element("field-extra-popup-pre_sr")->IsVisible(true)&&!c.Element("field-extra-popup-work_scale")->IsVisible(true),
+        "Bar showed duplicate processing controls");
+    activate("inspector-back");
+    c.Reflow();
+    Require(c.Element("nr-primary")->GetParentNode()->GetId()=="nr-body","Closing Bar processing did not return the shared controls");
+
     c.Layout("centered");
-    c.addons.Set({{"character_resolution_scale","Resolution scale","Character detail · ShortFuse",
+    Require(c.Element("presets")->IsVisible(true),"Advanced Overview lost its game presets");
+    c.addons.Set({{"character_hook_point","ShortFuse processing","Character detail · ShortFuse",
+        "choice",R"(<option value="0">Off</option><option value="1">Before upscaling</option><option value="2">After upscaling</option><option value="3">Before display</option>)","",0,3,1,0,3,false,false},
+        {"character_resolution_scale","Resolution scale","Character detail · ShortFuse",
         "slider","","%",25,100,1,100,74,false,false},
         {"character_local_tone","Local tone","Character detail · ShortFuse",
         "slider","","",0,2,.01f,1,1,false,false},
@@ -376,12 +440,25 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
         "choice","<option value=\"0\">Off</option><option value=\"1\">On</option>","",0,1,1,1,1,false,false}},
         true,"Environment changes apply at next launch.");
     c.RefreshSplitRenderEntry();
+    for(const auto* page:{"nav-neural","nav-frame"}) {
+        c.Page(page);
+        context->Update();
+        Require(!c.Element("addons-section")->IsVisible(true)&&!c.Element("presets")->IsVisible(true),
+            "Advanced feature page exposed an unrelated Split Render card or game preset");
+    }
     activate("nav-addons");
     Require(c.Element("addon-character_resolution_scale")->IsVisible(true)&&!c.Element("reset-inspector")->IsVisible(true),
         "Advanced Split Render did not open the installed add-on settings");
     auto* scale=dynamic_cast<Rml::ElementFormControl*>(c.Element("addon-character_resolution_scale"));
     Require(scale->IsDisabled(),"Unverified ShortFuse offered edits");
     c.addons.SetShortFuseLive(true);
+    auto* processing=dynamic_cast<Rml::ElementFormControl*>(c.Element("addon-character_hook_point"));
+    const auto mainSettings=c.values;
+    processing->SetValue("0");
+    processing->DispatchEvent("change",{});
+    Require(c.addons.FlushLive([](const ForgeGlass::HdrField& f,float value){
+        return f.key=="character_hook_point"&&value==0;
+    })&&c.values==mainSettings,"ShortFuse Off did not go live independently of the main rendering settings");
     scale->SetValue("82");
     scale->DispatchEvent("change",{});
     Require(!c.addons.Flush([](const std::string&){return true;}),"ShortFuse was queued for startup");
@@ -447,6 +524,18 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
         Require(c.FeederSplitActive()&&c.Element("pass-inspector")->IsVisible(true),"Feeder Split Render entry did not open");
         Require(c.inspectorAnchored==(c.layout=="bar"),"Bar Split Render did not attach to its entry");
     }
+    const auto feederSettings=c.values;
+    activate("feeder-extra-passes");
+    Require(c.values["passes"]==1&&c.values["enabled"]==feederSettings.at("enabled")&&
+        c.values["mfg_enabled"]==feederSettings.at("mfg_enabled"),"Turning off extra Feeder passes changed base NR or frame generation");
+    activate("feeder-extra-passes");
+    Require(c.values==feederSettings,"Re-enabling extra Feeder passes did not restore their count and tuning");
+    c.splitRenderEnabled=false;
+    c.RefreshSplitRenderEntry();
+    context->Update();
+    Require(!c.Element("addons-section")->IsVisible(true)&&!c.Element("nav-addons")->IsVisible(true),
+        "Disabled Split Render stayed visible in the overlay");
+    c.splitRenderEnabled=true;
     c.SetFeederSplitRender(false);
     c.values=savedValues;
     c.edits=savedEdits;
@@ -479,7 +568,7 @@ static void TestController(Controller& c,Rml::Context* context)
         {const auto markup=c.Element("effects-fields")->GetInnerRML();Require(markup.find(">Paid<")!=std::string::npos&&markup.find("Paid.fx")==std::string::npos,"Effect groups must use readable names");size_t headings=0;for(size_t at=markup.find("group-heading");at!=std::string::npos;at=markup.find("group-heading",at+1))++headings;Require(headings==2,"Each effect must have exactly one group");}
         click("group-toggle-effects-body-1");auto* text=dynamic_cast<Rml::ElementFormControl*>(c.Element("effect-field-3"));text->SetValue("custom & <value>");text->DispatchEvent("change",{});click("effect-apply-3");Require(Json::parse(command)["value"]=="custom & <value>","Custom INI text did not round-trip");
         Require(c.effects.pending.contains(0)&&c.effects.pending.contains(3),"Sent effect edits must stay pending until ReShade acknowledges them");
-        c.effects.Set(Json{{"generation",uint64_t(7)},{"fields",fields},{"acknowledged",{{"sequence",1},{"applied",Json::array({0})},{"rejected",Json::array({Json{{"id",3},{"reason","This text can't be saved."}}})}}}});
+        c.effects.Set(Json{{"generation",uint64_t(7)},{"fields",fields},{"acknowledged",{{"sequence",1},{"applied",Json::array({size_t(0)})},{"rejected",Json::array({Json{{"id",3},{"reason","This text can't be saved."}}})}}}});
         Require(!c.effects.pending.contains(0)&&!c.effects.pending.contains(3)&&c.effects.result.find("Custom INI setting")!=std::string::npos,"Acknowledged effect edits must resolve to applied or rejected");
         click("effect-field-0");Require(c.effects.pending.contains(0),"A new effect edit did not become pending");c.effects.Set(Json{{"generation",uint64_t(8)},{"fields",fields}});Require(c.effects.pending.empty()&&c.effects.result.find("reloaded")!=std::string::npos,"A reload must report unacknowledged effect edits");
         c.effects.Set(Json{{"generation",uint64_t(9)},{"fields",Json::array()}});Require(!c.document->GetElementById("effect-field-0"),"Reload retained a stale parameter");c.effects.send={};c.Visible("inspector",false);std::cout<<"native_reflected_effect_controls_checks=passed\n";
@@ -513,7 +602,10 @@ static void TestController(Controller& c,Rml::Context* context)
     Require(c.Element("compact-nr-size")->GetInnerRML().find("1920")!=std::string::npos,"NR card lost reported dimensions");
     c.Session({});Require(c.Element("compact-nr-size")->GetInnerRML().find("not reported")!=std::string::npos,"Missing dimensions were guessed");
     live.framesKnown=false;c.Session(live);Require(c.Element("compact-ratio")->GetInnerRML().empty(),"Unmeasured multiplier must stay hidden");c.Session({});
-    c.Visible("type-panel",false);click("open-settings");Require(c.settingsOpen&&c.Element("settings-screen")->IsVisible(),"Settings must be a full screen");
+    c.Visible("type-panel",false);click("open-settings");
+    Require(c.StandaloneSettings()&&c.Element("settings-screen")->IsVisible(true)&&
+        c.Element("settings-screen")->GetParentNode()==c.Element("settings-modal-host")&&
+        c.Element("overview")->IsVisible(true),"Side Panel did not open standalone Settings");
     {c.ShowAppearance();context->Update();const auto savedMode=c.accentMode,savedColor=c.customAccent;const auto savedAccent=c.accent;
         click("accent-source-custom");Require(c.accentMode=="custom","Custom accent source did not select");
         context->Update();auto* tintRow=c.Element("accent-tint");auto* tintSwitch=tintRow->QuerySelector(".switch");const auto rowAt=tintRow->GetAbsoluteOffset(Rml::BoxArea::Border),rowSize=tintRow->GetBox().GetSize(Rml::BoxArea::Border),switchAt=tintSwitch->GetAbsoluteOffset(Rml::BoxArea::Border),switchSize=tintSwitch->GetBox().GetSize(Rml::BoxArea::Border);Require(std::abs(switchAt.y+switchSize.y*.5f-rowAt.y-rowSize.y*.5f)<2&&switchAt.x+switchSize.x>rowAt.x+rowSize.x-24*context->GetDensityIndependentPixelRatio(),"Accent Tint switch lost its inline right-aligned row");
@@ -544,7 +636,7 @@ static void TestController(Controller& c,Rml::Context* context)
     }
     click("setting-notifications");Require(!c.showNotifications,"Notification preference did not change");click("setting-notifications");
     click("setting-original-labels");Require(c.originalLabels,"Original label preference did not enable");Require(c.Element("extra-popup-interval")->GetParentNode()->QuerySelector("label")->GetInnerRML()=="Max frames between runs","Original label does not match the pinned menu");click("setting-original-labels");Require(c.Element("extra-popup-interval")->GetParentNode()->QuerySelector("label")->GetInnerRML()=="Refresh interval","Friendly label did not restore");Require(c.Element("extra-popup-interval")->GetParentNode()->QuerySelector("label")->GetAttribute<Rml::String>("title","")=="Max frames between runs","Friendly label lost its upstream tooltip");
-    click("setting-stats");Require(!c.showStats&&!c.Element("compact-live")->IsVisible(),"Stats preference should hide compact data");click("setting-stats");click("window-back");
+    click("setting-stats");Require(!c.showStats&&!c.Element("compact-live")->IsVisible(),"Stats preference should hide compact data");click("setting-stats");click("settings-modal-close");Require(!c.settingsOpen,"Closing standalone Settings did not return to the Side Panel");
     click("open-layout");context->Update();Require(c.Element("layout-picker")->IsVisible(),"Quick layout selector did not open");click("quick-centered");Require(c.layout=="centered"&&!c.Element("layout-picker")->IsVisible(),"Quick layout selector did not switch and dismiss");
     c.ShowAppearance();context->Update();
     c.Layout("centered");click("nav-neural");Require(c.document->IsClassSet("neural-page"),"Neural rendering needs its own sidebar page");click("nav-passes");Require(c.stacking.back()=="inspector","Centered inspectors must paint above the main window");
@@ -576,7 +668,7 @@ static void TestController(Controller& c,Rml::Context* context)
     auto* main=c.Element("main-panel");main->SetProperty("left","120px");main->SetProperty("top","120px");c.mainMoved=true;context->Update();c.Reflow();context->Update();const auto moved=main->GetAbsoluteOffset(Rml::BoxArea::Border);
     for(const auto* page:{"nav-neural","nav-frame","nav-look","nav-passes","nav-overview"}){click(page);c.pendingEntrance.clear();c.entrances.clear();c.Reflow();context->Update();const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border);Require(std::fabs(at.x-moved.x)<.5f&&std::fabs(at.y-moved.y)<.5f,"Advanced navigation recenters a moved window");}
     c.Settings(true);c.Settings(false);context->Update();Require(std::fabs(main->GetAbsoluteOffset(Rml::BoxArea::Border).x-moved.x)<.5f,"Settings recenters a moved Advanced window");
-    const auto view=context->GetDimensions();c.layoutSizes.clear();context->SetDimensions({1920,1080});c.Layout("centered");context->Update();const auto smallerSize=main->GetBox().GetSize(Rml::BoxArea::Border);context->SetDimensions({3840,2160});c.Reflow();context->Update();const auto largerSize=main->GetBox().GetSize(Rml::BoxArea::Border);Require(largerSize.x>smallerSize.x*1.35f&&largerSize.y>smallerSize.y*1.7f,"Advanced does not grow with the viewport");context->SetDimensions(view);c.Layout("floating");
+    const auto view=context->GetDimensions();c.layoutSizes.clear();context->SetDimensions({1920,1080});c.Layout("centered");context->Update();const auto smallerSize=main->GetBox().GetSize(Rml::BoxArea::Border);context->SetDimensions({3840,2160});c.Reflow();context->Update();const auto largerSize=main->GetBox().GetSize(Rml::BoxArea::Border);Require(largerSize.x>smallerSize.x*1.35f&&std::fabs(largerSize.y-smallerSize.y)<2,"Advanced must grow wider while retaining its compact height");context->SetDimensions(view);c.Layout("floating");
     c.UseAppearance(3,true);c.accentMode="adaptive";c.BeginSetup();context->Update();Require(c.setupStep==0&&!c.Element("main-panel")->IsVisible()&&c.Element("setup-layout-centered")->IsVisible(true)&&!c.Element("theme-menu")->IsVisible(true),"Setup must focus on layout and hide the overlay initially");
     click("setup-layout-centered");context->Update();Require(c.layout=="centered"&&c.setupStep==0&&c.Element("main-panel")->IsVisible(),"Choosing layout does not reveal its preview");click("setup-appearance");context->Update();Require(c.setupStep==1&&c.Element("theme-menu")->IsVisible(true)&&!c.Element("appearance-more")->IsVisible(true)&&!c.Element("appearance-god-mode")->IsVisible(true),"Optional Appearance leaked advanced controls");click("appearance-back");Require(c.setupStep==0,"Optional Appearance cannot return to layout");click("setup-next");Require(c.setupComplete&&c.setupStep<0&&!c.Element("type-panel")->IsVisible(),"Setup does not complete");c.MaybeSetup();Require(!c.Element("type-panel")->IsVisible(),"Completed setup reopens");
     c.BeginSetup();std::string nativeRequest;c.requestJson=[&](const std::string& value){nativeRequest=value;return true;};c.nativeShortcuts={{"OptiScaler","Insert",true},{"ReShade","Ctrl+Home",false}};click("setup-native");context->Update();Require(c.setupStep==2&&!c.nativeOverlayPending,"Native overlays must ask for confirmation");{auto* keys=c.Element("setup-native-shortcuts");auto* global=c.Element("setup-native-global")->GetParentNode();auto* message=c.Element("setup-native-message");Require(global->GetAbsoluteOffset().y>=keys->GetAbsoluteOffset().y+keys->GetBox().GetSize(Rml::BoxArea::Border).y&&message->GetAbsoluteOffset().y>global->GetAbsoluteOffset().y,"Native confirmation content must stack without overlap");}click("setup-native-confirm");Require(c.nativeOverlayPending&&nlohmann::json::parse(nativeRequest)["global_default"]==false,"Native-overlay opt-out must default to this game");c.NativeOverlaysResult(true);Require(c.setupStep==2&&!c.nativeOverlayPending,"Failed native opt-out must remain recoverable");c.Element("setup-native-global")->SetAttribute("checked","");click("setup-native-confirm");Require(nlohmann::json::parse(nativeRequest)["global_default"]==true,"Explicit native-overlay default choice was lost");c.NativeOverlaysResult(false);context->Update();Require(c.setupComplete&&c.setupStep<0&&c.primaryMenu=="optiscaler"&&!c.Element("main-panel")->IsVisible(),"Native opt-out did not close the overlay after acknowledgement");c.requestJson={};c.primaryMenu="game";c.BeginSetup();click("setup-skip");Require(c.setupComplete&&c.setupStep<0,"Setup skip did not complete");
@@ -728,6 +820,8 @@ int wmain(int argc,wchar_t** argv)
             controller.passesMax=8;
             controller.Layout(requestedLayout);
             controller.addons.Set({
+                {"character_hook_point","ShortFuse processing","Character detail · ShortFuse","choice",
+                 R"(<option value="0">Off</option><option value="1">Before upscaling</option><option value="2">After upscaling</option><option value="3">Before display</option>)","",0,3,1,0,3,false,false},
                 {"character_character_mask","Character mask","Character detail · ShortFuse","choice",
                     "<option value=\"0\">Off</option><option value=\"1\">On</option>","",0,1,1,1,1,false,false},
                 {"character_resolution_scale","Resolution scale","Character detail · ShortFuse","slider","","%",25,100,1,100,74,false,false},
@@ -742,20 +836,25 @@ int wmain(int argc,wchar_t** argv)
             controller.addons.SetShortFuseLive(true);
             controller.addons.LiveMessage("Preview · Live controls in game");
             controller.RefreshSplitRenderEntry();
-            if(controller.layout=="centered")controller.Page("nav-addons");
+            controller.SetNeuralProviderLabel(true);
+            if(settings)controller.Settings(true);
+            else if(controller.layout=="centered")controller.Page(requestedPage.empty()?"nav-addons":"nav-"+requestedPage);
             else {
                 controller.Page("nav-neural");
                 context->Update();
-                controller.Element("open-addons")->ScrollIntoView(false);
-                controller.Open("addons");
+                const bool processing=controller.layout=="bar"&&requestedPage=="neural";
+                controller.Element(processing?"open-processing":"open-addons")->ScrollIntoView(false);
+                controller.Open(processing?"processing":"addons");
             }
             controller.Message("Preview · changes stay in this window.");
             context->Update();
-            Require(controller.Element("addons-inspector")->IsVisible(true),"ShortFuse preview did not open");
+            if(!settings&&requestedPage.empty())Require(controller.Element("addons-inspector")->IsVisible(true),"ShortFuse preview did not open");
         }
         if(onboarding){controller.nativeShortcuts.clear();if(onboardingMenus>0)controller.nativeShortcuts.push_back({"OptiScaler","Insert",true});if(onboardingMenus>1)controller.nativeShortcuts.push_back({"ReShade","Ctrl+Shift+Home",true});controller.BeginSetup();if(onboardingNative){controller.setupStep=2;controller.UpdateSetup();}}
         if(thumbnail&&controller.layout=="centered")controller.Page("nav-neural");
         auto image=LoadImage(background);
+        if (desktopPreview && !library.names.empty())
+            Require(image.width>=2560 && image.height>=1440,"Choose a 1440p or 4K screenshot for the game preview.");
         float activeCrop=crop;const auto cropUv=CropImage(image,width,height,activeCrop);
         auto backdrop=std::make_unique<Backdrop>(device.Get(),width,height,image.rgba.data(),image.width,image.height,cropUv.data());
         const int initialWidth=width,initialHeight=height;
@@ -819,7 +918,9 @@ int wmain(int argc,wchar_t** argv)
                 const std::array<float,3> selectedAccent{float((packed>>16)&255)/255,float((packed>>8)&255)/255,float(packed&255)/255};
                 if(value.contains("path")){
                     const auto selectedCrop=value.value("crop",0.f);Require(selectedCrop>=0&&selectedCrop<.8f,"Invalid preview crop");
-                    auto next=LoadImage(fs::u8path(value.at("path").get<std::string>()));const auto uv=CropImage(next,width,height,selectedCrop);
+                    auto next=LoadImage(fs::u8path(value.at("path").get<std::string>()));
+                    Require(next.width>=2560 && next.height>=1440,"No 1440p or 4K screenshot is available for this game.");
+                    const auto uv=CropImage(next,width,height,selectedCrop);
                     backdrop->SetPhoto(next.rgba.data(),next.width,next.height,uv.data());image=std::move(next);activeCrop=selectedCrop;stableAccent=selectedAccent;
                     if(value.contains("poster"))changePoster(fs::u8path(value["poster"].get<std::string>()));
                     library.selected=value.at("index").get<int>();controller.PositionScene(value.at("title").get<std::string>());
@@ -905,8 +1006,12 @@ int wmain(int argc,wchar_t** argv)
             if(selfTest&&frames==60&&controller.appearance==3){Rml::ElementList ink;document->QuerySelectorAll(ink,"label,.glyph");for(auto* e:ink)if(e->IsVisible()){bool glass=false;for(auto* parent=e;parent;parent=parent->GetParentNode())glass|=parent->IsClassSet("glass");if(glass){bool heading=false;for(auto* p=e;p;p=p->GetParentNode())heading|=p->GetTagName()=="h1"||p->GetTagName()=="h2"||p->GetTagName()=="h3";if(heading)continue;const auto color=e->GetProperty(e->IsClassSet("glyph")?"image-color":"color")->Get<Rml::Colourb>();Require(color.red>=230&&color.green>=225&&color.blue>=220,"Clear must never invert a label or glyph to dark ink");}}std::cout<<"clear_white_foreground_checks=passed\n";}
 
             if(onboardingScroll&&frames==68){auto* panel=controller.Element("type-panel");panel->SetScrollTop(panel->GetScrollHeight());context->Update();const auto top=panel->GetAbsoluteOffset(Rml::BoxArea::Border),size=panel->GetBox().GetSize(Rml::BoxArea::Border),button=controller.Element("setup-next")->GetAbsoluteOffset(Rml::BoxArea::Border),buttonSize=controller.Element("setup-next")->GetBox().GetSize(Rml::BoxArea::Border);Require(button.y>=top.y&&button.y+buttonSize.y<=top.y+size.y,"Short onboarding clipped its primary footer");std::cout<<"onboarding_short_viewport_footer_checks=passed\n";}
-            if(dropdownOpen&&frames==68){auto* select=controller.Element("processing-stage");if(longDropdown){auto* field=dynamic_cast<Rml::ElementFormControlSelect*>(select);for(int i=0;i<30;++i)field->Add("Processing option "+std::to_string(i),std::to_string(i%2));}select->ScrollIntoView();context->Update();const auto at=select->GetAbsoluteOffset(Rml::BoxArea::Border),size=select->GetBox().GetSize(Rml::BoxArea::Border);context->ProcessMouseMove(int(at.x+size.x*.5f),int(at.y+size.y*.5f),0);context->ProcessMouseButtonDown(0,0);context->ProcessMouseButtonUp(0,0);context->Update();}
-            if(longDropdown&&frames==70){Require(controller.Element("select-menu")->IsVisible()&&controller.Element("select-menu")->QuerySelector(".menu-scroll"),"Long native menu must retain a visible scroll rail");auto* field=dynamic_cast<Rml::ElementFormControlSelect*>(controller.Element("processing-stage"));const int before=field->GetSelection();context->ProcessKeyDown(Rml::Input::KI_DOWN,0);context->ProcessKeyUp(Rml::Input::KI_DOWN,0);context->ProcessKeyDown(Rml::Input::KI_RETURN,0);context->ProcessKeyUp(Rml::Input::KI_RETURN,0);context->Update();Require(field->GetSelection()!=before&&!field->IsSelectBoxVisible(),"Glass menu lost native keyboard selection");std::cout<<"native_glass_menu_keyboard_scroll_checks=passed\n";field->ShowSelectBox();}
+            if(dropdownOpen&&frames==68){auto* select=desktopPreview&&!library.names.empty()?sceneSelect:controller.Element("processing-stage");if(longDropdown&&select!=sceneSelect){auto* field=dynamic_cast<Rml::ElementFormControlSelect*>(select);for(int i=0;i<30;++i)field->Add("Processing option "+std::to_string(i),std::to_string(i%2));}select->ScrollIntoView();context->Update();const auto at=select->GetAbsoluteOffset(Rml::BoxArea::Border),size=select->GetBox().GetSize(Rml::BoxArea::Border);context->ProcessMouseMove(int(at.x+size.x*.5f),int(at.y+size.y*.5f),0);context->ProcessMouseButtonDown(0,0);context->ProcessMouseButtonUp(0,0);context->Update();}
+            if(longDropdown&&frames==70&&desktopPreview&&!library.names.empty()){
+                TestPreviewGameMenu(context,sceneSelect);
+                sceneSelect->SetSelection(0);controller.sceneRequest=-1;sceneSelect->ShowSelectBox();
+            }
+            else if(longDropdown&&frames==70){Require(controller.Element("select-menu")->IsVisible()&&controller.Element("select-menu")->QuerySelector(".menu-scroll"),"Long native menu must retain a visible scroll rail");auto* field=dynamic_cast<Rml::ElementFormControlSelect*>(controller.Element("processing-stage"));const int before=field->GetSelection();context->ProcessKeyDown(Rml::Input::KI_DOWN,0);context->ProcessKeyUp(Rml::Input::KI_DOWN,0);context->ProcessKeyDown(Rml::Input::KI_RETURN,0);context->ProcessKeyUp(Rml::Input::KI_RETURN,0);context->Update();Require(field->GetSelection()!=before&&!field->IsSelectBoxVisible(),"Glass menu lost native keyboard selection");std::cout<<"native_glass_menu_keyboard_scroll_checks=passed\n";field->ShowSelectBox();}
 
             if(pickerPreview&&frames==68)controller.QuickLayouts(true);
             std::vector<Backdrop::Panel> panels;
@@ -941,9 +1046,7 @@ int wmain(int argc,wchar_t** argv)
             if(!gameCapture){
                 if(desktopPreview&&!library.names.empty()&&byId.contains("main-panel")){
                     auto* picker=controller.Element("game-picker");const auto at=picker->GetAbsoluteOffset(Rml::BoxArea::Border),size=picker->GetBox().GetSize(Rml::BoxArea::Border);auto panel=byId.at("main-panel");
-                    // The toolbar's centered CSS transform is applied to its ink;
-                    // its glass rectangle must use the same visual coordinates.
-                    panel.x=controller.layout=="floating"?at.x:at.x-size.x*.5f;panel.y=at.y;panel.width=size.x;panel.height=size.y;panel.radius=14*panel.scale;panel.opacity=1;panel.shadowOpacity*=.55f;
+                    panel.x=at.x;panel.y=at.y;panel.width=size.x;panel.height=size.y;panel.radius=14*panel.scale;panel.opacity=1;panel.shadowOpacity*=.55f;
                     const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target.Get(),windowView.Get(),{panel},blur,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(picker,inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,blur);backdrop->ComposeLayer(view.Get(),windowSource.Get(),0,0,true);
                 }else if(!desktopPreview)renderUi(controller.Element("game-picker"));
             }

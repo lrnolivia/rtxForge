@@ -1,5 +1,6 @@
 {
   "schema": 1,
+  "enabled": false,
   "note": "DLSS5 neural-rendering add-ons a game can use, the NR models they run on, and how they may be combined. Every archive is pinned by SHA-256 from its publisher's release; files inside are pinned where they were verified. Values marked null are not yet verified on a Forge Lab copy and are never written by a preset.",
   "addons": {
     "lecram": {

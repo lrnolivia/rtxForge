@@ -78,6 +78,14 @@ def catalog():
     return copy.deepcopy(_catalog)
 
 
+def enabled():
+    return catalog().get('enabled') is True
+
+
+def require_enabled():
+    t.need(enabled(), 'New Split Render setups are paused while performance and image quality are being improved.')
+
+
 def builtin_combos():
     return catalog()['combos']
 
@@ -346,7 +354,8 @@ def catalog_view(config, game=None):
     if game is not None:
         found = {key: dict(combo_setup(game, combo), name=combo.get('name', key), builtin=combo['builtin'])
                  for key, combo in found.items()}
-    return {'addons': [{'id': key, 'name': a['name'], 'needs_native_dlss': a.get('needs_native_dlss', False),
+    return {'enabled': cat.get('enabled') is True,
+            'addons': [{'id': key, 'name': a['name'], 'needs_native_dlss': a.get('needs_native_dlss', False),
                         'exclusive': a.get('exclusive', False),
                         'builds': [{'id': b, 'label': v['label'], 'default': bool(v.get('default'))} for b, v in a['builds'].items()]}
                        for key, a in cat['addons'].items()],

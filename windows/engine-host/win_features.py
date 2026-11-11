@@ -859,7 +859,15 @@ def hdr_settings(params):
 
 
 def hdr_settings_flush(params):
-    return renodx_hdr_settings.flush(_config())
+    import reshade_ui_settings
+    result = renodx_hdr_settings.flush(_config())
+    reshade_ui_settings.flush(_config())
+    return result
+
+
+def reshade_ui_preferences(params):
+    import reshade_ui_settings
+    return reshade_ui_settings.stage(_config(), params['row'], params['values'])
 
 
 def nr_addon_settings_snapshot(params):
@@ -916,8 +924,8 @@ def nr_check(params):
 
 def nr_match(params):
     """Match a Split Render choice against library rows without staging downloads."""
-    return nr_install.match_batch(_config(), params['rows'], params['choice'],
-                                  service.hardware().get('family') or 'ada')
+    return nr_install.match_batch(_config(), params['rows'], params.get('choice'),
+                                  service.hardware().get('family') or 'ada', remove=params.get('remove', False))
 
 
 def feeder_character_apply(params):
@@ -933,14 +941,16 @@ def nr_status(params):
 def nr_review(params):
     if 'rows' in params:
         import hardware
-        plan = nr_install.prepare_batch(_config(), params['rows'], params['choice'],
-                                        hardware.detect().get('family') or 'ada')
-        return _review('nr-addons-batch', 'Review Split Render',
-                       [_item(p['name'], p['selection'], 'Install', p['game'], nr_install.describe_changes(p))
-                        for p in plan['plans']],
+        remove = params.get('remove', False)
+        plan = nr_install.prepare_batch(_config(), params['rows'], params.get('choice'),
+                                        hardware.detect().get('family') or 'ada', remove=remove)
+        action = 'Remove' if remove else 'Install'
+        return _review('nr-addons-batch', 'Review Split Render removal' if remove else 'Review Split Render',
+                       [_item(p['name'], p.get('selection') or 'Remove the recorded setup.', action, p['game'],
+                              nr_install.describe_changes(p)) for p in plan['plans']],
                        blocked=[_item(p['name'], p['reason'], 'Skipped', p['game']) for p in plan['blocked']],
-                       action='Install Split Render', payload=plan,
-                       summary='Each game has its own compatibility and file review.')
+                       action=action + ' Split Render', payload=plan,
+                       summary='Review the file changes for each selected game.')
     remove = params.get('remove', False)
     t.need(type(remove) is bool, 'Choose a Split Render action.')
     if remove:
@@ -962,8 +972,9 @@ def _run_nr(plan):
 
 
 def _run_nr_batch(plan):
+    activity = 'Removing Split Render' if plan.get('action') == 'remove' else 'Installing Split Render'
     return nr_install.apply_batch(_config(), plan, lambda name, index, total:
-                                  ui.progress('Installing Split Render', game=name, current=index, total=total))
+                                  ui.progress(activity, game=name, current=index, total=total))
 
 
 def nr_combo_save(params):
@@ -1183,7 +1194,7 @@ METHODS = {
     "test_validate": test_validate, "test_validate_all": test_validate_all,
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "overview_inspect": overview_inspect, "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
-    'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush,
+    'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush, 'reshade_ui_preferences': reshade_ui_preferences,
     'nr_addon_settings': nr_addon_settings_snapshot, 'nr_addon_settings_flush': nr_addon_settings_flush,
     'nr_catalog': nr_catalog, 'nr_check': nr_check, 'nr_match': nr_match, 'nr_status': nr_status, 'nr_review': nr_review,
     'nr_combo_save': nr_combo_save, 'nr_combo_delete': nr_combo_delete, 'feeder_character_apply': feeder_character_apply,

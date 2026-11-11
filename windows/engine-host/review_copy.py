@@ -53,7 +53,7 @@ def attach(review):
         else:
             # Cross-OS adoption and record-only cleanup have different effects.
             # Keep their explicit description instead of implying a fresh install.
-            summary = preview.get('launch_options') or 'Review the technical details before continuing.'
+            summary = preview.get('launch_options') or 'Review the changes before continuing.'
         if operation == 'install' and mode != 'mfg-only':
             summary += ' NR starts ' + ('on.' if review.get('nr_on_launch', False) else 'off; enable it from the overlay.')
         additions = ['Back up the support files kept by your earlier restore.' if preview.get('restored_support_tree') else None,

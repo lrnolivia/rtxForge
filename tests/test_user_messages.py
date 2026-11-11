@@ -17,7 +17,7 @@ class Messages(unittest.TestCase):
     def test_unknown_never_claims_rollback(self):
         raw='TransactionError: surprising failure /tmp/example'
         text=friendly_error(raw)
-        self.assertIn('Technical details',text);self.assertNotIn('No files',text)
+        self.assertIn('Try again',text);self.assertNotIn('No files',text)
         self.assertEqual(raw,'TransactionError: surprising failure /tmp/example')
     def test_status_keeps_game_names(self):
         self.assertEqual(friendly_status('Cyberpunk 2077 · Saving baseline'),'Cyberpunk 2077 · Saving saved backup')

@@ -273,6 +273,9 @@ public sealed partial class EngineForgeService
         await CallAsync("hdr_settings", new JsonObject { ["row"] = Row(game), ["changes"] = changes?.DeepClone() }) as JsonObject
             ?? throw new InvalidOperationException("HDR settings are unavailable.");
     public async Task FlushHdrSettingsAsync() => _ = await CallAsync("hdr_settings_flush");
+    public async Task<JsonObject> ReShadeUiPreferencesAsync(Game game, JsonObject values) =>
+        await CallAsync("reshade_ui_preferences", new JsonObject { ["row"] = Row(game), ["values"] = values.DeepClone() }) as JsonObject
+            ?? throw new InvalidOperationException("ReShade settings are unavailable.");
     public async Task<JsonObject> NrAddonSettingsAsync(Game game, JsonObject? changes = null) =>
         await CallAsync("nr_addon_settings", new JsonObject { ["row"] = Row(game), ["changes"] = changes?.DeepClone() }) as JsonObject
             ?? throw new InvalidOperationException("Split Render settings are unavailable.");

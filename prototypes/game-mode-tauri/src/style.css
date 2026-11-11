@@ -748,6 +748,7 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .overlay-screen>svg{position:relative;width:100%;height:100%;--accent:var(--preview-accent);color:#f2eee7;filter:drop-shadow(0 3px 5px #0008)}
 .overlay-screen[data-preview-surface=light]>svg{color:#eef1ef}
 .overlay-screen[data-preview-surface=dark]>svg{color:#242931}
+.overlay-screen>svg{--accent:var(--preview-accent)}
 .overlay-screen[data-preview-tint=true]>svg{color:var(--preview-accent)}
 .overlay-preview-card .field{gap:12px;flex-wrap:wrap}
 .overlay-preview-card select{min-width:0;max-width:100%;width:100%}

@@ -1,6 +1,6 @@
 import {surfaceTintControls,type AccentMode} from './surface-tint';
 import {surfaceCards} from './surface-cards';
-import {overlaySurface} from './overlay-settings';
+import {overlaySurface,previewAccent} from './overlay-settings';
 import { escape as e, type Game } from './model';
 
 export const settingsGroups = [
@@ -75,10 +75,10 @@ export function settingsContent(c: Context) {
   }
   if(c.category==='overlay') {
     const layouts=[['floating','Side Panel'],['centered','Advanced'],['bar','Bar']];
-    const theme=overlaySurface(glass), tint=glass.Theme===4;
+    const theme=overlaySurface(glass), tint=glass.Theme===4&&glass.AccentMode!=='theme';
     const game=c.game||c.previewGame||c.games[0];
-    const accent=glass.AccentMode==='custom'?String(glass.AccentColor||game?.accent||'#78b9cf'):glass.AccentMode==='theme'?'#d8d5ce':game?.accent||'#78b9cf';
-    const preview=`<aside class="overlay-preview-card"><h3>Layout preview</h3><div class="overlay-screen" data-preview-surface="${theme}" data-preview-tint="${tint}" style="--preview-accent:${e(/^#[0-9a-f]{6}$/i.test(accent)?accent:'#78b9cf')}">${game?.hero||game?.capsule?`<img src="${e(game.hero||game.capsule)}" alt=""/>`:''}${layoutDiagram(String(glass.Layout||'floating'),String(glass.SidePanelSide||'left'),String(glass.BarPosition||'bottom'))}</div><p>Placement and surface preview. In-game lighting may vary.</p>${c.game?'':`<label class="field"><span>Preview game</span><select id="overlay-preview-game" aria-label="Preview game">${c.games.map(g=>`<option value="${e(g.id)}" ${g.id===game?.id?'selected':''}>${e(g.name)}</option>`).join('')}</select></label><label class="overlay-preview-search"><span>Find a preview game</span><input id="overlay-preview-search" type="search" aria-label="Find a preview game" placeholder="Search games"/></label>`}</aside>`;
+    const accent=previewAccent(glass,game);
+    const preview=`<aside class="overlay-preview-card"><h3>Layout preview</h3><div class="overlay-screen" data-preview-surface="${theme}" data-preview-tint="${tint}" style="--preview-accent:${e(accent)}">${game?.hero||game?.capsule?`<img src="${e(game.hero||game.capsule)}" alt=""/>`:''}${layoutDiagram(String(glass.Layout||'floating'),String(glass.SidePanelSide||'left'),String(glass.BarPosition||'bottom'))}</div><p>Placement and surface preview. In-game lighting may vary.</p>${c.game?'':`<label class="field"><span>Preview game</span><select id="overlay-preview-game" aria-label="Preview game">${c.games.map(g=>`<option value="${e(g.id)}" ${g.id===game?.id?'selected':''}>${e(g.name)}</option>`).join('')}</select></label><label class="overlay-preview-search"><span>Find a preview game</span><input id="overlay-preview-search" type="search" aria-label="Find a preview game" placeholder="Search games"/></label>`}</aside>`;
     const layoutPicker=`<div class="layout-picker"><strong>Layout</strong><p>Choose how controls are arranged in your game.</p><div class="overlay-layout-choices" role="group" aria-label="Overlay layout">${layouts.map(([key,label])=>`<button class="layout-choice" data-overlay-layout="${key}" aria-label="${label}" aria-pressed="${glass.Layout===key}" ${disabled}>${layoutDiagram(key,String(glass.SidePanelSide||'left'),String(glass.BarPosition||'bottom'))}<span>${label}</span>${glass.Layout===key?c.icon('check'):''}</button>`).join('')}</div></div>`;
     // Older engine snapshots do not accept position keys in reviewed preferences.
     const position = glass.Layout==='floating' && Object.hasOwn(c.glassDefaults,'SidePanelSide')

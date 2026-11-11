@@ -195,8 +195,11 @@ internal sealed class GameModeAppearanceView : UserControl
         var accent = ArtAccent.TryParse(Text("accent"), out var value) ? value : ArtAccent.NoArtwork;
         var ink = new SolidColorBrush(light ? global::Windows.UI.Color.FromArgb(255,35,35,33) : global::Windows.UI.Color.FromArgb(255,245,243,238));
         var shellInk = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255,245,243,238));
-        var glass = new SolidColorBrush(light ? global::Windows.UI.Color.FromArgb(222,246,244,239) :
-            global::Windows.UI.Color.FromArgb(clear ? (byte)128 : (byte)231,42,42,43));
+        var neutral = light ? global::Windows.UI.Color.FromArgb(222,246,244,239) :
+            global::Windows.UI.Color.FromArgb(clear ? (byte)128 : (byte)231,42,42,43);
+        var strength = TintStrength();
+        var glass = new SolidColorBrush(Mix(neutral, accent, .09 * strength));
+        var navigationGlass = new SolidColorBrush(Mix(neutral, accent, .07 * strength));
         void Place(UIElement element, double x, double y)
         {
             Canvas.SetLeft(element,x); Canvas.SetTop(element,y); sample.Children.Add(element);
@@ -213,7 +216,7 @@ internal sealed class GameModeAppearanceView : UserControl
         var navTop = bottom ? 231 : 10;
         var libraryTop = bottom ? 10 : 49;
         Place(new TextBlock { Text="rtxForge",FontSize=13,FontWeight=Microsoft.UI.Text.FontWeights.Bold,Foreground=shellInk },18,navTop+8);
-        Place(new Border { Width=270,Height=30,CornerRadius=new CornerRadius(15),Background=glass },107,navTop);
+        Place(new Border { Width=270,Height=30,CornerRadius=new CornerRadius(15),Background=navigationGlass },107,navTop);
         Place(new Border { Width=53,Height=23,CornerRadius=new CornerRadius(12),Background=new SolidColorBrush(
             global::Windows.UI.Color.FromArgb(82,accent.R,accent.G,accent.B)) },111,navTop+3);
         Place(new TextBlock { Text="Library     Presets     Packages     Extras     Settings",FontSize=10,Foreground=ink },121,navTop+8);
@@ -246,13 +249,15 @@ internal sealed class GameModeAppearanceView : UserControl
         detailsSample.Children.Clear();
         var theme = Text("detailsTheme") is "light" or "clear" or "dark" ? Text("detailsTheme") : Text("theme");
         var light = theme == "light";
-        var game = App.Main?.Games.FirstOrDefault(item => Artwork(item.HeroPath) is not null);
+        var game = App.Main?.Games.FirstOrDefault(item => Artwork(item.HeroPath ?? item.PosterPath) is not null);
         var accent = ArtAccent.TryParse(Text("accent"), out var color) ? color : ArtAccent.NoArtwork;
         // Adaptive and Game take the sample game's artwork colour, as Game Mode
         // does; the Game Mode accent is only the fallback while it loads.
         if(Text("accentMode") != "theme" && game is not null)
         {
-            if(ReferenceEquals(accentGame, game)) { if(gameAccent is { } sampled) accent = sampled; }
+            var custom = App.Main?.Settings.GameAccents.GetValueOrDefault(game.Id);
+            if(ArtAccent.TryParse(custom ?? "", out var saved)) accent = saved;
+            else if(ReferenceEquals(accentGame, game)) { if(gameAccent is { } sampled) accent = sampled; }
             else { accentGame = game; gameAccent = null; _ = LoadGameAccentAsync(game); }
         }
         var ink = new SolidColorBrush(light ? global::Windows.UI.Color.FromArgb(255,30,30,29) : global::Windows.UI.Color.FromArgb(255,246,243,238));
@@ -273,10 +278,8 @@ internal sealed class GameModeAppearanceView : UserControl
             Place(new TextBlock { Text=label,FontSize=size,Foreground=foreground,MaxWidth=width,TextTrimming=TextTrimming.CharacterEllipsis,
                 FontWeight=bold?Microsoft.UI.Text.FontWeights.SemiBold:Microsoft.UI.Text.FontWeights.Normal },x,y);
 
-        var tint=Text("accentMode")=="theme" ? 0 : Number("tintStrength",50)*.005;
-        byte Blend(byte channel,byte hue)=>(byte)(channel+(hue-channel)*tint);
-        var glassColor = global::Windows.UI.Color.FromArgb(theme=="clear"?(byte)170:(byte)238,
-            Blend(neutral.R,accent.R),Blend(neutral.G,accent.G),Blend(neutral.B,accent.B));
+        neutral.A=theme=="clear"?(byte)170:(byte)238;
+        var glassColor = Mix(neutral, accent, .25 * TintStrength());
         var glass = new SolidColorBrush(glassColor);
         var raised = new SolidColorBrush(global::Windows.UI.Color.FromArgb(60,accent.R,accent.G,accent.B));
         Panel(0,0,480,270,12,new SolidColorBrush(neutral));
@@ -326,6 +329,14 @@ internal sealed class GameModeAppearanceView : UserControl
             Label(labels[index],x+7,cardY+6,8,ink,cardWidth-14,true);
             Panel(x+7,cardY+23,cardWidth*.53,7,3,glass);
         }
+    }
+
+    double TintStrength() => Text("accentMode")=="theme" ? 0 : Math.Clamp(Number("tintStrength",50),0,100)/50;
+
+    static global::Windows.UI.Color Mix(global::Windows.UI.Color surface, global::Windows.UI.Color accent, double amount)
+    {
+        byte Blend(byte channel,byte hue)=>(byte)(channel+(hue-channel)*amount);
+        return global::Windows.UI.Color.FromArgb(surface.A,Blend(surface.R,accent.R),Blend(surface.G,accent.G),Blend(surface.B,accent.B));
     }
 
     async Task PaintBackgroundAsync(Border background,string data)

@@ -28,7 +28,7 @@ sealed class OverlayPreviewView : StackPanel
     Process? fullPreview;
     Color accent = Color.FromArgb(255,213,137,117);
     readonly string? preferencesPath;
-    Color sampledAccent = Color.FromArgb(255,163,163,163);
+    Color sampledAccent = Color.FromArgb(255,213,137,117);
     Color sceneAccent = Color.FromArgb(255,213,137,117);
     string stamp = "";
     bool active;
@@ -68,12 +68,22 @@ sealed class OverlayPreviewView : StackPanel
         frame.RegisterPropertyChangedCallback(Control.IsEnabledProperty,(_,_)=>open.IsEnabled=frame.IsEnabled);
         timer=DispatcherQueue.CreateTimer();timer.Interval=TimeSpan.FromMilliseconds(400);
         timer.Tick+=(_,_)=>{var next=PreferenceStamp();if(next!=stamp){stamp=next;Draw();}};
-        Loaded+=async(_,_)=>{active=true;timer.Start();if(App.Main is { } shell){games=shell.Games;shell.GamesChanged+=LibraryChanged;}Draw();if(initialGame is not null){var game=initialGame;initialGame=null;await ChooseAsync(game);}};
+        Loaded+=async(_,_)=>{
+            active=true;timer.Start();
+            if(App.Main is { } shell){games=shell.Games;shell.GamesChanged+=LibraryChanged;}
+            Draw();
+            if(initialGame is not null){var game=initialGame;initialGame=null;await ChooseAsync(game);}
+            else await SampleSceneAsync(shot, CancellationToken.None);
+        };
         Unloaded+=(_,_)=>{active=false;timer.Stop();loading?.Cancel();if(App.Main is { } shell)shell.GamesChanged-=LibraryChanged;OverlayPreview.Close(fullPreview);fullPreview=null;};
     }
     IEnumerable<Game> Matches()=>games.OrderBy(g=>g.Name).Where(g=>g.Name.Contains(search.Text,StringComparison.CurrentCultureIgnoreCase));
     void LibraryChanged(){if(App.Main is { } shell)games=shell.Games;}
-    static string PreferenceStamp()=>File.Exists(GlassAppearance.FilePath)?File.GetLastWriteTimeUtc(GlassAppearance.FilePath).Ticks.ToString():"default";
+    string PreferenceStamp()
+    {
+        var path=preferencesPath??GlassAppearance.FilePath;
+        return File.Exists(path)?File.GetLastWriteTimeUtc(path).Ticks.ToString():"default";
+    }
     public void RefreshAppearance(){stamp=PreferenceStamp();Draw();}
     async Task ChooseAsync(Game game)
     {
@@ -96,13 +106,24 @@ sealed class OverlayPreviewView : StackPanel
             var found=await photo;
             if(!Current())return;
             if(found is null){accent=sceneAccent;Draw();status.Text="No screenshot available · showing "+selected.Name;return;}
-            selected=game;shot=found;sceneAccent=accent;SetPhoto(shot);Draw();
-            var sampled=await ArtAccent.SignatureColorAsync(await File.ReadAllBytesAsync(found.Path,request.Token));
-            if(!Current())return;sampledAccent=sampled ?? Color.FromArgb(255,163,163,163);Draw();status.Text="Explore every control in the full preview.";
+            selected=game;shot=found;sampledAccent=sceneAccent=accent;SetPhoto(shot);Draw();
+            await SampleSceneAsync(found,request.Token);
+            if(Current())status.Text="Explore every control in the full preview.";
         }
         catch(OperationCanceledException){}
         catch(Exception error)when(error is IOException or HttpRequestException or System.Text.Json.JsonException or UnauthorizedAccessException){if(Current()){accent=sceneAccent;Draw();status.Text="Screenshot unavailable · showing the previous scene";}}
         finally{if(Current())frame.IsEnabled=true;}
+    }
+    async Task SampleSceneAsync(OverlayPreview.Screenshot photo, CancellationToken cancel)
+    {
+        try
+        {
+            var color=await ArtAccent.SignatureColorAsync(await File.ReadAllBytesAsync(photo.Path,cancel));
+            if(!active||cancel.IsCancellationRequested||shot!=photo||color is not { } sampled)return;
+            sampledAccent=sampled;Draw();
+        }
+        catch(Exception error) when(error is IOException or UnauthorizedAccessException or OperationCanceledException
+            or ArgumentException or System.Runtime.InteropServices.COMException) {}
     }
     void SetPhoto(OverlayPreview.Screenshot photo)
     {

@@ -20,7 +20,7 @@ import { controllerGlyph, type ControllerFamily } from './controller-glyphs';
 import { artworkAccent, selectionInk, heroColors, heroBadge, sampleHero, sectionHeadingColor } from './art-accent';
 import { enhanceSelects, closeSelectMenu, selectMenuOpen } from './select-menu';
 import { settingsGroups, settingsContent } from './settings-content';
-import {mergeOverlay, overlaySurface, surfaceChanges, overlayPreferenceChanges} from './overlay-settings';
+import {previewAccent,mergeOverlay, overlaySurface, surfaceChanges, overlayPreferenceChanges} from './overlay-settings';
 let overlayPreviewId = '';
 
 import { engineRequest, engineStatus, watchActivity, type EngineRow, type EngineStatus, type Review } from './engine';
@@ -409,6 +409,10 @@ async function resolveLibraryAccents(data:Snapshot,games:Game[]=data.games) {
     const item=app.querySelector<HTMLElement>(`[data-library-game="${CSS.escape(game.id)}"]`);if(item){const color=detailsAccent(game);item.style.setProperty('--game-accent',color||'var(--ink)');item.style.setProperty('--game-selected-ink',selectionInk(color||'#b4b4b4'));}
     const card=item?.querySelector<HTMLElement>('.game-card');
     if(view==='library'&&game.appid&&currentPreferences().online_art!==false&&card&&(card.matches(':hover')||document.activeElement===card))void prepareStoreBackground(game.appid,game.id,detailsAccent(game));
+    if(view==='settings'&&settingsCategory==='overlay'&&overlayPreviewGame()?.id===game.id){
+      const glass={...snapshot?.overlayDefaults,...currentPreferences().overlay_appearance as Record<string,unknown>};
+      app.querySelector<HTMLElement>('.overlay-screen')?.style.setProperty('--preview-accent',previewAccent(glass,game));
+    }
     if(view==='details'&&selectedId===game.id){applyDetailsAccent();if(detailsSection==='appearance')render();else if(currentPreferences().online_art!==false)applyStoreBackground(game.appid,document.querySelector<HTMLElement>('#scene')!,game.id,detailsAccent(game));}
   }));
 }
@@ -1203,7 +1207,10 @@ function controlGuide() {
 }
 function currentPreferences() { return { ...snapshot?.preferences, ...sharedPreferences, ...preferenceChanges }; }
 function sharedSettings() {
-  return `${!backend.enabled ? notice('Read-only preview', 'Showing saved settings. Game, Steam and shared preference actions are disabled.') : !sharedPreferences ? '<button class="quiet" data-action="load-settings">Load shared preferences</button>' : ''}${settingsContent({category:settingsCategory,steamAdded,preferences:{...snapshot?.preferences,...sharedPreferences},changes:preferenceChanges,glassDefaults:snapshot?.overlayDefaults||{},enabled:backend.enabled&&Boolean(sharedPreferences),platform:snapshot?.platform,icon,gridConnected,games:snapshot?.games||[],reportSelection:supportSelection,overlayReport:snapshot?.overlayReport,hardware:snapshot?.hardware,previewGame:snapshot?.games.find(g=>g.id===overlayPreviewId)})}<div class="section-footer"><span>Shared preferences change after review.</span><button class="primary" data-action="save-settings" ${!backend.enabled||!sharedPreferences||!Object.keys(preferenceChanges).length?'disabled':''}>Review preferences</button></div>`;
+  return `${!backend.enabled ? notice('Read-only preview', 'Showing saved settings. Game, Steam and shared preference actions are disabled.') : !sharedPreferences ? '<button class="quiet" data-action="load-settings">Load shared preferences</button>' : ''}${settingsContent({category:settingsCategory,steamAdded,preferences:{...snapshot?.preferences,...sharedPreferences},changes:preferenceChanges,glassDefaults:snapshot?.overlayDefaults||{},enabled:backend.enabled&&Boolean(sharedPreferences),platform:snapshot?.platform,icon,gridConnected,games:snapshot?.games||[],reportSelection:supportSelection,overlayReport:snapshot?.overlayReport,hardware:snapshot?.hardware,previewGame:overlayPreviewGame()})}<div class="section-footer"><span>Shared preferences change after review.</span><button class="primary" data-action="save-settings" ${!backend.enabled||!sharedPreferences||!Object.keys(preferenceChanges).length?'disabled':''}>Review preferences</button></div>`;
+}
+function overlayPreviewGame() {
+  return snapshot?.games.find(game=>game.id===overlayPreviewId)||snapshot?.games[0];
 }
 function perGameOverlay() { return view==='details'&&detailsSection==='overlay' ? selectedGame() : undefined; }
 function overlayWorkingPreferences() {
@@ -1225,7 +1232,7 @@ function editGlass(key: string, value: unknown) {
   const current={...snapshot?.overlayDefaults,...overlayWorkingPreferences().overlay_appearance as Record<string,unknown>};
   current[key]=value;
   if(key==='AccentMode'&&value==='custom'){
-    const game=perGameOverlay()||snapshot?.games.find(g=>g.id===overlayPreviewId)||snapshot?.games[0];
+    const game=perGameOverlay()||overlayPreviewGame();
     current.AccentColor=game?.accent||game?.artworkAccent||'#d8d5ce';
   }
   if (key==='AccentCharacter') { const x=Math.min(Number(value)/50,1); current.AccentTint=Math.round(20+60*x*x*(3-2*x)); }
@@ -1273,6 +1280,7 @@ function setupScrollFades() {
 let arrivalKey = '';
 let disposeLibraryLayout = () => {};
 function render() {
+  if (!appearanceReady) return;
   const priorFocus = document.activeElement instanceof HTMLElement && app.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = priorFocus ? (priorFocus.id ? `#${CSS.escape(priorFocus.id)}` : [...priorFocus.attributes].filter(a=>a.name.startsWith('data-')).map(a=>`[${a.name}="${CSS.escape(a.value)}"]`).join('')) : null;
   const nextArrival = `${view}:${view==='details'?selectedGame()?.id+':'+detailsSection:view==='settings'?settingsCategory:view==='operation'?operation?.stage:''}`;

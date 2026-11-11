@@ -124,7 +124,6 @@ public sealed class OperationDialog
         var tuning = new PresetControlsView(initial, shell.Settings.OverlayControls == "classic", embedded: true, installation: true) { Width = editorWidth };
         tuning.SetMode(mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.DynamicMfgSupported);
         var body = new StackPanel { Spacing = 16 };
-        body.Children.Add(Prefs.Label("Choose startup settings. You can adjust them later."));
         var feeder = shell.Settings.RuntimeProvider == "feeder";
         if (!feeder) body.Children.Add(tuning);
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
@@ -132,7 +131,8 @@ public sealed class OperationDialog
         if (separateStartup && mode != "mfg-only") body.Children.Add(startup);
         dialog.Content = WithSteps(dialog, new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled,
             MaxHeight = Math.Max(240, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Height ?? 900) - 312) },
-            FlowStep.Presets, "Install", includesPresets: true);
+            FlowStep.Presets, "Install", includesPresets: true,
+            description: "Choose presets. You can adjust them later.");
         dialog.PrimaryButtonText = "Review games";
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
@@ -363,8 +363,10 @@ public sealed class OperationDialog
         WithSteps(dialog, content, applying ? FlowStep.Apply : FlowStep.Review, action, includesPresets: false, reviewLabel: "Review changes");
 
     static StackPanel WithSteps(ContentDialog dialog, UIElement content, FlowStep current, string action,
-        bool includesPresets, string reviewLabel = "Review games", Brush? accent = null)
+        bool includesPresets, string reviewLabel = "Review games", Brush? accent = null, string? description = null)
     {
+        const double inset = 24;
+        dialog.Resources["ContentDialogPadding"] = new Thickness(inset);
         var body = new StackPanel { Spacing = 12 };
         var steps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, HorizontalAlignment = HorizontalAlignment.Right };
         AutomationProperties.SetName(steps, "Operation steps");
@@ -400,20 +402,30 @@ public sealed class OperationDialog
         header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         if (dialog.Title is string { Length: > 0 } title)
         {
+            var copy = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
             var heading = Prefs.Label(title, "ForgeHeadingTextStyle");
             heading.FontSize = 20;
             heading.TextWrapping = TextWrapping.Wrap;
-            heading.VerticalAlignment = VerticalAlignment.Center;
-            header.Children.Add(heading);
+            copy.Children.Add(heading);
+            if (description is not null) copy.Children.Add(Prefs.Label(description, "ForgeDimTextStyle"));
+            header.Children.Add(copy);
             AutomationProperties.SetName(dialog, title);
             dialog.Title = null;
         }
-        Grid.SetColumn(steps, 1);
-        steps.VerticalAlignment = VerticalAlignment.Center;
-        header.Children.Add(steps);
+        var pill = new Border
+        {
+            Child = steps, Padding = new Thickness(14, 6, 14, 6), CornerRadius = new CornerRadius(999),
+            Background = (Brush)Application.Current.Resources["ControlFillColorDefaultBrush"],
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(pill, 1);
+        header.Children.Add(pill);
+        var radius = (CornerRadius)Application.Current.Resources["OverlayCornerRadius"];
         body.Children.Add(new Border
         {
-            Child = header, Padding = new Thickness(12, 8, 12, 8), CornerRadius = new CornerRadius(8),
+            Child = header, Padding = new Thickness(inset, 14, inset, 14),
+            Margin = new Thickness(-inset, -inset, -inset, 0),
+            CornerRadius = new CornerRadius(radius.TopLeft, radius.TopRight, 0, 0),
             Background = (Brush)Application.Current.Resources["ControlFillColorSecondaryBrush"],
         });
         body.Children.Add(content);

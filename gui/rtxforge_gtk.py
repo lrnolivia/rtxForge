@@ -2531,7 +2531,12 @@ columnview.library-column-view listview row:nth-child(even):hover {
 .operation-step .job-title {
     font-size: 20px;
 }
-.operation-steps { font-size: 0.875em; }
+.operation-steps {
+    font-size: 0.875em;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: alpha(@window_fg_color, 0.09);
+}
 .operation-step-number {
     min-width: 22px;
     min-height: 22px;
@@ -4012,9 +4017,11 @@ class OperationFlow:
             if isinstance(row,Adw.ExpanderRow):row.connect('notify::expanded',lambda *_:GLib.idle_add(cap))
         return scroll
 
-    def _title(self,text):
+    def _title(self,text,subtitle=''):
         self.dialog.set_title(text)
-        self.header.get_title_widget().set_title(text)
+        heading=self.header.get_title_widget()
+        heading.set_title(text)
+        heading.set_subtitle(subtitle)
 
     def _body(self):
         body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
@@ -4063,9 +4070,8 @@ class OperationFlow:
     def show_presets(self,tuning,on_continue):
         """Install only: tune presets, then Cancel or Continue."""
         self.on_continue=on_continue
-        self._title('Install Features')
+        self._title('Install Features','Choose presets. You can adjust them later.')
         body=self._body()
-        body.append(label('Adjust your presets or continue. You can change these settings later in OptiScaler.','dim-label'))
         body.append(tuning)
         self.primary.set_label('Continue')
         self.primary.set_sensitive(True)

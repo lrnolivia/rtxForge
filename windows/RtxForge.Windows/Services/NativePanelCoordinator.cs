@@ -160,6 +160,17 @@ internal sealed class NativePanelCoordinator : IDisposable
                 preferences["game_accent"] = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
                 var hello = new JsonObject { ["op"] = action, ["settings"] = preferences, ["status"] = state };
                 hello["hdr"] = await HdrWithAddonsAsync();
+                if (action == "hello")
+                {
+                    var hidden = new JsonObject();
+                    foreach (var key in new[] { "reshade_ui", "reshade_intro" })
+                        if (preferences[key]?.GetValue<bool>() == false) hidden[key] = false;
+                    if (hidden.Count > 0)
+                    {
+                        try { await engine.ReShadeUiPreferencesAsync(game!, hidden); }
+                        catch (EngineException error) { hello["message"] = error.Message; }
+                    }
+                }
                 if (state["can_save"]?.GetValue<bool>() == true)
                 {
                     var library = await engine.CompanionAsync("preset_list", game!, pid: pid);
@@ -206,9 +217,19 @@ internal sealed class NativePanelCoordinator : IDisposable
                     if(globalDefault){s.OverlayRenderer="optiscaler";s.OptiScalerUi=true;s.ReShadeUi=true;if(s.OptiScalerHotkey=="Disabled")s.OptiScalerHotkey="Insert";}
                 });
                 OverlayHelper.CacheRenderer(game,nativeSettings);engine.Settings.CopyOverlayFrom(nativeSettings);preferencesChanged();ClearReview();
+                await engine.ReShadeUiPreferencesAsync(game, new JsonObject { ["reshade_ui"] = true });
                 return Done("Native overlays selected. Restart the game if its menus are not available yet.");
             case "set-setting":
                 SetPreference(message);
+                var keyChanged = message["key"]?.ToString();
+                if (keyChanged is "reshade_ui" or "reshade_intro")
+                {
+                    var values = new JsonObject { [keyChanged] = message["value"]?.DeepClone() };
+                    var staged = await engine.ReShadeUiPreferencesAsync(game!, values);
+                    return Done(staged["pending"]?.GetValue<bool>() == true
+                        ? "ReShade settings will be written when this game closes."
+                        : "ReShade preference saved.");
+                }
                 return Done(message["key"]?.ToString() is "overlay_theme" or "overlay_appearance" ? "Saved" : "Saved · game-menu changes take effect after restarting the game");
             case "discard-review":
                 ClearReview(); return Done("");

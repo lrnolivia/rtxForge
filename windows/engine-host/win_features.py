@@ -859,7 +859,15 @@ def hdr_settings(params):
 
 
 def hdr_settings_flush(params):
-    return renodx_hdr_settings.flush(_config())
+    import reshade_ui_settings
+    result = renodx_hdr_settings.flush(_config())
+    reshade_ui_settings.flush(_config())
+    return result
+
+
+def reshade_ui_preferences(params):
+    import reshade_ui_settings
+    return reshade_ui_settings.stage(_config(), params['row'], params['values'])
 
 
 def nr_addon_settings_snapshot(params):
@@ -1186,7 +1194,7 @@ METHODS = {
     "test_validate": test_validate, "test_validate_all": test_validate_all,
     "recoveries": recoveries, "recovery_review": recovery_review, "cleanup_review": cleanup_review,
     "overview_inspect": overview_inspect, "extras_list": extras_list, "extra_review": extra_review, "extra_restore_review": extra_restore_review,
-    'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush,
+    'hdr_status': hdr_status, 'hdr_review': hdr_review, 'hdr_settings': hdr_settings, 'hdr_settings_flush': hdr_settings_flush, 'reshade_ui_preferences': reshade_ui_preferences,
     'nr_addon_settings': nr_addon_settings_snapshot, 'nr_addon_settings_flush': nr_addon_settings_flush,
     'nr_catalog': nr_catalog, 'nr_check': nr_check, 'nr_match': nr_match, 'nr_status': nr_status, 'nr_review': nr_review,
     'nr_combo_save': nr_combo_save, 'nr_combo_delete': nr_combo_delete, 'feeder_character_apply': feeder_character_apply,

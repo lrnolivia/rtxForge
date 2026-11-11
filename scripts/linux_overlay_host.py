@@ -310,11 +310,17 @@ class Host:
     def handle(self,message,row,pid,session=None):
         op=message.get('op') if isinstance(message,dict) else ''
         import overlay_settings
+        import reshade_ui_settings
         settings=self.settings()
         response={'op':op,'settings':proton_overlay.settings_snapshot(overlay_settings.effective(settings,row['game']),settings.get('theme'))}
         try:
             params={'row':row,'pid':pid}
             if op in ('hello','status'):
+                if op == 'hello':
+                    hidden = {key:False for key in reshade_ui_settings.KEYS if response['settings'][key] is False}
+                    if hidden:
+                        try:reshade_ui_settings.stage({'storage':{'root':str(self.state)}}, row, hidden)
+                        except reshade_ui_settings.ERRORS as error:response['message']=str(error)
                 response['settings']['native_overlay_shortcuts']=overlay_settings.native_shortcuts(overlay_settings.effective(settings,row['game']),row['game'],row.get('exe',''))
                 response['settings']['game_poster']=game_poster(settings,row,self.state)
                 response['status']=self.controls.status(params)
@@ -347,6 +353,7 @@ class Host:
                     t.atomic_file(path,(json.dumps(fresh,indent=2)+'\n').encode(),0o600)
                     updated=fresh
                 response['settings']=proton_overlay.settings_snapshot(overlay_settings.effective(updated,row['game']),updated.get('theme'))
+                reshade_ui_settings.stage({'storage':{'root':str(self.state)}}, row, {'reshade_ui':True})
                 response['message']='Native overlays selected. Restart the game if its menus are not available yet.'
             elif op=='set-setting':
                 key, value = message.get('key'), message.get('value')
@@ -365,6 +372,10 @@ class Host:
                 updated=settings | {'game_overlay_settings':mapping}
                 response['settings']=proton_overlay.settings_snapshot(overlay_settings.effective(updated,row['game']),updated.get('theme'))
                 response['message']='Saved'
+                if key in reshade_ui_settings.KEYS:
+                    result=reshade_ui_settings.stage({'storage':{'root':str(self.state)}}, row, {key:value})
+                    response['message']=('ReShade settings will be written when this game closes.' if result['pending']
+                                         else 'ReShade preference saved.')
             elif op in ('preset-list','preset-save','preset-delete'):
                 method={'preset-list':self.controls.preset_list,'preset-save':self.controls.preset_save,
                         'preset-delete':self.controls.preset_delete}[op]
@@ -390,6 +401,9 @@ class Host:
             self.next_hdr_flush=time.monotonic()+3
             import renodx_hdr_settings
             try:renodx_hdr_settings.flush({'storage':{'root':str(self.state)}})
+            except (OSError,ValueError,t.Refusal):pass
+            import reshade_ui_settings
+            try:reshade_ui_settings.flush({'storage':{'root':str(self.state)}})
             except (OSError,ValueError,t.Refusal):pass
             import nr_addon_settings
             try:nr_addon_settings.flush({'storage':{'root':str(self.state)}})

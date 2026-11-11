@@ -1288,10 +1288,6 @@ def _prepare(config, rows, mode, operation, settings, e):
                 if overlay_policy.explicit(settings):
                     source_ui = (Path(writes['ReShade.ini']['path']) if 'ReShade.ini' in writes else directory / 'ReShade.ini').read_text(encoding='utf-8-sig')
                     updated_ui = overlay_policy.reshade(source_ui, settings)
-                    # The rtxForge panel hides ReShade's startup banner unless welcomes are on.
-                    quiet = '0' if overlay_policy.options(settings)['reshade_intro'] else '1'
-                    if t.ini(updated_ui).get('rtxForge.UI', 'QuietStartup', fallback='1') != quiet:
-                        updated_ui = t.setvalue(updated_ui, 'rtxForge.UI', 'QuietStartup', quiet)
                     if updated_ui != source_ui:
                         ui_file = t.safe(e.STATE_ROOT / 'feeder-cache' / t.sha(updated_ui.encode()))
                         if not ui_file.exists(): t.atomic_file(ui_file, updated_ui.encode(), 0o600)

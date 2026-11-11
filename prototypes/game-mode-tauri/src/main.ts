@@ -8,7 +8,7 @@ import { captureArrival, arrive } from './motion';
 import { bindArtworkFailures, hydrateArtwork, clearArtworkCache, prioritizeArtwork } from './artwork';
 // Artwork sources remain exact library identities.
 import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type OverviewCard, type Snapshot, type View } from './model';
-import { operationFlow,operationStep,flowGame,reviewRow } from './operation-ui';
+import { bindReviewInfo, operationFlow,operationStep,flowGame,reviewRow } from './operation-ui';
 import { activeSetup, changePicker, newPicker, splitChoice, splitPicker, splitPresetSelect, splitRenderDescription, type Catalog, type Picker, type Setup } from './split-render';
 import { installInput } from './input';
 import { setupLibraryLayout } from './library-layout';
@@ -190,7 +190,7 @@ function setView(next: View, focus = true) {
   }
   if (next === 'presets' && backend.enabled) void loadSplitPresets();
   if (next === 'settings' && backend.enabled && !sharedPreferences) void loadPreferences();
-  if (next === 'packages' && backend.enabled) void loadSplitCatalog().then(() => { if (view === 'packages') { render(); if (splitPackageOpen) void matchSplitGames(); } })
+  if (next === 'packages' && backend.enabled) void loadSplitCatalog().then(() => { if (view === 'packages') { render(); if (splitPackageOpen || splitRemove) void matchSplitGames(); } })
     .catch(problem => announce(problem.message));
   if (next === 'details' && detailsSection === 'tools' && backend.enabled && selectedGame()) void loadSplitTool(selectedGame()!);
   if(next==='details'&&backend.enabled){const game=selectedGame();if(game)void getEngineRows(game).then(rows=>{if(view==='details'&&selectedId===game.id){render();if(detailsSection==='overview'&&rows[0])void loadOverviewExtras(game,rows[0]);}}).catch(problem=>announce(problem.message));}
@@ -846,39 +846,57 @@ function visibleSplitGames() {
   return (snapshot?.games || []).filter(game => ((!splitRemove && !choice) || splitMatches.has(game.id)) && game.name.toLowerCase().includes(splitQuery.trim().toLowerCase()))
     .sort((left, right) => left.name.localeCompare(right.name));
 }
+function splitGamePicker() {
+  const games = visibleSplitGames(), query = splitQuery.trim();
+  const empty = splitMatchError || (splitMatching ? (splitRemove ? 'Finding installed setups…' : 'Checking compatibility…') :
+    !snapshot?.games.length ? 'There are no scanned games in your library.' :
+    splitRemove && !splitMatches.size ? 'No scanned games have Split Render installed.' :
+    !splitRemove && splitCatalog && splitChoice(splitCatalog, packagePicker) && !splitMatches.size ? 'No games can use this setup.' :
+    query ? 'No games match your search.' : 'No games can use this setup.');
+  return `<section class="split-games">
+    <div class="split-games-toolbar">
+      <label class="split-search">${icon('search')}<input id="split-game-search" type="search" aria-label="Search games" placeholder="Search games" value="${e(splitQuery)}"></label>
+      <div class="operation-actions">
+        <button class="quiet" data-action="split-select-all" ${splitMatching || !games.some(game => !splitSelected.has(game.id)) ? 'disabled' : ''}>${icon('check')}${query ? 'Select all results' : 'Select all'}</button>
+        <button class="quiet" data-action="split-clear" ${splitSelected.size ? '' : 'disabled'}>${icon('minus')}Clear selection</button>
+      </div>
+    </div>
+    <p class="split-selection-count subtle" role="status">${splitSelected.size} selected${splitMatchNotice ? ' · ' + e(splitMatchNotice) : ''}</p>
+    <div class="split-game-list" aria-label="Games">${splitMatching || splitMatchError || !games.length ? `<p role="status">${e(empty)}</p>` : games.map(game => {
+      const accent = detailsAccent(game) || '#b4b4b4', art = game.capsule || game.art;
+      return `<label class="nr-target-choice" style="--game-accent:${e(accent)}">
+        <input type="checkbox" data-nr-target="${e(game.id)}" aria-label="${e(game.name)}" ${splitSelected.has(game.id) ? 'checked' : ''} />
+        <span class="selection-check" aria-hidden="true">${icon('check')}</span>
+        <span class="flow-thumbnail">${art ? `<img src="${e(art)}" alt=""/>` : icon('controller')}</span>
+        <span class="split-game-title"><strong>${e(game.name)}</strong><small>${e(splitMatches.get(game.id)?.summary || game.source)}</small></span>
+      </label>`;
+    }).join('')}</div>
+  </section>`;
+}
 function nrPackageCard() {
   if (!backend.enabled) return '';
-  const games = visibleSplitGames();
   const catalog = splitCatalog;
   const enabled = catalog?.enabled === true;
   const choice = enabled && splitChoice(catalog, packagePicker);
   return `<section class="glass-section"><h2>Split Render</h2>
     <p>${enabled ? e(splitRenderDescription) : 'New setups are paused while performance and image quality are improved.'}</p>
-    <div class="operation-actions">
-      ${enabled && splitRemove ? '<button class="quiet" data-action="open-split-install">Set up Split Render</button>' : ''}
-      <button class="quiet" data-action="open-split-removal">Remove Split Render</button>
-    </div>
-    ${enabled || splitRemove ? `<details id="split-packages" ${splitPackageOpen ? 'open' : ''}>
-      <summary>${splitRemove ? 'Choose games to remove' : 'Choose games'}</summary>
-    <div class="${splitRemove ? '' : 'split-layout'}">
-    ${!splitRemove && enabled ? `<section><h3>${icon('gear')} Setup</h3>${splitPicker(catalog, packagePicker, 'packages')}</section>` : ''}
-    <section><h3>${icon('controller')} Games <span class="subtle">${splitSelected.size} selected</span></h3>
-    <label class="split-search">${icon('search')}<input id="split-game-search" type="search" aria-label="Search games" placeholder="Search games" value="${e(splitQuery)}"></label>
-    <div class="operation-actions"><button class="quiet" data-action="split-select-all" ${splitMatching || !games.some(game => !splitSelected.has(game.id)) ? 'disabled' : ''}>${icon('check')}${splitQuery.trim() ? 'Select all results' : 'Select all'}</button>
-    <button class="quiet" data-action="split-clear" ${splitSelected.size ? '' : 'disabled'}>${icon('minus')}Clear selection</button></div>
-    ${splitMatchNotice ? `<p class="subtle" role="status">${e(splitMatchNotice)}</p>` : ''}
-    <div class="split-game-list">${splitMatching || splitMatchError || !games.length ? `<p role="status">${e(splitMatchError || (splitMatching ? (splitRemove ? 'Finding installed setups…' : 'Checking compatibility…') :
-      !snapshot?.games.length ? 'There are no scanned games in your library.' :
-      splitRemove && !splitMatches.size ? 'No scanned games have Split Render installed.' :
-      !choice || splitMatches.size ? 'No games match your search.' : 'No games can use this setup.'))}</p>`
-      : games.map(game => {
-        const accent = detailsAccent(game) || '#b4b4b4', art = game.capsule || game.art;
-        return `<label class="nr-target-choice" style="--game-accent:${e(accent)};--game-selected-ink:${selectionInk(accent)}"><input type="checkbox" data-nr-target="${e(game.id)}" ${splitSelected.has(game.id) ? 'checked' : ''} /><span class="selection-check" aria-hidden="true">${icon('check')}</span>
-        <span class="flow-thumbnail">${art ? `<img src="${e(art)}" alt=""/>` : icon('controller')}</span><span><strong>${e(game.name)}</strong><small>${e(splitMatches.get(game.id)?.summary || game.source)}</small></span></label>`;
-      }).join('')}</div>
-    </section></div>
-    <button class="primary" data-action="review-nr-addons" ${splitMatching || (!splitRemove && !choice) || !splitSelected.size ? 'disabled' : ''}>Review selection</button>
+    <button class="quiet" data-action="open-split-removal">${icon('minus')}Remove Split Render</button>
+    ${enabled && !splitRemove ? `<details id="split-packages" ${splitPackageOpen ? 'open' : ''}><summary>Choose games</summary>
+      <div class="split-layout"><section><h3>${icon('gear')} Setup</h3>${splitPicker(catalog, packagePicker, 'packages')}</section>
+      ${splitGamePicker()}</div>
+      <button class="primary" data-action="review-nr-addons" ${splitMatching || !choice || !splitSelected.size ? 'disabled' : ''}>Review selection</button>
     </details>` : ''}</section>`;
+}
+function splitRemovalPicker() {
+  return `<div class="split-removal-flow">
+    <header><h1 id="page-title" tabindex="-1">Remove Split Render</h1>
+      <p>Choose the games to review. Close any selected games before removing their setup.</p></header>
+    ${splitGamePicker()}
+    <footer class="operation-actions flow-actions">
+      <button class="quiet" data-action="close-split-removal">Cancel</button>
+      <button class="primary" data-action="review-nr-addons" ${splitMatching || !splitSelected.size ? 'disabled' : ''}>Review selection</button>
+    </footer>
+  </div>`;
 }
 async function matchSplitGames() {
   const remove = splitRemove;
@@ -1268,12 +1286,14 @@ function render() {
   const splitListScroll = sameSurface ? app.querySelector<HTMLElement>('.split-game-list')?.scrollTop || 0 : 0;
   const flowScroll = operation?.stage === 'review' ? app.querySelector<HTMLElement>('.operation-flow[data-stage=review] .flow-body')?.scrollTop || 0 : 0;
   applyAppearance();
-  const modal = view==='operation' && !!operation?.kind;
-  const surface = modal ? operation?.origin || 'library' : view;
+  const operationModal = view==='operation' && !!operation?.kind;
+  const removalModal = view==='packages' && splitRemove;
+  const modal = operationModal || removalModal;
+  const surface = operationModal ? operation?.origin || 'library' : view;
   document.documentElement.dataset.surface = surface;
   const pageContent = surface === 'library' ? library() : surface === 'presets' ? presets() : surface === 'details' ? details() : surface === 'packages' ? packages() : surface === 'extras' ? extras() : surface === 'operation' ? operationView() : settings();
   const content = modal ? pageContent.replace('id="page-title"','id="background-page-title"') : pageContent;
-  const overlay = modal ? `<div class="operation-backdrop"><section class="operation-modal glass-section" role="dialog" aria-modal="true" aria-labelledby="page-title">${operationView()}</section></div>` : '';
+  const overlay = modal ? `<div class="operation-backdrop"><section class="operation-modal glass-section${removalModal?' split-remove-modal':''}" role="dialog" aria-modal="true" aria-labelledby="page-title">${removalModal ? splitRemovalPicker() : operationView()}</section></div>` : '';
   app.innerHTML = `<div class="shell" ${modal?'inert aria-hidden="true"':''}><header class="app-header" data-tauri-drag-region><div class="brand"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></div><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><div id="input-hints">${hints()}</div></footer></div>${overlay}`;
   const game = selectedGame(), scene = document.querySelector<HTMLElement>('#scene')!;
   if(view==='details'&&snapshot&&game)prioritizeArtwork(snapshot,game.id);
@@ -1427,6 +1447,7 @@ function bindSplitRender() {
   });
 }
 function bind() {
+  bindReviewInfo(app);
   bindSplitRender();
   enhanceActionLabels();
   app.querySelectorAll<HTMLElement>('button,input,select,textarea,summary,a[href]').forEach(node=>node.classList.add('ui-control'));
@@ -1619,13 +1640,23 @@ function action(name: string) {
   if (name === 'reset-appearance') { appearance = { ...appearanceDefaults }; applyAppearance(); render(); app.querySelector<HTMLElement>('[data-action="reset-appearance"]')?.focus(); announce('Appearance reset to Clear.'); }
   if (name === 'scan-engine') void getEngineRows().then(() => { render(); announce('Compatibility check completed.'); }).catch(problem => announce(problem.message));
   if(name==='startup-review'&&pendingInstall){void withOperation('Review Installation','prepare_routes',pendingInstall.params,'execute_routes');return;}
-  if (name === 'open-split-removal' || name === 'open-split-install') {
-    splitRemove = name === 'open-split-removal';
-    splitPackageOpen = true;
+  if (name === 'open-split-removal') {
+    splitRemove = true;
+    splitPackageOpen = false;
     splitQuery = '';
     splitSelected.clear();
     splitMatches.clear();
     void matchSplitGames();
+    app.querySelector<HTMLElement>('#page-title')?.focus({ preventScroll: true });
+  }
+  if (name === 'close-split-removal') {
+    splitRemove = false;
+    splitMatchRevision++;
+    splitMatching = false;
+    splitSelected.clear();
+    splitMatches.clear();
+    render();
+    app.querySelector<HTMLElement>('[data-action="open-split-removal"]')?.focus({ preventScroll: true });
   }
   if (name === 'review-nr-addons') void reviewNrPackage().catch(problem => announce(problem.message));
   if (name === 'split-select-all') { for (const game of visibleSplitGames()) splitSelected.add(game.id); render(); }
@@ -1633,7 +1664,15 @@ function action(name: string) {
   if (name === 'save-split-preset') { void saveSplitPreset(); return; }
   if (name.startsWith('split-tool-')) void applySplitTool(name);
   if (name === 'feeder-character-apply') void applyFeederCharacter();
-  if (name === 'operation-back') { const origin = operation?.origin || 'details'; operation = null; pendingInstall=null; setView(origin); }
+  if (name === 'operation-back') {
+    const origin = operation?.origin || 'details';
+    if (origin === 'packages' && operation?.kind === 'remove-nr-addons') {
+      splitRemove = false;
+      splitSelected.clear();
+      splitMatches.clear();
+    }
+    operation = null; pendingInstall=null; setView(origin);
+  }
   if (name === 'discard-review') void discardReview();
   if (name === 'cancel-operation' && operation?.review){const state=operation;state.cancelRequested=true;render();void engineRequest(state.execute==='execute_routes'?'cancel_routes':'cancel',{token:state.review!.token}).then(()=>announce('Cancellation requested. The engine will stop at a safe boundary.')).catch(problem=>{state.cancelRequested=false;render();announce(String(problem));});}
   if (name === 'confirm-operation') void confirmOperation();
@@ -1848,8 +1887,11 @@ document.addEventListener('pointerdown',event=>{
 });
 document.addEventListener('keydown',event=>{if(event.key==='F11'&&'__TAURI_INTERNALS__' in window){event.preventDefault();action('toggle-window-mode');}});
 function closeLibrarySize(restoreFocus=true){librarySizeOpen=false;const control=app.querySelector<HTMLElement>('.library-size-control');if(control)control.dataset.open='false';app.querySelector('#library-size-button')?.setAttribute('aria-expanded','false');if(restoreFocus)app.querySelector<HTMLElement>('#library-size-button')?.focus();}
-installInput(() => { const colorCancel=app.querySelector<HTMLButtonElement>('.color-editor:not([hidden]) [data-color-cancel]');if(colorCancel){colorCancel.click();return;} if(heroAdjustment){finishHeroAdjustment(true);return;} if(librarySizeOpen){closeLibrarySize();return;} if(selectMenuOpen()){closeSelectMenu();return;} if(detailsMenuOpen){detailsMenuOpen=false;render();app.querySelector<HTMLElement>('[data-action="game-menu"]')?.focus();return;} if (shellMenuOpen) { shellMenuOpen=false; const menu=app.querySelector<HTMLElement>('#shell-menu'); if(menu)menu.hidden=true; app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false'); app.querySelector<HTMLElement>('#shell-menu-button')?.focus(); return; } if (view === 'operation' && operation?.stage === 'running') { announce('The operation is running. Use Request cancellation to stop safely.'); return; } if (view === 'operation' && (operation?.stage === 'review'||operation?.stage==='startup'||operation?.stage==='checking')) { void discardReview(); return; } if(view==='operation'){action('operation-back');return;} if (view !== 'library') setView('library'); else app.querySelector<HTMLElement>('[data-route="library"]')?.focus(); }, delta => {
-  if(app.querySelector('.color-editor:not([hidden])')||heroAdjustment||librarySizeOpen||selectMenuOpen()||shellMenuOpen||detailsMenuOpen||view==='operation')return;
+installInput(() => {
+  const reviewInfo = app.querySelector<HTMLElement>('.review-info-popover:popover-open');
+  if (reviewInfo) { reviewInfo.hidePopover(); return; }
+  const colorCancel=app.querySelector<HTMLButtonElement>('.color-editor:not([hidden]) [data-color-cancel]');if(colorCancel){colorCancel.click();return;} if(heroAdjustment){finishHeroAdjustment(true);return;} if(librarySizeOpen){closeLibrarySize();return;} if(selectMenuOpen()){closeSelectMenu();return;} if(detailsMenuOpen){detailsMenuOpen=false;render();app.querySelector<HTMLElement>('[data-action="game-menu"]')?.focus();return;} if (shellMenuOpen) { shellMenuOpen=false; const menu=app.querySelector<HTMLElement>('#shell-menu'); if(menu)menu.hidden=true; app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false'); app.querySelector<HTMLElement>('#shell-menu-button')?.focus(); return; } if (view === 'operation' && operation?.stage === 'running') { announce('The operation is running. Use Request cancellation to stop safely.'); return; } if (view === 'operation' && (operation?.stage === 'review'||operation?.stage==='startup'||operation?.stage==='checking')) { void discardReview(); return; } if(view==='operation'){action('operation-back');return;} if(splitRemove&&view==='packages'){action('close-split-removal');return;} if (view !== 'library') setView('library'); else app.querySelector<HTMLElement>('[data-route="library"]')?.focus(); }, delta => {
+  if(app.querySelector('.color-editor:not([hidden])')||heroAdjustment||librarySizeOpen||selectMenuOpen()||shellMenuOpen||detailsMenuOpen||view==='operation'||(splitRemove&&view==='packages'))return;
   const index = tabs.findIndex(tab => tab.id === (view === 'details' ? 'library' : view));
   setView(tabs[(index + delta + tabs.length) % tabs.length].id);
 }, (state, id) => { document.documentElement.dataset.controller=String(state); controller = state; controllerId = id || ''; const hint = app.querySelector('#input-hints'); if (hint) hint.innerHTML = hints(); const framing=app.querySelector('#hero-framing-help');if(framing)framing.innerHTML=framingHelp(); }, showHints);

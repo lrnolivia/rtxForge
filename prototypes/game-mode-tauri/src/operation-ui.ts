@@ -10,11 +10,36 @@ export function flowGame(item:Record<string,unknown>,games:Game[]) {
  const key=String(item.game||item.path||item.game_id||'').replaceAll('\\','/').toLowerCase();
  return games.find(game=>key&&(game.path.replaceAll('\\','/').toLowerCase()===key||game.id.toLowerCase()===key))||games.find(game=>game.name===String(item.name||item.title||''));
 }
+let nextReviewInfo = 0;
+function reviewInfo(title:string,text:string,icon:Icon) {
+ const id = `review-info-${++nextReviewInfo}`;
+ return `<button type="button" class="review-info-button" popovertarget="${id}" aria-label="Show details for ${e(title)}" title="Details">${icon('info')}</button>
+ <div class="review-info-popover" id="${id}" popover="auto" role="region" aria-label="Details for ${e(title)}" tabindex="0">
+   <p>${e(title)}</p><pre>${e(text)}</pre>
+ </div>`;
+}
+export function bindReviewInfo(root:HTMLElement) {
+ for (const button of root.querySelectorAll<HTMLButtonElement>('.review-info-button')) {
+  const panel = document.getElementById(button.getAttribute('popovertarget') || '');
+  if (!panel) continue;
+  button.addEventListener('click', () => {
+   const rect = button.getBoundingClientRect();
+   const width = Math.min(460, window.innerWidth - 32);
+   const below = window.innerHeight - rect.bottom - 16;
+   const above = rect.top - 16;
+   const openBelow = below >= Math.min(above, 220);
+   panel.style.left = `${Math.max(16, Math.min(rect.right - width, window.innerWidth - width - 16))}px`;
+   panel.style.top = openBelow ? `${rect.bottom + 8}px` : 'auto';
+   panel.style.bottom = openBelow ? 'auto' : `${window.innerHeight - rect.top + 8}px`;
+   panel.style.maxHeight = `${Math.max(64, Math.min(320, (openBelow ? below : above) - 8))}px`;
+  });
+ }
+}
 export function reviewRow(item:Record<string,unknown>,games:Game[],icon:Icon,ready=true) {
  const game=flowGame(item,games),art=game?.capsule||game?.art,color=game?.accent||game?.artworkAccent;
  const title=String(item.name||item.title||game?.name||'Selected change'),detail=String(item.summary||item.detail||item.reason||'');
  const technical=String(item.details||item.technical||(item.summary?(item.detail||item.reason||''):'')),badge=String(item.badge||(ready?'Ready':'Skipped'));
- return `<article class="flow-review-row inner-card" ${color?`style="--row-accent:${e(color)}"`:''}><div class="flow-thumbnail">${art?`<img src="${e(art)}" alt=""/>`:icon(ready?'check':'warning')}</div><div class="flow-review-copy"><h3>${e(title)}</h3>${detail?`<p>${e(detail)}</p>`:''}${technical?`<details><summary>Technical details</summary><pre>${e(technical)}</pre></details>`:''}</div><span class="flow-badge ${ready?'':'flow-skipped'}">${icon(ready?'check':'warning')}${e(badge)}</span></article>`;
+ return `<article class="flow-review-row inner-card" ${color?`style="--row-accent:${e(color)}"`:''}><div class="flow-thumbnail">${art?`<img src="${e(art)}" alt=""/>`:icon(ready?'check':'warning')}</div><div class="flow-review-copy"><h3>${e(title)}</h3>${detail?`<p>${e(detail)}</p>`:''}</div><div class="flow-row-actions"><span class="flow-badge ${ready?'':'flow-skipped'}">${icon(ready?'check':'warning')}${e(badge)}</span>${technical && technical !== detail ? reviewInfo(title,technical,icon) : ''}</div></article>`;
 }
 export function operationStep(state:FlowState,games:Game[],icon:Icon) {
  const p=state.progress||{},name=String(p.game||p.name||''),game=flowGame({game:name,name},games)||state.targets?.[0];
@@ -44,7 +69,7 @@ export function operationFlow(state:FlowState,games:Game[],icon:Icon,startup='',
   const cancelled=result?.cancelled===true,failed=state.stage==='error'||errors.length>0;
   const message=state.error||String(result?.message||(typeof result?.report==='string'?result.report:'')||(typeof state.result==='string'?state.result:cancelled?'The engine stopped this operation. Review the completed steps below.':failed?'Some changes need attention.':'The engine finished the reviewed operation.'));
   const reports=Array.isArray(result?.reports)?result.reports:[];
-  body=`<div class="flow-result ${failed?'flow-result-error':''}">${icon(failed||cancelled?'warning':'check')}<div><h2>${failed?'Needs attention':cancelled?'Operation cancelled':'All done'}</h2><p role="status">${e(message)}</p>${typeof result?.completed_batches==='number'?`<p class="subtle">${result.completed_batches} reviewed batch${result.completed_batches===1?'':'es'} completed.</p>`:''}${errors.length?`<ul>${errors.map(error=>`<li>${e(error)}</li>`).join('')}</ul>`:''}</div></div>${reports.length?`<details class="flow-report"><summary>Operation details</summary>${reports.map(report=>`<pre>${e(typeof report==='string'?report:JSON.stringify(report,null,2))}</pre>`).join('')}</details>`:''}`;
+  body=`<div class="flow-result ${failed?'flow-result-error':''}">${icon(failed||cancelled?'warning':'check')}<div><h2>${failed?'Needs attention':cancelled?'Operation cancelled':'All done'}</h2><p role="status">${e(message)}</p>${typeof result?.completed_batches==='number'?`<p class="subtle">${result.completed_batches} reviewed batch${result.completed_batches===1?'':'es'} completed.</p>`:''}${errors.length?`<ul>${errors.map(error=>`<li>${e(error)}</li>`).join('')}</ul>`:''}</div>${reports.length ? reviewInfo('Operation result',reports.map(report=>typeof report==='string'?report:JSON.stringify(report,null,2)).join('\n\n'),icon) : ''}</div>`;
   footer='<button class="primary" data-action="operation-back">Back to game</button>';
  }
  return `<div class="operation-flow" data-stage="${state.stage}"><header class="flow-heading"><h1 id="page-title" tabindex="-1">${e(title)}</h1>${state.kind==='install'?`<ol class="flow-steps" aria-label="Installation steps">${steps.map((step,i)=>`<li ${i===current?'aria-current="step"':''}><span>${i+1}</span>${step}</li>`).join('')}</ol>`:''}</header><section class="glass-section flow-panel">${['checking','running'].includes(state.stage)?'<div class="flow-artwork" aria-hidden="true"></div>':''}<div class="flow-body">${body}</div><footer class="operation-actions flow-actions">${footer}</footer></section></div>`;

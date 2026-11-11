@@ -4081,7 +4081,7 @@ class OperationFlow:
             skipped=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
             skipped.add_css_class('boxed-list');skipped.add_css_class('review-list')
             for item in blocked:
-                skipped.append(owner.review_entry(item['name'],user_messages.friendly_error(item['reason']),owner.review_game(item['name']),'Skipped','Technical details\n'+str(item['reason']),icon='dialog-warning-symbolic'))
+                skipped.append(owner.review_entry(item['name'],user_messages.friendly_error(item['reason']),owner.review_game(item['name']),'Skipped',str(item['reason']),icon='dialog-warning-symbolic'))
             body.append(skipped)
             if any('baseline' in str(item['reason']).lower() for item in blocked):
                 previous=Gtk.Button(label='Previous Changes',halign=Gtk.Align.START)
@@ -4166,7 +4166,10 @@ class OperationFlow:
         )
         page.add_css_class('compact')
         page.add_css_class('operation-done' if success else 'operation-failed')
-        if technical:page.set_child(self.owner.technical_details(technical))
+        if technical:
+            details=self.owner.details_button(technical)
+            details.set_halign(Gtk.Align.CENTER)
+            page.set_child(details)
         self.cancel_button.set_visible(False)
         self.primary.set_visible(True)
         self.primary.set_label('Done')
@@ -6302,19 +6305,9 @@ class Window(Adw.ApplicationWindow):
         return False
 
     def review_entry(self,title,subtitle='',game=None,badge=None,details=None,icon='text-x-generic-symbolic'):
-        entry=(Adw.ExpanderRow if details is not None else Adw.ActionRow)(title=str(title),subtitle=str(subtitle))
+        entry=Adw.ActionRow(title=str(title),subtitle=str(subtitle))
         entry.set_use_markup(False);entry.set_subtitle_lines(0)
         entry.add_css_class('review-game')
-        if details is not None:
-            def resized(*_):
-                listing=entry.get_parent()
-                flow=getattr(self,'operation_flow',None)
-                if flow is not None and not flow.closed and flow.dialog is self.dialog:
-                    # Operation reviews size themselves; the panel sizing below pins their
-                    # outer scroll to the first five rows and shrinks the dialog.
-                    GLib.timeout_add(80,lambda:flow._fit(flow.content,flow.dialog.get_content_width()))
-                elif isinstance(listing,Gtk.ListBox):GLib.timeout_add(80,self.size_review_panel,listing)
-            entry.connect('notify::expanded',resized)
         if game:
             accent=self._ensure_game_accent(game)
             if accent:entry.add_css_class(accent)
@@ -6333,9 +6326,7 @@ class Window(Adw.ApplicationWindow):
         if badge:
             pill=label(badge,'review-badge');pill.set_valign(Gtk.Align.CENTER);entry.add_suffix(pill)
         if details is not None:
-            if isinstance(details,Gtk.Widget):entry.add_row(details)
-            else:
-                text=label(str(details));text.set_selectable(True);margins(text,14);entry.add_row(text)
+            entry.add_suffix(self.details_button(details))
         return entry
 
     def review_game(self,name,game_id=None):
@@ -6829,13 +6820,14 @@ class Window(Adw.ApplicationWindow):
         def ready(report):
             d,b,f=self.open_panel(game['name']+' · NR Diagnosis')
             for observation in report['observations']:b.append(label(observation))
-            b.append(label('Visible result: '+report['visual_result'],'heading'))
-            # The raw evidence is for support: collapsed, read-only, real characters.
+            result=Gtk.Box(spacing=8)
+            result.append(label('Visible result: '+report['visual_result'],'heading'))
+            b.append(result)
             view=Gtk.TextView(editable=False,cursor_visible=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR)
             view.get_buffer().set_text(json.dumps(report,indent=2,ensure_ascii=False))
             scroller=Gtk.ScrolledWindow(min_content_height=240,vexpand=True,hscrollbar_policy=Gtk.PolicyType.NEVER)
             scroller.set_child(view)
-            details=Gtk.Expander(label='Technical details');details.set_child(scroller);b.append(details)
+            result.append(self.details_button(scroller))
             f.append(button('Refresh',lambda *_:self.show_diagnostics(game)))
         if self.options.demo:
             ready({'observations':['Demo: diagnosis reads the selected game’s settings, exact runtime hashes, and bounded log tail.'],'visual_result':'Not tested'})
@@ -11887,12 +11879,26 @@ class Window(Adw.ApplicationWindow):
 
         return stack
 
-    def technical_details(self,message):
-        group=Adw.PreferencesGroup()
-        detail=Adw.ExpanderRow(title='Technical details')
-        raw=label(str(message));raw.set_selectable(True);margins(raw,12)
-        detail.add_row(raw);group.add(detail)
-        return group
+    def details_button(self,content):
+        if not isinstance(content,Gtk.Widget):
+            raw=label(content)
+            raw.set_selectable(True)
+            raw.set_max_width_chars(56)
+            content=Gtk.ScrolledWindow(max_content_height=280,propagate_natural_height=True,
+                                       hscrollbar_policy=Gtk.PolicyType.NEVER)
+            content.set_child(raw)
+        if isinstance(content,Gtk.ScrolledWindow):
+            content.set_min_content_width(280)
+            content.set_max_content_width(440)
+            content.set_propagate_natural_width(True)
+        popover=Gtk.Popover()
+        popover.set_child(content)
+        info=Gtk.MenuButton(icon_name='dialog-information-symbolic',tooltip_text='Show details',
+                            halign=Gtk.Align.START,valign=Gtk.Align.CENTER)
+        info.add_css_class('flat')
+        info.add_css_class('circular')
+        info.set_popover(popover)
+        return info
 
     def error(self,message):
         flow=getattr(self,'operation_flow',None)
@@ -11901,8 +11907,10 @@ class Window(Adw.ApplicationWindow):
         if self.dialog==getattr(self,'progress_dialog',None) and getattr(self,'job_label',None):
             box=self.progress_shell.get_last_child();self.finish_progress(False,str(message),box.get_last_child());return
         d,b,f=self.open_panel('Could Not Finish',width=580,height=360,show_close=False)
-        b.append(label(user_messages.friendly_error(message)))
-        b.append(self.technical_details(message))
+        status=Gtk.Box(spacing=8)
+        status.append(label(user_messages.friendly_error(message)))
+        status.append(self.details_button(message))
+        b.append(status)
         f.append(button('Close',lambda *_:d.close()))
     def scan(self):
         if self.options.demo:return
@@ -13885,8 +13893,9 @@ class Window(Adw.ApplicationWindow):
             found,backups=result
             inventory.remove(inventory_status)
             if found['blocked']:
-                inventory.add(row('File management unavailable',user_messages.friendly_error(found['blocked'])))
-                inventory.add(self.technical_details(found['blocked']))
+                blocked=row('File management unavailable',user_messages.friendly_error(found['blocked']))
+                blocked.add_suffix(self.details_button(found['blocked']))
+                inventory.add(blocked)
             elif not found['files']:
                 inventory.add(row('No supported DLSS files','No separate DLSS files were found outside the installed feature stack.'))
             if found['files']:

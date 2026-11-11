@@ -167,15 +167,38 @@ try{
  await expect(page.getByText('New setups are paused while performance and image quality are improved.')).toBeVisible();
  await expect(page.getByText('Choose games',{exact:true})).toHaveCount(0);
  await click('Remove Split Render');
- await expect(page.locator('[data-nr-target]')).toHaveCount(2);
+ const picker=page.getByRole('dialog',{name:'Remove Split Render',exact:true});
+ await expect(picker).toBeVisible();
+ await expect(picker.locator('[data-nr-target]')).toHaveCount(2);
  await click('Select all');
- await expect(page.locator('[data-nr-target]:checked')).toHaveCount(2);
+ await expect(picker.locator('[data-nr-target]:checked')).toHaveCount(2);
+ await expect(picker.getByRole('button',{name:'Review selection'})).toBeInViewport();
+ expect(await picker.locator('.nr-target-choice').evaluateAll(rows=>rows.every(row=>
+   row.querySelector('.flow-thumbnail').getBoundingClientRect().right <=
+   row.querySelector('.split-game-title').getBoundingClientRect().left))).toBe(true);
+ await screenshot('bulk-removal-picker');
+ await page.setViewportSize({width:720,height:600});
+ await expect(picker.getByRole('button',{name:'Review selection'})).toBeInViewport();
+ await expect(picker.getByRole('searchbox',{name:'Search games'})).toBeInViewport();
+ await page.setViewportSize({width:1440,height:990});
  await click('Review selection');
  await expect(page.getByRole('heading',{name:'Review Split Render removal',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Remove Split Render',exact:true})).toBeEnabled();
  expect(calls.filter(c=>c.method==='nr_review').at(-1).params).toMatchObject(
    {remove:true,rows:source.games.slice(0,2).map(game=>({game:game.path}))});
+ const details=page.getByRole('region',{name:'Details for '+source.games[0].name,exact:true});
+ await page.getByRole('button',{name:'Show details for '+source.games[0].name,exact:true}).click();
+ await expect(details).toContainText('Remove renodx-dlss.addon64');
+ await expect(details).toBeInViewport();
+ await screenshot('bulk-removal-review');
+ await page.keyboard.press('Escape');
+ await expect(details).toBeHidden();
+ await expect(page.getByRole('heading',{name:'Review Split Render removal',exact:true})).toBeVisible();
  await click('Back');
+ await expect(picker.locator('[data-nr-target]:checked')).toHaveCount(2);
+ await page.keyboard.press('Escape');
+ await expect(picker).toBeHidden();
+ await expect(page.getByRole('button',{name:'Remove Split Render',exact:true})).toBeFocused();
  await click('Presets');
  await expect(page.getByRole('heading',{name:'Split Render Presets',exact:true})).toHaveCount(0);
  expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['startup before preparation','original runtime units and exact targets','responsive startup controls','checking/progress/results with artwork','real progress events preserve Cancel focus','trust gates and explicit supported subsets','exact cancel/discard tokens','honest cancellation and failure','Split Render reviewed before one install run','compatibility filtering and bulk controls in Packages','package-specific preset editor feeds install-only Tools','per-game Tools review without selection checkboxes','Feeder can assign Character to any full-frame pass','restore review','fixture-only no game mutation']}));

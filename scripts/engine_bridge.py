@@ -907,6 +907,6 @@ def execute(review):
     path=e.STATE_ROOT/('desktop-'+e.now_stamp()+'.json');e.save_json_atomic(path,{'results':results})
     failed=[r for r in results if r['status']=='failed']
     if failed:
-        recovery=f' Recovery copies are available at {session.root}.' if recovery_pending else ' The affected files were kept or put back.'
+        recovery=f' Recovery copies are available at {session.root}.' if recovery_pending else ' Their files were put back as they were.'
         raise t.Refusal(f'{len(failed)} game(s) need attention. Completed games keep their changes.{recovery} Report: {path}')
     return str(path)

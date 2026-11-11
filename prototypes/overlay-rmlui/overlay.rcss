@@ -446,7 +446,7 @@ button:active { transform: scale(.98); }
 .layout-bar .metadata-compact .metadata-top { margin-bottom: 3dp; font-size: 16dp; }
 .layout-bar .metadata-compact .metadata-line { font-size: 12dp; gap: 12dp; }
 .layout-bar .metadata-compact .feature-status { display: none; }
-.layout-bar .tuning-sections { margin-top: 24dp; }
+.layout-bar .tuning-sections { margin-top: 30dp; }
 /* The live overlay shows the preset row in Bar when a game lacks NR or FG; keep the Bar's row gap above it. */
 .layout-bar .overview .preset-row { margin-top: 24dp; }
 @media (max-width: 1400dp) {
@@ -660,6 +660,9 @@ select selectvalue { min-width: 0; padding-right: 28dp; }
 .layout-bar .overview { position: static; }
 .layout-bar.standalone-settings .main-panel { padding: 22dp 28dp; }
 .compact-height .main-panel > h1 { display: none; }
+.compact-height .main-panel > .overview { margin-top: 16dp; }
+.layout-centered.compact-height .main-panel > .overview,
+.layout-bar.compact-height .main-panel > .overview { margin-top: 0; }
 .compact-height .main-panel { padding: 24dp 32dp; }
 .layout-bar.compact-height .main-panel { padding: 20dp 24dp; }
 .compact-height .tuning-footer { margin-top: 12dp; padding-top: 12dp; }

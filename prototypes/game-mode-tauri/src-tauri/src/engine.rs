@@ -7,10 +7,10 @@ pub struct Session { child: Mutex<Child>, input: Mutex<Option<ChildStdin>>, pend
 #[derive(Default)]
 pub struct EngineState { session: Mutex<Option<Arc<Session>>>, pub closing: AtomicBool, pub drained: AtomicBool }
 
-pub fn enabled() -> bool { std::env::var("RTXFORGE_PREVIEW_READ_ONLY").as_deref() != Ok("1") && std::env::var("RTXFORGE_ENGINE_BRIDGE").as_deref() != Ok("0") }
+pub fn enabled() -> bool { crate::preview_view(std::env::args()).is_none() && std::env::var("RTXFORGE_PREVIEW_READ_ONLY").as_deref() != Ok("1") && std::env::var("RTXFORGE_ENGINE_BRIDGE").as_deref() != Ok("0") }
 #[tauri::command]
 pub fn engine_status(window: tauri::Window) -> serde_json::Value {
-    serde_json::json!({"enabled": enabled(), "appearance":std::env::args().any(|arg|arg=="--appearance"), "fullscreen":window.is_fullscreen().unwrap_or(false), "reason": if enabled() { "Reviewed operations are available." } else { "Read-only preview. Game, Steam and shared settings actions are disabled." }})
+    serde_json::json!({"enabled": enabled(), "appearance":std::env::args().any(|arg|arg=="--appearance"), "preview":crate::preview_view(std::env::args()), "fullscreen":window.is_fullscreen().unwrap_or(false), "reason": if enabled() { "Reviewed operations are available." } else { "Read-only preview. Game, Steam and shared settings actions are disabled." }})
 }
 
 fn session(app: &tauri::AppHandle, state: &EngineState) -> Result<Arc<Session>, String> {

@@ -52,6 +52,17 @@ public sealed partial class MainWindow
     public void EnterGameMode() => OpenNativeGameMode(false);
     public void OpenGameModeAppearance() => OpenNativeGameMode(true);
 
+    internal async Task OpenGameModePreview(string view)
+    {
+        try
+        {
+            var executable = GameModeLauncher.Resolve(AppContext.BaseDirectory, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+            using var preview = await Task.Run(() => GameModeLauncher.Start(executable, readOnly: true, preview: view));
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception or System.Text.Json.JsonException or UnauthorizedAccessException or KeyNotFoundException or ArgumentException)
+        { await Message("Game Mode preview could not open", error.Message); }
+    }
+
     void QueueNativeGameMode()
     {
         nativeModeRequested = true;
@@ -98,6 +109,7 @@ public sealed partial class MainWindow
         foreach (var property in typeof(ForgeSettings).GetProperties())
             if (property.CanWrite && Attribute.IsDefined(property, typeof(JsonPropertyNameAttribute))) property.SetValue(Settings, property.GetValue(saved));
         ThemeController.Apply(this, RootGrid, Settings.Theme);
+        ApplyAppAccent();
         AppWindow.Show(); Activate(); SettingsChanged?.Invoke();
         _ = ScanAsync();
     }

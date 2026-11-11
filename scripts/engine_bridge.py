@@ -2,7 +2,7 @@
 from pathlib import Path
 import importlib.util,sys,json,hashlib,zipfile,os,contextlib,functools,time,copy
 import transactions as t,flatpak_host,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider,proton_mfg,proton_cuda,proton_stack,linux_runtime
-from operation_session import Session,Cancelled
+from operation_session import Session,Cancelled,LIVE
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
 def providers():return json.loads((ROOT/'providers/lock.json').read_text())
@@ -310,7 +310,15 @@ LINUX_SKYNIZZ_REFUSAL=('Skynizz installation/adoption is not available on Linux 
 def skynizz_proton(settings):
     return cross_os.THIS_OS=='linux' and settings.get('skynizz_proton') is True
 
-def adopt_plan(e,g,row,record,operation,mode):
+def review_split_restore(config,g,row,preview,originals):
+    import nr_install
+    names=set(preview['files'])|set(originals)|{'OptiScaler'}
+    restore=nr_install.prepare_package_restore(config,row,(g.target_dir/t.relative(name) for name in names))
+    if detail:=nr_install.package_restore_detail(restore):
+        preview['launch_options']+='\n'+detail
+    return restore
+
+def adopt_plan(e,g,row,record,operation,mode,config=None):
     """Review entry for adapting the other OS's install of this game to this OS."""
     other=OS_NAMES[record['os']];here=OS_NAMES[cross_os.THIS_OS]
     data=shared_baseline(g)
@@ -347,8 +355,11 @@ def adopt_plan(e,g,row,record,operation,mode):
         preview={'files':managed,'launch_options':f'Installed with rtxForge on {other} · restores the original files it backed up'}
     else:
         preview={'files':[],'launch_options':f'Installed with rtxForge on {other} · adapts it for {here}, then saves your presets'}
-    return {'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,
-            'steam_route':steam_route,'adopt':record,'paths':managed}
+    item={'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,
+          'steam_route':steam_route,'adopt':record,'paths':managed}
+    if operation=='uninstall' and config is not None:
+        item['split_render_restore']=review_split_restore(config,g,row,preview,data.get('originals',{}))
+    return item
 
 def proton_setup(e,g,record):
     """Prefix and DLL names that make a Windows install load under Proton."""
@@ -559,7 +570,7 @@ def prepare(config,rows,mode,operation,settings):
             if shared:
                 t.need(cross_os.THIS_OS=='windows' or (shared.get('provider') or {}).get('id')!='skynizz' or proton,
                        LINUX_SKYNIZZ_REFUSAL)
-                ready.append(adopt_plan(e,g,row,shared,operation,mode))
+                ready.append(adopt_plan(e,g,row,shared,operation,mode,config=config))
                 ui.progress('Game checked',phase='review-check',game=row['name'],checked=index,total=len(rows))
                 continue
             retired=restored_elsewhere(e,g,baseline)
@@ -660,7 +671,8 @@ def prepare(config,rows,mode,operation,settings):
             elif prefix:preview=dict(preview,launch_options="Proton setting saved in this game's prefix · Steam can stay open")
             # Which Steam-side state this game touches: its prefix, Steam's launch settings, or neither.
             steam_route=operation in ('install','repair') and not prefix or operation=='uninstall' and bool(baseline and isinstance(baseline.get('steam_launch'),dict))
-            ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route,'retire':retired,'linux_extras':extras,
+            restore=review_split_restore(config,g,row,preview,baseline.get('originals',{})) if operation=='uninstall' else None
+            ready.append({'game':g,'row':row,'preview':preview,'fingerprint':fingerprint(e,g),'prefix':str(prefix) if prefix else None,'steam_route':steam_route,'retire':retired,'linux_extras':extras,'split_render_restore':restore,
                           'provider':dict(e.Y4MY_PROVIDER),'payload':target_data,'meta':target_meta,'nr':nr,'nrmeta':nrmeta,
                           'proton_stack':stack,'settings':dict(settings)})
             if projection:
@@ -730,6 +742,7 @@ def undo_game(e,session,checkpoint,result):
     return True
 
 def execute(review):
+    import nr_install
     e=review['engine'];results=[]
     # Never kill Steam behind a GUI action, or wait invisibly for terminal prompts.
     # With Steam open, installs use each game's Proton prefix (decided per game
@@ -738,6 +751,7 @@ def execute(review):
     # Every game is checkpointed before it changes: Cancel undoes the whole run,
     # and a game that fails partway is put back as it was.
     session=Session(e.STATE_ROOT/'desktop-operations')
+    recovery_pending=False
     with e.mutation_lock():
         for index,item in enumerate(review['plans'],1):
             if cancel is not None and cancel.is_set():break
@@ -747,6 +761,8 @@ def execute(review):
             report('Checking game files',0)
             try:
                 t.need(fingerprint(e,g)==item['fingerprint'],'Game or baseline changed since preview; prepare again')
+                split_restore=item.get('split_render_restore')
+                nr_install.check_package_restore(split_restore)
                 if session:
                     baseline=e.load_baseline(g.target_dir) or {}
                     names=set(item['preview'].get('files',[]))|set(item['preview'].get('remove',[]))|set(baseline.get('managed_paths',[]))|set(baseline.get('originals',{}))|set(item.get('paths',[]))
@@ -754,6 +770,7 @@ def execute(review):
                     else:names.add('OptiScaler')
                     paths=[g.target_dir/name for name in names]+[e.state_dir_for(g.target_dir),g.target_dir/cross_os.MARKER,g.target_dir/cross_os.SHARED]
                     paths.extend(item.get('extra_checkpoint_paths', []))
+                    paths.extend(nr_install.package_restore_paths(split_restore))
                     if split := item.get('split_render'):
                         root = g.root.resolve()
                         for change in split[1]['changes']:
@@ -779,6 +796,7 @@ def execute(review):
                     checkpoint=session.capture(paths,label=g.name)
                 if item.get('before_game'):
                     item['before_game']()
+                nr_install.apply_package_restore(split_restore,cancelled=cancel.is_set if cancel is not None else lambda: False)
                 if item.get('adopt'):
                     report('Adapting the install for '+OS_NAMES[cross_os.THIS_OS],0.3)
                     adopt(e,g,item['adopt'])
@@ -856,7 +874,6 @@ def execute(review):
                 if item.get('after_game'):
                     item['after_game']()
                 if split := item.get('split_render'):
-                    import nr_install
                     report('Installing Split Render',0.95)
                     record['split_render'] = nr_install.apply_after_package(*split)
                 results.append({'name':g.name,'status':'complete','record':record})
@@ -865,13 +882,21 @@ def execute(review):
                 if 'checkpoint' in locals():
                     session.seal(checkpoint)
                     results[-1]['undone']=undo_game(e,session,checkpoint,results[-1])
+                    if not results[-1]['undone']:
+                        session.checkpoints[-1]['sealed']=False
+                        session.save()
+                        recovery_pending=True
                     del checkpoint
+                else:results[-1]['undone']=True
             finally:
                 if 'checkpoint' in locals():session.seal(checkpoint);del checkpoint
                 report('Finished this game',1)
+            if recovery_pending:break
         if review.get('on_finalizing'):
             review['on_finalizing']()
-        if session:
+        if recovery_pending:
+            LIVE.discard(str(session.root))
+        elif session:
             if cancel is not None and cancel.is_set():
                 t.need(not any(e._running_processes_under_root(p['game'].root.resolve()) for p in review['plans']),'Close running games before recovery. Copies retained at '+str(session.root))
                 # Only Steam's own launch settings need Steam closed to undo safely.
@@ -882,6 +907,6 @@ def execute(review):
     path=e.STATE_ROOT/('desktop-'+e.now_stamp()+'.json');e.save_json_atomic(path,{'results':results})
     failed=[r for r in results if r['status']=='failed']
     if failed:
-        kept='' if all(r.get('undone') for r in failed) else ' Some changes could not be undone; see the report.'
-        raise t.Refusal(f'{len(failed)} game(s) need attention. Their files were put back as they were; completed games keep their changes.{kept} Report: {path}')
+        recovery=f' Recovery copies are available at {session.root}.' if recovery_pending else ' Their files were put back as they were.'
+        raise t.Refusal(f'{len(failed)} game(s) need attention. Completed games keep their changes.{recovery} Report: {path}')
     return str(path)

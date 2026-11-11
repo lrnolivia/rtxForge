@@ -41,13 +41,17 @@ public sealed partial class MainWindow : Window
     public event Action? GamesChanged;
     public event Action? QueryChanged;
     public event Action? SettingsChanged;
+    internal event Action? SystemAccentChanged;
 
     public MainWindow(IForgeService service)
     {
         Service = service;
         if (service is EngineForgeService engine) Games = engine.CachedLibrary();
         App.Main = this;
+        AccentResources.ApplyApp(Settings, Settings.Theme is "dark" or "night" || Settings.Theme == "system" && Application.Current.RequestedTheme == ApplicationTheme.Dark);
         InitializeComponent();
+        AccentResources.SystemSettings.ColorValuesChanged += OnSystemAccentChanged;
+        Closed += (_, _) => AccentResources.SystemSettings.ColorValuesChanged -= OnSystemAccentChanged;
         Nav.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => UpdateNavigationCommands());
         Nav.DisplayModeChanged += (_, _) => UpdateNavigationCommands();
         Nav.Loaded += (_, _) => UpdateNavigationCommands();
@@ -58,7 +62,11 @@ public sealed partial class MainWindow : Window
         SizeCaptionButtons();
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "rtxforge.ico"));
         SizeLikeABrowser();
-        RootGrid.ActualThemeChanged += (_, _) => ThemeController.Apply(this, RootGrid, Settings.Theme);
+        RootGrid.ActualThemeChanged += (_, _) =>
+        {
+            ThemeController.Apply(this, RootGrid, Settings.Theme);
+            ApplyAppAccent();
+        };
 
         PreviewBadge.Visibility = service.IsPreview ? Visibility.Visible : Visibility.Collapsed;
         Mode = NrOnlyAvailable || Settings.DefaultProfile != "nr-only" ? Settings.DefaultProfile : "mfg-only";
@@ -105,10 +113,20 @@ public sealed partial class MainWindow : Window
     /// <summary>NR Only requires DLSS-Unlocked or a custom package (provider rule).</summary>
     public bool NrOnlyAvailable => Settings.RuntimeProvider is "dlss-unlocked" or "custom" or "skynizz" or "feeder";
 
+    void ApplyAppAccent() => AccentResources.ApplyApp(Settings, RootGrid.ActualTheme == ElementTheme.Dark);
+
+    void OnSystemAccentChanged(global::Windows.UI.ViewManagement.UISettings sender, object args) =>
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (Settings.DesktopAccentSource == "system") ApplyAppAccent();
+            SystemAccentChanged?.Invoke();
+        });
+
     public void SaveSettings()
     {
         Settings.Save(preserveOverlay: true);
         ThemeController.Apply(this, RootGrid, Settings.Theme);
+        ApplyAppAccent();
         SettingsChanged?.Invoke();
     }
 
@@ -308,12 +326,13 @@ public sealed partial class MainWindow : Window
             if (targets.Count == 0) return false;
         }
 
-        if (operation == "install" && values is null)
+        var includesPresets = operation == "install" && values is null;
+        if (includesPresets)
         {
             values = await OperationDialog.AskPresetsAsync(this, targets.Count == 1 ? GameTuning(targets[0]) : Settings.Presets, AccentResources.Single(targets), targets);
             if (values is null) return false;
         }
-        return await OperationDialog.ShowAsync(this, operation, targets, values ?? Settings.Presets);
+        return await OperationDialog.ShowAsync(this, operation, targets, values ?? Settings.Presets, includesPresets);
     }
 
     /// <summary>Runs one reviewed operation against the engine; used by the progress stage of the modal.</summary>

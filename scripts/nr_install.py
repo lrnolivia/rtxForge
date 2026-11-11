@@ -563,6 +563,86 @@ def prepare_remove(config, row):
     return hdr._freeze(config, review)
 
 
+def prepare_package_restore(config, row, package_paths):
+    """Review any recorded Split Render cleanup within the package's restore."""
+    receipt = _receipt(row)
+    bundle = {'receipt': str(receipt), 'review': None, 'changes': []}
+    if receipt.exists():
+        review = prepare_remove(config, row)
+        root = Path(review['game'])
+        owned = tuple(t.safe(path) for path in package_paths)
+        # The base package owns the original if both records name the same path.
+        changes = [change for change in review['changes']
+                   if not any((root / t.relative(change['path'])).is_relative_to(path) for path in owned)]
+        bundle.update(review=review, changes=changes)
+    return bundle
+
+
+def package_restore_detail(bundle):
+    if not bundle or not bundle['review']:
+        return ''
+    changes = describe_changes(dict(bundle['review'], changes=bundle['changes']))
+    return 'Also remove the recorded Split Render setup.\n' + changes
+
+
+def package_restore_paths(bundle):
+    if not bundle or not (review := bundle['review']):
+        return []
+    paths = [Path(review['game']) / t.relative(change['path']) for change in bundle['changes']]
+    if prefix := review.get('prefix'):
+        import proton_prefix
+        paths += [Path(prefix['registry']), Path(prefix['state']) / proton_prefix.RECORD_NAME]
+    return paths
+
+
+def check_package_restore(bundle):
+    if not bundle:
+        return
+    if not (review := bundle['review']):
+        t.need(not t.safe(bundle['receipt']).exists(), 'Split Render was installed after review. Review the restore again.')
+        return
+    check_files(review)
+    if prefix := review.get('prefix'):
+        import proton_prefix
+        t.need(not proton_prefix.prefix_in_use(Path(prefix['prefix'])), 'The Proton session started after review. Close it and review again.')
+        record = t.safe(Path(prefix['state']) / proton_prefix.RECORD_NAME)
+        registry = t.safe(prefix['registry'])
+        t.need(record.is_file() and t.digest(record) == prefix['record_before']
+               and registry.is_file() and t.digest(registry) == prefix['before'],
+               'Split Render Proton settings changed after review. Review the restore again.')
+
+
+def apply_package_restore(bundle, cancelled=lambda: False):
+    """Use the caller's mutation lock and recovery checkpoint."""
+    check_package_restore(bundle)
+    if not bundle or not (review := bundle['review']):
+        return
+    from operation_session import Cancelled
+    root = Path(review['game'])
+    for change in bundle['changes']:
+        if cancelled():
+            raise Cancelled('Changes undone.')
+        path = t.safe(root / t.relative(change['path']))
+        t.need(path.is_file() and t.digest(path) == change['before'], 'Split Render file changed during restore: ' + change['path'])
+        if change['after'] is None:
+            path.unlink()
+        else:
+            data = t.safe(change['source']).read_bytes()
+            t.need(t.sha(data) == change['after'], 'Split Render recovery input changed during restore.')
+            t.atomic_file(path, data, path.stat().st_mode & 0o777)
+        t.need((t.digest(path) if path.exists() else None) == change['after'], 'Split Render restore verification failed.')
+    if prefix := review.get('prefix'):
+        import proton_prefix
+        proton_prefix.restore(Path(prefix['state']))
+
+
+def check_files(review):
+    root = t.check_plan(review)
+    for path, digest in review['checks'].items():
+        t.need(t.safe(path).is_relative_to(root) and Path(path).is_file() and t.digest(path) == digest,
+               'Files changed since review. Review the Split Render change again.')
+
+
 def _restore_key(text, section, key, before):
     if before is not None:
         return t.setvalue(text, section, key, before)
@@ -581,10 +661,7 @@ def apply(config, review):
     state = base / uuid.uuid4().hex
     with e.mutation_lock():
         hdr._eligible(config, review)
-        t.check_plan(review)
-        for path, digest in review['checks'].items():
-            t.need(t.safe(path).is_relative_to(root) and Path(path).is_file() and t.digest(path) == digest,
-                   'Files changed since review. Review the Split Render change again.')
+        check_files(review)
         prefix = review.get('prefix')
         if prefix:
             import proton_prefix

@@ -43,6 +43,42 @@ static bool closed=false;
 static bool desktopPreviewWindow=false;
 struct ParentWatch { HANDLE handle{}; ~ParentWatch(){if(handle)CloseHandle(handle);} };
 static int pendingWidth=0,pendingHeight=0;
+
+struct PreviewFullscreen final : Rml::EventListener
+{
+    HWND window{};
+    Rml::Element* button{};
+    WINDOWPLACEMENT placement{sizeof(WINDOWPLACEMENT)};
+    LONG_PTR windowedStyle{};
+    bool active=false;
+
+    void Toggle()
+    {
+        if(!window || !button)return;
+        if(!active){
+            MONITORINFO monitor{sizeof(MONITORINFO)};
+            if(!GetWindowPlacement(window,&placement) ||
+               !GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor))return;
+            windowedStyle=GetWindowLongPtrW(window,GWL_STYLE);
+            if(IsZoomed(window))ShowWindow(window,SW_RESTORE);
+            SetWindowLongPtrW(window,GWL_STYLE,windowedStyle&~(WS_THICKFRAME|WS_MAXIMIZEBOX|WS_MINIMIZEBOX|WS_SYSMENU));
+            const auto& area=monitor.rcMonitor;
+            SetWindowPos(window,HWND_TOP,area.left,area.top,area.right-area.left,area.bottom-area.top,SWP_FRAMECHANGED|SWP_NOOWNERZORDER);
+        }else{
+            SetWindowLongPtrW(window,GWL_STYLE,windowedStyle);
+            SetWindowPlacement(window,&placement);
+            SetWindowPos(window,nullptr,0,0,0,0,SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+        }
+        active=!active;
+        const auto* title=active?"Exit full screen":"Enter full screen";
+        button->SetClass("is-fullscreen",active);
+        button->SetAttribute("title",title);
+        button->SetAttribute("aria-label",title);
+    }
+
+    void ProcessEvent(Rml::Event& event) override { Toggle();event.StopPropagation(); }
+};
+static PreviewFullscreen* previewFullscreen=nullptr;
 static RECT PreviewBounds(const RECT& work,DWORD style,int& width,int& height,bool desktop)
 {
     RECT frame{0,0,width,height};AdjustWindowRect(&frame,style,FALSE);
@@ -83,7 +119,27 @@ static void TestPreviewWindow(Rml::ElementDocument* document)
     bool background=false;const auto viewport=inputContext->GetDimensions();
     for(int y=10;y<viewport.y&&!background;y+=40)for(int x=10;x<viewport.x&&!background;x+=40)background=PreviewBackgroundAt({float(x),float(y)});
     Require(background,"Preview has no draggable scene background");
-    std::cout<<"native_preview_window_placement_icon_and_drag_checks=passed\n";
+    const auto style=WS_POPUP|WS_THICKFRAME|WS_SYSMENU;
+    int width=1280,height=720;
+    const auto bounds=PreviewBounds(PreviewWorkArea(0),style,width,height,true);
+    auto window=CreateWindowW(L"STATIC",L"",style,bounds.left,bounds.top,bounds.right-bounds.left,bounds.bottom-bounds.top,
+                              nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+    Require(window!=nullptr,"Could not create the full-screen preview fixture");
+    PreviewFullscreen toggle;
+    toggle.window=window;
+    toggle.button=document->GetElementById("preview-fullscreen");
+    RECT original{},expanded{},restored{};
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    GetWindowRect(window,&original);
+    GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor);
+    toggle.Toggle();
+    GetWindowRect(window,&expanded);
+    const bool expandedCorrectly=toggle.active && EqualRect(&expanded,&monitor.rcMonitor) && toggle.button->IsClassSet("is-fullscreen");
+    toggle.Toggle();
+    GetWindowRect(window,&restored);
+    DestroyWindow(window);
+    Require(expandedCorrectly && !toggle.active && EqualRect(&original,&restored),"Full screen did not fill its monitor and restore the preview bounds");
+    std::cout<<"native_preview_window_placement_icon_drag_and_fullscreen_checks=passed\n";
 }
 static int Modifiers() { return (GetKeyState(VK_CONTROL)<0 ? Rml::Input::KM_CTRL:0) | (GetKeyState(VK_SHIFT)<0 ? Rml::Input::KM_SHIFT:0) | (GetKeyState(VK_MENU)<0 ? Rml::Input::KM_ALT:0); }
 static Rml::Input::KeyIdentifier Key(WPARAM code)
@@ -105,7 +161,8 @@ static LRESULT CALLBACK WindowProc(HWND window,UINT message,WPARAM w,LPARAM l)
     if(message==WM_CLOSE || message==WM_DESTROY) { closed=true; return 0; }
     if(message==WM_SIZE){if(w!=SIZE_MINIMIZED){pendingWidth=LOWORD(l);pendingHeight=HIWORD(l);}return 0;}
     if(message==WM_GETMINMAXINFO){RECT client{0,0,960,640};AdjustWindowRect(&client,DWORD(GetWindowLongPtrW(window,GWL_STYLE)),FALSE);auto* limits=reinterpret_cast<MINMAXINFO*>(l);limits->ptMinTrackSize={client.right-client.left,client.bottom-client.top};return 0;}
-    if(message==WM_NCHITTEST&&desktopPreviewWindow){const auto native=DefWindowProcW(window,message,w,l);if(native!=HTCLIENT)return native;POINT point{short(LOWORD(l)),short(HIWORD(l))};ScreenToClient(window,&point);if(PreviewBackgroundAt({float(point.x),float(point.y)}))return HTCAPTION;return HTCLIENT;}
+    if(message==WM_KEYDOWN&&w==VK_F11&&previewFullscreen){if(!(l&(1LL<<30)))previewFullscreen->Toggle();return 0;}
+    if(message==WM_NCHITTEST&&desktopPreviewWindow){if(previewFullscreen&&previewFullscreen->active)return HTCLIENT;const auto native=DefWindowProcW(window,message,w,l);if(native!=HTCLIENT)return native;POINT point{short(LOWORD(l)),short(HIWORD(l))};ScreenToClient(window,&point);if(PreviewBackgroundAt({float(point.x),float(point.y)}))return HTCAPTION;return HTCLIENT;}
     if(inputContext) switch(message) {
         case WM_MOUSEMOVE:inputContext->ProcessMouseMove(short(LOWORD(l)),short(HIWORD(l)),Modifiers());return 0;
         case WM_LBUTTONDOWN:SetCapture(window);inputContext->ProcessMouseButtonDown(0,Modifiers());return 0;
@@ -314,7 +371,7 @@ static void TestPreviewPicker(Controller& c,Rml::Context* context)
             if(c.layout=="floating"){
                 Require(std::fabs(at.y-c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y)<1,"Game chooser must align with the Side Panel top");
                 if(c.sidePanelSide=="right")Require(std::fabs(at.x-24*dp)<1,"Right Side Panel must put game selection at the far left");
-                else Require(std::fabs(size.x-at.x-bounds.x-76*dp)<1,"Left Side Panel must put game selection at the far right, clear of Close");
+                else Require(std::fabs(size.x-at.x-bounds.x-120*dp)<1,"Left Side Panel must put game selection at the far right, clear of the preview buttons");
             }else{
                 Require(std::fabs(size.x*.5f-at.x-bounds.x*.5f)<1,"Advanced and Bar must restore centered game selection");
             }
@@ -827,7 +884,24 @@ int wmain(int argc,wchar_t** argv)
         auto* context=Rml::CreateContext("overlay",{width,height});Require(context!=nullptr,"RmlUi context could not be created");inputContext=context;
         auto* document=context->LoadDocument(Utf8(assets/L"overlay.rml"));Require(document!=nullptr,"Overlay document could not load");
         Controller controller;controller.document=document;controller.preview=!productionUI;controller.appearance=appearance;controller.accent=accent;controller.accentMode=requestedAccentMode;controller.UseTheme(appearance);if(appearance==4){controller.accentCharacter=requestedCharacter;controller.accentOpacity=100*MaterialColor::AccentOpacity(requestedCharacter);controller.accentSaturation=requestedSaturation;}if((window||desktopPreview)&&!feederSplitPreview&&!shortFusePreview)controller.LoadPreferences(false,preferencesPath);
-        if(desktopPreview){controller.preferences.clear();controller.setupComplete=true;controller.closePreview=[]{closed=true;};controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("desktop-preview",true);if(library.names.empty())document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");else document->QuerySelector(".preview-label")->SetInnerRML("Game");if(window){SetWindowTextW(window,L"rtxForge · Overlay preview");controller.Element("preview-chrome")->SetProperty("display","block");}}
+        PreviewFullscreen fullscreen;
+        if(desktopPreview){
+            controller.preferences.clear();
+            controller.setupComplete=true;
+            controller.closePreview=[]{closed=true;};
+            controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));
+            document->SetClass("desktop-preview",true);
+            if(library.names.empty())document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");
+            else document->QuerySelector(".preview-label")->SetInnerRML("Game");
+            if(window){
+                SetWindowTextW(window,L"rtxForge · Overlay preview");
+                controller.Element("preview-chrome")->SetProperty("display","flex");
+                fullscreen.window=window;
+                fullscreen.button=controller.Element("preview-fullscreen");
+                fullscreen.button->AddEventListener("click",&fullscreen);
+                previewFullscreen=&fullscreen;
+            }
+        }
         Image posterImage{};
         const auto changePoster=[&](const fs::path& path){posterImage={};controller.Poster("");if(!path.empty())try{posterImage=LoadImage(path);controller.Poster(Utf8(path));}catch(const std::exception&){};};
         changePoster(posterPath);controller.samplePoster=[&](float x,float y){if(posterImage.rgba.empty())return std::string();const auto px=std::clamp(int(x*posterImage.width),0,int(posterImage.width)-1),py=std::clamp(int(y*posterImage.height),0,int(posterImage.height)-1);const auto i=(size_t(py)*posterImage.width+px)*4;return Controller::Hex(posterImage.rgba[i]/255.f,posterImage.rgba[i+1]/255.f,posterImage.rgba[i+2]/255.f).substr(0,7);};
@@ -1133,6 +1207,8 @@ int wmain(int argc,wchar_t** argv)
         std::cout<<"appearance="<<(controller.appearance==1?"light":controller.appearance==3?"clear":controller.appearance==4?"accent":"dark")<<" scene_sample_main="<<backdrop->measured[0].valid<<" scene_sample_inspector="<<backdrop->measured[1].valid<<'\n';
         std::cout<<"accent_mode="<<controller.accentMode<<" adaptive_current="<<Controller::Hex(controller.adaptiveAccent[0],controller.adaptiveAccent[1],controller.adaptiveAccent[2]).substr(0,7)<<" adaptive_target="<<Controller::Hex(controller.adaptiveTarget[0],controller.adaptiveTarget[1],controller.adaptiveTarget[2]).substr(0,7)<<"\n";
         std::cout<<"surface_blend="<<controller.surfaceBlend<<" blur="<<controller.blurRadius<<"dp clear_text_contrast=adaptive\n";
+        if(fullscreen.button)fullscreen.button->RemoveEventListener("click",&fullscreen);
+        previewFullscreen=nullptr;
         if(window && controller.prefsDirty)controller.SavePreferences();inputContext=nullptr;for(const auto* event:{"click","change","keyup","blur","mouseover","mouseout","mousedown","mousemove","mouseup"})document->RemoveEventListener(event,&controller);Rml::Shutdown();
         if(window)DestroyWindow(window);
         return 0;

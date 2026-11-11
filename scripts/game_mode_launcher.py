@@ -27,6 +27,9 @@ def native_instances(proc=Path('/proc'), pids=None):
             executable = (entry / 'exe').readlink()
             if executable.name != 'rtxforge-game-mode':
                 continue
+            cmdline = (entry / 'cmdline').read_bytes().split(b'\0')
+            if any(arg in (b'--preview-library', b'--preview-details') for arg in cmdline):
+                continue
             # Linux start ticks distinguish a living instance from a reused PID.
             fields = (entry / 'stat').read_text().rsplit(')', 1)[1].split()
             found[int(entry.name)] = fields[19]
@@ -120,11 +123,14 @@ def launch_environment(root, read_only=False):
     return env
 
 
-def activate(root, read_only=False, appearance=False):
+def activate(root, read_only=False, appearance=False, *, preview=None):
+    if preview not in (None, 'library', 'details'):
+        raise ValueError('Invalid Game Mode preview.')
     executable, image = resolve(root)
-    env = launch_environment(root, read_only)
+    env = launch_environment(root, read_only or preview is not None)
     args = [str(executable)] + (['--appimage-extract-and-run'] if image else [])
     if appearance:args.append('--appearance')
+    if preview:args.append('--preview-'+preview)
     return subprocess.Popen([*args, '--desktop-parent', str(os.getpid())], env=env,
                             cwd=executable.parent, stdin=subprocess.DEVNULL)
 

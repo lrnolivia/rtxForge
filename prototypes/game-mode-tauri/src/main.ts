@@ -7,8 +7,8 @@ import './style.css';
 import { captureArrival, arrive } from './motion';
 import { bindArtworkFailures, hydrateArtwork, clearArtworkCache, prioritizeArtwork } from './artwork';
 // Artwork sources remain exact library identities.
-import { appearanceDefaults, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type OverviewCard, type Snapshot, type View } from './model';
-import { bindReviewInfo, operationFlow,operationStep,flowGame,reviewRow } from './operation-ui';
+import { accentSources, appearanceDefaults, forgeGreen, escape as e, readAppearance, readSnapshot, type Appearance, type Game, type OverviewCard, type Snapshot, type View } from './model';
+import { bindReviewInfo, operationFlow,operationStep,flowSteps,flowGame,reviewRow } from './operation-ui';
 import { activeSetup, changePicker, newPicker, splitChoice, splitPicker, splitPresetSelect, splitRenderDescription, type Catalog, type Picker, type Setup } from './split-render';
 import { installInput } from './input';
 import { setupLibraryLayout } from './library-layout';
@@ -102,27 +102,45 @@ function announce(message: string) {
   if (toast) { toast.textContent = message; toast.title = message; toast.dataset.open = 'true'; if (toastTimeout) clearTimeout(toastTimeout); toastTimeout = setTimeout(() => { toast.dataset.open = 'false'; }, 3600); }
 }
 function showHints() { document.documentElement.dataset.hints = 'visible'; if (hintsTimeout) clearTimeout(hintsTimeout); if ((preferenceChanges.controller_hints ?? sharedPreferences?.controller_hints ?? snapshot?.defaults.controller_hints) === 'auto') hintsTimeout = setTimeout(() => { document.documentElement.dataset.hints = 'hidden'; }, 2500); }
+let nativeAccent: string | undefined;
+let readingSystemAccent = false;
+const appAccent = () => appearance.accentSource === 'green' ? forgeGreen : appearance.accentSource === 'system' ? nativeAccent || forgeGreen : appearance.accent;
+
+async function refreshSystemAccent() {
+  if (readingSystemAccent || appearance.accentSource !== 'system' || !('__TAURI_INTERNALS__' in window)) return;
+  readingSystemAccent = true;
+  try {
+    const color = await (await import('@tauri-apps/api/core')).invoke<string | null>('system_accent');
+    const next = color && /^#[0-9a-f]{6}$/i.test(color) ? color : undefined;
+    if (next !== nativeAccent) { nativeAccent = next; applyAppearance(); }
+  } catch { /* Keep the current accent if the platform cannot be reached. */ }
+  finally { readingSystemAccent = false; }
+}
+
 function applyAppearance() {
+  const accent = appAccent();
   const root = document.documentElement;
   const gameDetails = view === 'details' || view === 'operation' && operation?.origin === 'details';
   root.dataset.theme = gameDetails && appearance.detailsTheme !== 'same' ? appearance.detailsTheme : appearance.theme;
   root.dataset.libraryScale=String(appearance.libraryScale);
+  root.dataset.gameModePreview=String(Boolean(backend.preview));
   appearance.tint=appearance.accentMode!=='theme'&&appearance.tintStrength>0;
   root.dataset.tint = String(appearance.tint);
   root.style.setProperty('--surface-tint-level',String(appearance.tintStrength/50));
   if(appearance.accentMode==='adaptive'&&view!=='details'){const source=appearance.background||(appearance.theme==='light'?'/app-hero-light.png':'/app-hero-dark.png');if(source!==adaptiveMainSource){adaptiveMainSource=source;void thumbnailColor(source).then(color=>{if(adaptiveMainSource===source){adaptiveMainAccent=color||'';applyAppearance();}});}}
   const adaptive=view==='details'?document.querySelector<HTMLElement>('#scene')?.dataset.adaptiveAccent:adaptiveMainAccent;
   root.dataset.accentMode=appearance.accentMode;
-  root.style.setProperty('--surface-accent',appearance.accentMode==='adaptive'&&adaptive?adaptive:appearance.accent);
+  root.style.setProperty('--surface-accent',appearance.accentMode==='adaptive'&&adaptive?adaptive:accent);
   root.dataset.motion = String(appearance.motion);
   root.dataset.text = appearance.text;
   root.dataset.navigation = appearance.navigation;
   root.dataset.detailsNavigation = appearance.detailsNavigation;
   root.dataset.buttonGlyphs = String(currentPreferences().button_glyphs !== false);
-  root.style.setProperty('--accent', appearance.accent);
-  root.style.setProperty('--section-heading-color',sectionHeadingColor(appearance.accent,root.dataset.theme==='light'));
-  root.style.setProperty('--shell-accent', appearance.accent);
-  root.style.setProperty('--primary-ink',selectionInk(appearance.accent));
+  root.style.setProperty('--accent', accent);
+  root.style.setProperty('--section-heading-color',sectionHeadingColor(accent,root.dataset.theme==='light'));
+  root.style.setProperty('--shell-accent', accent);
+  root.style.setProperty('--shell-primary-ink', selectionInk(accent));
+  root.style.setProperty('--primary-ink',selectionInk(accent));
   root.dataset.customBackground=String(Boolean(appearance.background));
   if(appearance.background)root.style.setProperty('--custom-background',`url("${appearance.background}")`);else root.style.removeProperty('--custom-background');
   applyDetailsAccent();
@@ -138,13 +156,13 @@ function applyAppearance() {
         window.addEventListener('pagehide',stop,{once:true});applyAppearance();
       }).catch(()=>{nativeDisplay=undefined;announce('The display scale could not be read.');});
     }else{
-      const zoom=webviewZoom(appearance.scale,nativeSystemScale,nativeMonitorSize);
+      const zoom=webviewZoom(appearance.scale,nativeSystemScale,nativeMonitorSize)*(backend.preview&&!backend.fullscreen?0.88:1);
       if(appliedZoom!==zoom){appliedZoom=zoom;void import('@tauri-apps/api/webview').then(({getCurrentWebview})=>getCurrentWebview().setZoom(zoom)).catch(()=>{appliedZoom=undefined;announce('The interface scale could not be applied.');});}
     }
   }
   const stored=serializeAppearance();
   try { localStorage.setItem('rtxforge-game-mode-prototype',stored); } catch { /* Session preferences remain usable. */ }
-  if(appearanceReady&&'__TAURI_INTERNALS__' in window){
+  if(appearanceReady&&!backend.preview&&'__TAURI_INTERNALS__' in window){
     clearTimeout(appearanceTimer);
     appearanceTimer=setTimeout(()=>{void flushAppearance().catch(()=>announce('Appearance could not be saved to Desktop Mode. Try changing it again.'));},250);
   }
@@ -154,6 +172,7 @@ function serializeAppearance(){
 }
 function flushAppearance(){
   clearTimeout(appearanceTimer);
+  if(backend.preview)return Promise.resolve();
   const pending=appearanceWrites.catch(()=>{}).then(async()=>{
     const stored=serializeAppearance();
     if(stored===appearanceStored)return;
@@ -508,7 +527,7 @@ function applyDetailsAccent() {
   if (!content) return;
   const game=selectedGame(),accent=detailsAccent(game);
   const adaptive=document.querySelector<HTMLElement>('#scene')?.dataset.adaptiveAccent;
-  content.style.setProperty('--surface-accent',appearance.accentMode==='adaptive'&&adaptive?adaptive:accent||appearance.accent);
+  content.style.setProperty('--surface-accent',appearance.accentMode==='adaptive'&&adaptive?adaptive:accent||appAccent());
   document.querySelector<HTMLElement>('#scene')?.style.setProperty('--game-accent',accent||'#808080');
   content.style.setProperty('--accent', accent || (appearance.theme === 'light' ? '#686663' : '#d8d5ce'));
   content.style.setProperty('--accent-ink', appearance.theme === 'light' ? 'var(--ink)' : accent || 'var(--ink)');
@@ -744,6 +763,9 @@ function applyOperationAccent() {
   const content=app.querySelector<HTMLElement>('.operation-modal, #content:not(.shell[inert] #content)');if(content){
     for(const key of ['--accent','--accent-ink','--primary-ink'])content.style.removeProperty(key);
     if(accent){content.style.setProperty('--accent',accent);content.style.setProperty('--accent-ink',appearance.theme==='light'?'var(--ink)':accent);content.style.setProperty('--primary-ink',selectionInk(accent));}
+    const stepColor=operation.targets?.length===1?detailsAccent(operation.targets[0]):null;
+    content.style.setProperty('--flow-step-color',stepColor||appAccent());
+    content.style.setProperty('--flow-step-ink',selectionInk(stepColor||appAccent()));
   }
   const backdrop=app.querySelector<HTMLElement>('.flow-artwork'),source=game?.hero;
   if(!backdrop)return;
@@ -789,7 +811,7 @@ function reportForm(result: unknown) {
 }
 async function withOperation(title: string, method: string, params: Record<string, unknown>, execute = 'run') {
   const origin = view === 'operation' ? operation?.origin || 'details' : view;
-  const kind=method==='prepare_routes'?String(params.operation||'apply'):method==='prepare_dlss'?'update-dlss':method==='nr_review'?(params.remove?'remove-nr-addons':'install-nr-addons'):undefined;
+  const kind=method==='prepare_routes'?String(params.operation||'apply'):method==='prepare_dlss'?'update-dlss':method==='nr_review'?(params.remove?'remove-nr-addons':'install-nr-addons'):execute==='run'?'review':undefined;
   const targets=kind?(snapshot?.games||[]).filter(game=>((params.rows||(params.row ? [params.row] : [])) as EngineRow[]).some(row=>pathKey(row.game)===pathKey(game.path))):undefined;
   const state = { stage: 'checking' as const, title, execute, origin, method,kind,targets, changedKeys: Object.keys((params.changes || {}) as object) };
   operation = state; setView('operation');
@@ -802,7 +824,7 @@ async function withOperation(title: string, method: string, params: Record<strin
     }
     if (result?.token && execute !== 'inspect-package') { operation.review = result; operation.stage = 'review'; operation.title = result.title || title;
       if (kind === 'install' && splitCatalog?.enabled === true) operation.split = { picker: newPicker(), revision: 0, pending: false, error: '', rows: [], open: false }; }
-    else { operation.stage = 'done'; operation.result = result; }
+    else { if (kind==='review') operation.kind=undefined; operation.stage = 'done'; operation.result = result; }
   } catch (problem) { if (operation === state && !operation.dismissed) { operation.stage = 'error'; operation.error = problem instanceof Error ? problem.message : 'The engine could not complete the request.'; } else return; }
   render(); document.querySelector<HTMLElement>('#page-title')?.focus();
 }
@@ -894,6 +916,7 @@ function nrPackageCard() {
 function splitRemovalPicker() {
   return `<div class="split-removal-flow">
     <header><h1 id="page-title" tabindex="-1">Remove Split Render</h1>
+      ${flowSteps('remove-nr-addons','start',true)}
       <p>Choose the games to review. Close any selected games before removing their setup.</p></header>
     ${splitGamePicker()}
     <footer class="operation-actions flow-actions">
@@ -1183,7 +1206,7 @@ function appearanceSettings() {
   const select=(id:string,title:string,copy:string,options:[string,string][],value:string)=>`<label class="field"><span><strong>${title}</strong>${copy?`<small>${copy}</small>`:''}</span><select id="${id}">${options.map(([key,label])=>`<option value="${key}" ${value===key?'selected':''}>${label}</option>`).join('')}</select></label>`;
   const themes=surfaceCards(appearance.theme, "theme-choice", "Color theme", icon);
   const scale='__TAURI_INTERNALS__' in window?select('display-scale','Interface scale','Size of the interface on this display.',[['auto','Automatic'],...[100,125,130,150,175,200].map(n=>[String(n),n+'%'] as [string,string])],String(appearance.scale)):'';
-  return `<div class="settings-groups appearance-groups">${group('Surface','Choose the glass material for Game Mode.',themes,'appearance')}${group('Main interface','Color for the main navigation, buttons and focus.',`<div class="inner-card"><label class="field color-field"><span><strong>Accent color</strong><small>Independent of each game’s artwork color.</small></span><input type="color" id="accent-color" value="${appearance.accent}" aria-label="Accent color" /></label><div class="background-field"><span><strong>Background</strong><small>Your image for the main Game Mode interface.</small></span><div class="background-picker"><div class="background-preview"><img src="${e(appearance.background||(appearance.theme==='light'?'/app-hero-light.png':'/app-hero-dark.png'))}" alt="Current Game Mode background"/></div><div class="background-actions"><button class="quiet" data-action="choose-background">Choose image…</button><button class="quiet" data-action="reset-background" ${appearance.background?'':'disabled'}>Use default</button></div><input type="file" id="background-image-file" accept="image/png,image/jpeg,image/webp" hidden /></div></div></div>`)}${group('Game Details','Uses the color saved in your library for each game.',`<div class="inner-card">${select('details-theme','Game Details surface','',[['same','Match Game Mode'],['light','Light'],['clear','Clear'],['dark','Dark']],appearance.detailsTheme)}${surfaceTintControls(appearance.accentMode,appearance.tintStrength)}${select('details-navigation','Game Details navigation','',['sidebar','tabs'].map(key=>[key,key==='sidebar'?'Sidebar':'Tabs']),appearance.detailsNavigation)}</div>`)}${group('Reading and motion','',`<div class="inner-card">${select('text-size','Text size','',[['standard','Standard'],['large','Large']],appearance.text)}${toggle('motion','Motion','Follows your system’s reduced-motion preference.',appearance.motion)}</div>`)}${group('Layout','',`<div class="inner-card">${select('navigation-position','Navigation placement','Main sections at the top or bottom.',[['top','Top'],['bottom','Bottom']],appearance.navigation)}${scale}</div>`)}${group('Controls','',controlGuide())}${group('Library reader','',`<dl class="reader-facts"><dt>Connection</dt><dd>${loading?'Reading…':snapshot?'Connected · read-only':'Unavailable'}</dd><dt>Platform</dt><dd>${e(snapshot?.platform||'Not reported')}</dd><dt>Steam libraries</dt><dd>${snapshot?.libraryCount??'Not reported'}</dd><dt>Last snapshot</dt><dd>${snapshot?e(new Date(snapshot.capturedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})):'Not reported'}</dd></dl><button class="quiet" data-action="refresh" ${loading?'disabled':''}>${icon('refresh')}Refresh reader</button>${error?`<p class="reader-error">${e(error)}</p>`:''}`)}<div class="appearance-reset"><span class="subtle">Appearance changes are saved automatically.</span><button class="quiet" data-action="reset-appearance">Reset appearance</button></div></div>`;
+  return `<div class="settings-groups appearance-groups">${group('Surface','Choose the glass material for Game Mode.',themes,'appearance')}${group('Main interface','Color for the main navigation, buttons and focus.',`<div class="inner-card">${select('app-accent-source','Accent','',accentSources.map(([key,label])=>[key,label]),appearance.accentSource)}${appearance.accentSource==='custom'?`<label class="field color-field"><span><strong>Custom accent color</strong></span><input type="color" id="accent-color" value="${appearance.accent}" aria-label="Custom accent color" /></label>`:''}<div class="background-field"><span><strong>Background</strong><small>Your image for the main Game Mode interface.</small></span><div class="background-picker"><div class="background-preview"><img src="${e(appearance.background||(appearance.theme==='light'?'/app-hero-light.png':'/app-hero-dark.png'))}" alt="Current Game Mode background"/></div><div class="background-actions"><button class="quiet" data-action="choose-background">Choose image…</button><button class="quiet" data-action="reset-background" ${appearance.background?'':'disabled'}>Use default</button></div><input type="file" id="background-image-file" accept="image/png,image/jpeg,image/webp" hidden /></div></div></div>`)}${group('Game Details','Uses the color saved in your library for each game.',`<div class="inner-card">${select('details-theme','Game Details surface','',[['same','Match Game Mode'],['light','Light'],['clear','Clear'],['dark','Dark']],appearance.detailsTheme)}${surfaceTintControls(appearance.accentMode,appearance.tintStrength)}${select('details-navigation','Game Details navigation','',['sidebar','tabs'].map(key=>[key,key==='sidebar'?'Sidebar':'Tabs']),appearance.detailsNavigation)}</div>`)}${group('Reading and motion','',`<div class="inner-card">${select('text-size','Text size','',[['standard','Standard'],['large','Large']],appearance.text)}${toggle('motion','Motion','Follows your system’s reduced-motion preference.',appearance.motion)}</div>`)}${group('Layout','',`<div class="inner-card">${select('navigation-position','Navigation placement','Main sections at the top or bottom.',[['top','Top'],['bottom','Bottom']],appearance.navigation)}${scale}</div>`)}${group('Controls','',controlGuide())}${group('Library reader','',`<dl class="reader-facts"><dt>Connection</dt><dd>${loading?'Reading…':snapshot?'Connected · read-only':'Unavailable'}</dd><dt>Platform</dt><dd>${e(snapshot?.platform||'Not reported')}</dd><dt>Steam libraries</dt><dd>${snapshot?.libraryCount??'Not reported'}</dd><dt>Last snapshot</dt><dd>${snapshot?e(new Date(snapshot.capturedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})):'Not reported'}</dd></dl><button class="quiet" data-action="refresh" ${loading?'disabled':''}>${icon('refresh')}Refresh reader</button>${error?`<p class="reader-error">${e(error)}</p>`:''}`)}<div class="appearance-reset"><span class="subtle">${backend.preview?'Appearance changes stay in this preview.':'Appearance changes are saved automatically.'}</span><button class="quiet" data-action="reset-appearance">Reset appearance</button></div></div>`;
 }
 async function chooseBackground(file:File) {
   if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>24*1024*1024){announce('Choose a PNG, JPEG or WebP image under 24 MB.');return;}
@@ -1279,6 +1302,13 @@ function setupScrollFades() {
 }
 let arrivalKey = '';
 let disposeLibraryLayout = () => {};
+function previewWindowActions() {
+  if(!backend.preview)return '';
+  const title=backend.fullscreen?'Exit full screen':'Enter full screen';
+  const arrows=backend.fullscreen?'M4 20l6-6m0 0H5m5 0v5M20 4l-6 6m0 0h5m-5 0V5':'M10 14l-6 6m0 0v-5m0 5h5M14 10l6-6m0 0v5m0-5h-5';
+  return `<button class="preview-fullscreen" data-action="toggle-window-mode" aria-label="${title}" title="${title}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${arrows}"/></svg></button><button class="preview-close" data-action="exit-app" aria-label="Close preview" title="Close preview"><span aria-hidden="true">×</span></button>`;
+}
+
 function render() {
   const priorFocus = document.activeElement instanceof HTMLElement && app.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = priorFocus ? (priorFocus.id ? `#${CSS.escape(priorFocus.id)}` : [...priorFocus.attributes].filter(a=>a.name.startsWith('data-')).map(a=>`[${a.name}="${CSS.escape(a.value)}"]`).join('')) : null;
@@ -1303,7 +1333,7 @@ function render() {
   const removalReview = operationModal && operation?.kind === 'remove-nr-addons' && surface === 'packages';
   const modalClass = removalModal ? ' split-remove-modal' : removalReview ? ' split-remove-review' : '';
   const overlay = modal ? `<div class="operation-backdrop"><section class="operation-modal glass-section${modalClass}" role="dialog" aria-modal="true" aria-labelledby="page-title">${removalModal ? splitRemovalPicker() : operationView()}</section></div>` : '';
-  app.innerHTML = `<div class="shell" ${modal?'inert aria-hidden="true"':''}><header class="app-header" data-tauri-drag-region><div class="brand"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></div><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><div id="input-hints">${hints()}</div></footer></div>${overlay}`;
+  app.innerHTML = `<div class="shell" ${modal?'inert aria-hidden="true"':''}><header class="app-header" data-tauri-drag-region><div class="brand"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></div><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${surface === tab.id || surface === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button>${previewWindowActions()}<div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div>${backend.preview?'':`<button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button>`}<button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><div id="input-hints">${hints()}</div></footer></div>${overlay}`;
   const game = selectedGame(), scene = document.querySelector<HTMLElement>('#scene')!;
   if(view==='details'&&snapshot&&game)prioritizeArtwork(snapshot,game.id);
   applyStoreBackground(surface==='details'&&currentPreferences().online_art!==false&&game&&(game.accent||game.artworkAccentReady)?game.appid:null,scene,game?.id,detailsAccent(game));
@@ -1501,7 +1531,12 @@ function bind() {
   app.querySelectorAll<HTMLElement>('[data-toggle]').forEach(node => node.addEventListener('click', () => { const key = node.dataset.toggle as 'motion' | 'tint'; appearance[key] = !appearance[key]; applyAppearance(); node.setAttribute('aria-checked', String(appearance[key])); }));
   app.querySelector<HTMLSelectElement>('#surface-accent-mode')?.addEventListener('change',event=>{appearance.accentMode=(event.target as HTMLSelectElement).value as Appearance['accentMode'];applyAppearance();render();app.querySelector<HTMLElement>('#surface-accent-mode')?.focus();});
   app.querySelector<HTMLInputElement>('#surface-tint-strength')?.addEventListener('input',event=>{const input=event.target as HTMLInputElement;appearance.tintStrength=Number(input.value);const output=input.parentElement?.querySelector('output');if(output)output.textContent=input.value+'%';applyAppearance();});
-  app.querySelector<HTMLInputElement>('#accent-color')?.addEventListener('input', event => { appearance.accent = (event.target as HTMLInputElement).value; appearance.accentMode='custom'; applyAppearance(); });
+  app.querySelector<HTMLSelectElement>('#app-accent-source')?.addEventListener('change',event=>{
+    appearance.accentSource=(event.target as HTMLSelectElement).value as Appearance['accentSource'];
+    applyAppearance();render();app.querySelector<HTMLElement>('#app-accent-source')?.focus();
+    void refreshSystemAccent();
+  });
+  app.querySelector<HTMLInputElement>('#accent-color')?.addEventListener('input', event => { appearance.accent = (event.target as HTMLInputElement).value; applyAppearance(); });
   app.querySelector<HTMLSelectElement>('#text-size')?.addEventListener('change', event => { appearance.text = (event.target as HTMLSelectElement).value as Appearance['text']; applyAppearance(); });
   app.querySelector<HTMLSelectElement>('#details-theme')?.addEventListener('change',event=>{appearance.detailsTheme=(event.target as HTMLSelectElement).value as Appearance['detailsTheme'];applyAppearance();});
   app.querySelector<HTMLSelectElement>('#details-navigation')?.addEventListener('change',event=>{appearance.detailsNavigation=(event.target as HTMLSelectElement).value as Appearance['detailsNavigation'];applyAppearance();});
@@ -1622,7 +1657,14 @@ function saveGameAccent(game:Game,color:string|null):Promise<void>{
 function action(name: string) {
   if(name==='reset-hero-framing'){const game=selectedGame();if(game)heroFocusDrafts.delete(game.id);heroAdjustment=undefined;render();app.querySelector<HTMLElement>('[data-action="reset-hero-framing"]')?.focus();return;}
   if(name==='save-hero-framing'){const game=selectedGame(),point=game?heroFocusDrafts.get(game.id):undefined;if(!game||!point||!backend.enabled)return;void engineRequest<Record<string,unknown>>('settings_get').then(settings=>{const choices={...(settings.game_hero_focus||{}) as Record<string,number[]>};const identity=Object.keys(choices).find(key=>pathKey(key)===pathKey(game.path))||game.path;choices[identity]=point;return withOperation('Review hero framing','settings_review',{changes:{game_hero_focus:choices}});}).catch(problem=>announce(problem.message));return;}
-  if(name==='toggle-window-mode'&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke<boolean>('toggle_fullscreen')).then(fullscreen=>{backend.fullscreen=fullscreen;render();}).catch(problem=>announce(String(problem)));return;}
+  if(name==='toggle-window-mode'&&'__TAURI_INTERNALS__' in window){
+    shellMenuOpen=false;
+    void import('@tauri-apps/api/core').then(({invoke})=>invoke<boolean>('toggle_fullscreen')).then(fullscreen=>{
+      backend.fullscreen=fullscreen;render();
+      if(backend.preview)app.querySelector<HTMLElement>('.preview-fullscreen')?.focus({preventScroll:true});
+    }).catch(problem=>announce(String(problem)));
+    return;
+  }
   if(name==='minimize-app'&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke('minimize_app')).catch(problem=>announce(String(problem)));return;}
   if(name==='reset-game-accent'){const game=selectedGame();if(game&&backend.enabled)void saveGameAccent(game,null).then(()=>render()).catch(problem=>announce(problem.message));return;}
   if (name === 'reset-presets') { drafts.delete(presetId); render(); return; }
@@ -1905,14 +1947,26 @@ installInput(() => {
   setView(tabs[(index + delta + tabs.length) % tabs.length].id);
 }, (state, id) => { document.documentElement.dataset.controller=String(state); controller = state; controllerId = id || ''; const hint = app.querySelector('#input-hints'); if (hint) hint.innerHTML = hints(); const framing=app.querySelector('#hero-framing-help');if(framing)framing.innerHTML=framingHelp(); }, showHints);
 async function initialize(){
+  const statusReady=engineStatus().then(status=>{
+    backend=status;
+    if(status.appearance){settingsCategory='appearance';view='settings';}
+    else if(status.preview==='details'){detailsSection='overview';view='details';}
+    render();
+  }).catch(()=>{backend={enabled:false,reason:'The reviewed host adapter is unavailable. Refresh the local preview.'};});
   if('__TAURI_INTERNALS__' in window){try{
     const saved=await (await import('@tauri-apps/api/core')).invoke<unknown>('appearance_read');
     if(saved){appearance=readAppearance(saved);appearanceStored=JSON.stringify({...appearance,detailsNavigationVersion:1,appearanceDefaultsVersion:2,libraryScaleVersion:1});}
   }catch{appearanceStored=JSON.stringify({...appearance,detailsNavigationVersion:1,appearanceDefaultsVersion:2,libraryScaleVersion:1});announce('Shared appearance is unavailable. Your existing preferences are retained.');}}
-  appearanceReady=true;applyAppearance();await refresh();
+  await statusReady;
+  appearanceReady=true;applyAppearance();void refreshSystemAccent();await refresh();
 }
 void initialize();
-void engineStatus().then(status => { backend = status;if(status.appearance){settingsCategory="appearance";view="settings";} render(); }).catch(() => { backend = { enabled: false, reason: 'The reviewed host adapter is unavailable. Refresh the local preview.' }; });
+window.addEventListener('focus',()=>void refreshSystemAccent());
+if('__TAURI_INTERNALS__' in window) void import('@tauri-apps/api/event').then(({listen})=>listen<'library'|'details'>('navigate-preview',({payload})=>{
+  if(!backend.preview)return;
+  if(payload==='details')detailsSection='overview';
+  setView(payload);
+}));
 
 window.addEventListener('rtxforge-background-ready',()=>applyAppearance());
 

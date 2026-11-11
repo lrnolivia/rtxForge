@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import feeder_legacy as legacy
 import feeder_provider as feeder
+import nr_install
 import transactions as t
 from tests import test_feeder_provider as fixtures
 
@@ -109,6 +110,74 @@ class LegacyFeederTest(unittest.TestCase):
         with self.assertRaisesRegex(t.Refusal, 'executable changed'):
             feeder.execute(review)
         self.assertEqual(set(self.case.files(row)), set(before))
+
+    def test_restore_removes_the_older_split_render_pairing_in_the_feeder_transaction(self):
+        row = self.game('x86-d3d9')
+        directory = Path(row['game'])
+        before = self.case.files(row)
+        feeder.execute(self.prepare(row))
+        addon = 'renodx-dlss5.addon64'
+        model = nr_install.MODEL
+        changed = 'changed.addon64'
+        other = 'another-tool.addon64'
+        for name, data in ((addon, b'Lecram'), (model, b'model'), (changed, b'changed since install'),
+                           (other, b'another tool')):
+            (directory / name).write_bytes(data)
+        config = directory / 'ReShade.ini'
+        config.write_bytes(config.read_bytes() + b'\n[RenoDX.DLSS5]\nNeuralUplift=1\n')
+        receipt = nr_install._receipt(row)
+        t.atomic_file(receipt, json.dumps({
+            'schema': 1, 'route': 'existing-reshade', 'host': 'dxgi.dll',
+            'setup': {'environment': {'addon': 'lecram'}}, 'settings_created': None,
+            'files': {addon: t.sha(b'Lecram'), model: t.sha(b'model'), changed: t.sha(b'previous version')},
+            'ini': {'RenoDX.DLSS5': {'NeuralUplift': None}},
+        }).encode(), 0o600)
+        installed = self.case.files(row)
+        with patch.object(nr_install.hdr, '_eligible', return_value=(directory, directory / row['exe'], None, self.e)), \
+                patch.object(nr_install.state_storage, 'storage', return_value=self.case.root):
+            review = self.prepare(row, 'uninstall')
+        self.assertFalse(review['blocked'], review['blocked'])
+        self.assertIn('Changed since install, kept: ' + changed, review['rows'][0]['summary'])
+        self.assertIn('Remove ' + addon, review['rows'][0]['detail'])
+        self.assertEqual(self.case.files(row), installed)
+        (directory / model).write_bytes(b'changed after review')
+        with self.assertRaisesRegex(t.Refusal, 'Target drift'):
+            feeder.execute(review)
+        self.assertTrue(receipt.is_file())
+        self.assertEqual(t.digest(config), installed['ReShade.ini'])
+        (directory / model).write_bytes(b'model')
+        unlink = Path.unlink
+
+        def fail_model(path, *args, **kwargs):
+            if path == directory / model:
+                raise OSError('fixture removal failure')
+            return unlink(path, *args, **kwargs)
+
+        with patch.object(Path, 'unlink', fail_model), self.assertRaisesRegex(t.Refusal, 'fixture removal failure'):
+            feeder.execute(review)
+        self.assertEqual(self.case.files(row), installed)
+        feeder.execute(review)
+        self.assertFalse(receipt.exists())
+        self.assertEqual(self.case.files(row), before | {changed: t.sha(b'changed since install'), other: t.sha(b'another tool')})
+        self.assertEqual(feeder.state(self.e, directory)['status'], 'restored')
+
+    def test_restore_preserves_helper_diagnostics_without_blocking_reinstall(self):
+        row = self.game('x86-d3d9')
+        directory = Path(row['game'])
+        feeder.execute(self.prepare(row))
+        diagnostics = ['ReShade.log', 'nvngx_dlssd_310_9_0.log', 'nvsdk_ngx.log',
+                       'ReShade.ini.renodx-dlss5-pre-v4-migration-20261030-181313.bak']
+        for name in diagnostics:
+            (directory / 'host64' / name).write_bytes(b'diagnostic')
+        feeder.execute(self.prepare(row, 'uninstall'))
+        review = self.prepare(row)
+        self.assertFalse(review['blocked'], review['blocked'])
+        feeder.execute(review)
+        feeder.execute(self.prepare(row, 'uninstall'))
+        for name in diagnostics:
+            self.assertEqual((directory / 'host64' / name).read_bytes(), b'diagnostic')
+        (directory / 'host64' / 'foreign.dll').write_bytes(b'another tool')
+        self.assertIn('A host64 folder already exists', self.prepare(row)['blocked'][0]['reason'])
 
     def test_overlay_updates_every_recipe_without_replacing_helper_or_translation(self):
         sys.path.insert(0,str(ROOT/'windows/engine-host'))

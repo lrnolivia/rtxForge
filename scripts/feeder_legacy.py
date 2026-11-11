@@ -286,6 +286,12 @@ def cleanup_directories(directory, baseline):
                 pass
 
 
+HELPER_DIAGNOSTIC = re.compile(
+    r'(?:ReShade\.log\d*|dlss5-feed-host\.log(?:\.\d+)?|RenoDX-DLSS5-crash\.log|'
+    r'nvsdk_ngx\.log|nvngx\.log|nvngx_dlss[gd]?_\d+(?:_\d+){1,4}\.log|'
+    r'ReShade\.ini\.renodx-dlss5-pre-v4-migration-\d{8}-\d{6}\.bak)', re.IGNORECASE)
+
+
 def _cached_text(e, text):
     import feeder_provider as f
     path = t.safe(e.STATE_ROOT / 'feeder-cache' / t.sha(text.encode()))
@@ -347,7 +353,7 @@ def prepare(e, row, mode, operation, settings, recipe):
     import feeder_provider as f
     t.need(mode == 'nr-only' or operation == 'uninstall', 'Feeder provides NR Only. Frame generation is not available for this route')
     t.need(f._windows(e), 'DX9/DX10 Feeder setup is available on Windows only in this release')
-    _, exe, directory = f.target(row)
+    root, exe, directory = f.target(row)
     record = f.state(e, directory)
     current = record if record and record.get('status') != 'restored' else None
     t.need(not current or current.get('legacy_recipe') == recipe, 'Restore the existing Feeder recipe before switching routes')
@@ -383,12 +389,12 @@ def prepare(e, row, mode, operation, settings, recipe):
             # This route does not adopt unmanaged graphics hooks or commandeer
             # a pre-existing host64 folder.
             host = directory / 'host64'
-            retained_logs = False
+            retained_diagnostics = False
             if helper(recipe) and host.exists() and record and record.get('status') == 'restored' and record.get('legacy_recipe') == recipe:
                 entries = list(host.iterdir())
-                retained_logs = len(entries) <= 64 and all(t.safe(entry).is_file() and re.fullmatch(
-                    r'(?i)(?:ReShade\.log\d*|dlss5-feed-host\.log(?:\.\d+)?|RenoDX-DLSS5-crash\.log)', entry.name) for entry in entries)
-            t.need(not host.exists() or retained_logs if helper(recipe) else True,
+                retained_diagnostics = len(entries) <= 64 and all(
+                    t.safe(entry).is_file() and HELPER_DIAGNOSTIC.fullmatch(entry.name) for entry in entries)
+            t.need(not helper(recipe) or not host.exists() or retained_diagnostics,
                    'A host64 folder already exists. Restore its graphics mod before installing Feeder')
             t.need(not any((directory / name).exists() for name in (*t.PROXIES, 'ReShade.ini', 'dlss5-feed.addon32',
                        'dlss5-feed.addon64', 'dlss5-feed-helper.addon64', 'renodx-dlss5.addon64')),

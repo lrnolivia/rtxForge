@@ -4,7 +4,13 @@
     <link type="text/rcss" href="overlay.rcss" />
   </head>
   <body>
-    <paint-root id="preview-chrome" class="preview-chrome" style="display: none"><button id="preview-close" class="close" title="Close preview" aria-label="Close preview"><span class="stroke first"/><span class="stroke second"/></button></paint-root>
+    <paint-root id="preview-chrome" class="preview-chrome" style="display: none">
+      <button id="preview-fullscreen" class="close preview-fullscreen" title="Enter full screen" aria-label="Enter full screen">
+        <span class="preview-arrow first"><span class="shaft"/><span class="tip"/></span>
+        <span class="preview-arrow second"><span class="shaft"/><span class="tip"/></span>
+      </button>
+      <button id="preview-close" class="close" title="Close preview" aria-label="Close preview"><span class="stroke first"/><span class="stroke second"/></button>
+    </paint-root>
     <paint-root id="game-picker" class="prototype-toolbar">
       <span class="preview-label">Preview scene</span>
       <select id="scene-select">

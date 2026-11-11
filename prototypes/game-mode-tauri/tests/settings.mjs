@@ -55,9 +55,9 @@ try{
  expect(reviewed.overlay_theme).toBe('accent');expect(reviewed.overlay_helper).toBe(false);
  expect(calls.filter(call=>call.method==='run')).toHaveLength(0);
  await page.getByRole('button',{name:'Confirm changes',exact:true}).click();
- await expect(page.getByRole('button',{name:'Back to game',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Done',exact:true})).toBeVisible();
  expect(calls.filter(call=>call.method==='run')).toHaveLength(1);
- await page.getByRole('button',{name:'Back to game',exact:true}).click();
+ await page.getByRole('button',{name:'Done',exact:true}).click();
  for(const name of ['Library','Game Mode','System','Recovery','About']){await section(name).click();await expect(section(name)).toHaveAttribute('aria-pressed','true');}
  await section('Recovery').click();await expect(page.getByRole('button',{name:/Old NR files/})).toBeVisible();
  await section('Overlay').click();await page.screenshot({path:'.impeccable/review/settings-overlay-desktop.png'});

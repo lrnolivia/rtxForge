@@ -1,5 +1,6 @@
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using RtxForge.Windows.Models;
@@ -18,6 +19,7 @@ public sealed class ReviewDialog
 
     readonly MainWindow shell;
     readonly ContentDialog dialog;
+    readonly string initialTitle;
     readonly string? emptyMessage;
     EngineReview? review;
     EngineResult? result;
@@ -28,9 +30,8 @@ public sealed class ReviewDialog
     {
         this.shell = shell;
         this.emptyMessage = emptyMessage;
+        initialTitle = title;
         dialog = shell.NewDialog();
-        dialog.Title = title;
-        dialog.Resources["ContentDialogMaxWidth"] = 760.0;
         dialog.PrimaryButtonClick += OnPrimary;
         dialog.Closing += (_, e) => { if (stage == Stage.Working) e.Cancel = true; };
     }
@@ -57,11 +58,13 @@ public sealed class ReviewDialog
 
     void ShowWorking(string text)
     {
-        var body = new StackPanel { Spacing = 16, MinWidth = 440, Padding = new Thickness(0, 12, 0, 12) };
+        OperationDialog.SetWidth(dialog, 440, 560);
+        dialog.Title = review?.Title ?? initialTitle;
+        var body = new StackPanel { Spacing = 16, Padding = new Thickness(0, 12, 0, 12) };
         body.Children.Add(new ProgressBar { IsIndeterminate = true });
         var phase = Prefs.Label(text);
         body.Children.Add(phase);
-        dialog.Content = body;
+        dialog.Content = WithSteps(body, stage == Stage.Working);
         dialog.PrimaryButtonText = "";
         dialog.CloseButtonText = stage == Stage.Working ? "" : "Cancel";
         Phase = phase;
@@ -72,13 +75,14 @@ public sealed class ReviewDialog
     void ShowReview(EngineReview review)
     {
         stage = Stage.Review;
+        OperationDialog.SetWidth(dialog, 568, 688);
         dialog.Title = review.Title;
-        var body = new StackPanel { Spacing = 14, MinWidth = 520 };
+        var body = new StackPanel { Spacing = 14 };
         if (!review.Ready)
         {
             body.Children.Add(new TextBlock { Text = emptyMessage ?? (review.Summary.Length > 0 ? review.Summary : "Nothing to change."), FontSize = 18, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
             AddBlocked(body, review);
-            dialog.Content = body;
+            dialog.Content = WithSteps(body, applying: false);
             dialog.PrimaryButtonText = "";
             dialog.CloseButtonText = "Close";
             return;
@@ -97,7 +101,7 @@ public sealed class ReviewDialog
             body.Children.Add(trust);
         }
         else body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
-        dialog.Content = body;
+        dialog.Content = WithSteps(body, applying: false);
         dialog.PrimaryButtonText = review.Action;
         dialog.IsPrimaryButtonEnabled = review.Trust is null;
         dialog.CloseButtonText = "Cancel";
@@ -198,7 +202,9 @@ public sealed class ReviewDialog
     void ShowDone(bool success, string message)
     {
         stage = Stage.Done;
-        var line = new Grid { ColumnSpacing = 24, MinWidth = 440 };
+        OperationDialog.SetWidth(dialog, 420, 560);
+        AutomationProperties.SetName(dialog, success ? "Done" : "Could not finish");
+        var line = new Grid { ColumnSpacing = 24 };
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         line.Children.Add(new FontIcon
@@ -212,8 +218,10 @@ public sealed class ReviewDialog
         Grid.SetColumn(text, 1);
         line.Children.Add(text);
         dialog.Content = line;
-        dialog.PrimaryButtonText = "";
-        dialog.CloseButtonText = "Close";
-        dialog.DefaultButton = ContentDialogButton.Close;
+        dialog.CloseButtonText = "";
+        OperationDialog.UseDoneButton(dialog);
     }
+
+    StackPanel WithSteps(UIElement content, bool applying) =>
+        OperationDialog.WithReviewSteps(dialog, content, applying, review?.Action is { Length: > 0 } action ? action : "Apply changes");
 }

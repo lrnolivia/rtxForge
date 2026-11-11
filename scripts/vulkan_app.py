@@ -342,8 +342,10 @@ def prepare(config, rows, mode, operation, settings, e):
                 plan = (provider.plan_restore(target, state_root(config)) if operation == 'uninstall'
                         else provider.plan_install(target, archive, folder / ('loader-'+key) / 'bink2w64.dll', state_root(config), experimental=True,
                                                    nr_on_launch=mode != 'mfg-only' and bool(settings.get('nr_on_launch', False))))
+            import nr_install
+            restore = nr_install.prepare_package_restore(config, row, (target / t.relative(name) for name in plan['checks'])) if operation == 'uninstall' else None
             values = overlay_settings.effective(settings, row['game'])
-            plans.append({'row': dict(row), 'profile': key, 'manifest': str(manifest), 'plan': plan,
+            plans.append({'row': dict(row), 'profile': key, 'manifest': str(manifest), 'plan': plan, 'split_render_restore': restore,
                           'prefix': str(prefix) if prefix else None,
                           'prefix_registry': t.digest(Path(prefix)/'user.reg') if prefix else None,
                           'settings': values})
@@ -351,6 +353,8 @@ def prepare(config, rows, mode, operation, settings, e):
             detail = ('Restore recorded originals.' if operation == 'uninstall' else
                       f"Vulkan · Universal Experimental\nNR model: {'Local override' if settings.get('nr_runtime') else 'Bundled'} · SHA-256 {model['sha256']}\n"
                       f"Confirmed profile: {PROFILES[key][1]}. Frame generation uses native NVIDIA MFG where the GPU supports it.\n")
+            if cleanup := nr_install.package_restore_detail(restore):
+                detail += '\n' + cleanup
             ready.append({'name': row['name'], 'game': row['game'], 'summary': 'Restore Vulkan original files' if operation == 'uninstall' else TITLE,
                           'detail': detail + '\n' + overlay_settings.describe(values)})
             ui.progress('Game checked', phase='review-check', game=row['name'], checked=index+1, total=len(rows))
@@ -359,13 +363,55 @@ def prepare(config, rows, mode, operation, settings, e):
     return {'kind': ID, 'operation': operation, 'title': TITLE, 'engine': e, 'plans': plans, 'rows': ready, 'blocked': blocked}
 
 
+@contextlib.contextmanager
+def split_restore_checkpoint(e, item):
+    import nr_install
+    restore = item.get('split_render_restore')
+    nr_install.check_package_restore(restore)
+    if not restore or not restore['review']:
+        yield
+        return
+    import cross_os
+    import proton_prefix
+    from operation_session import Session, LIVE
+    plan = item['plan']
+    target, state = Path(plan['target']), Path(plan['state'])
+    paths = [target / t.relative(name) for name in plan['checks']]
+    paths.extend([state / 'baseline.json', target / cross_os.MARKER, target / cross_os.SHARED])
+    paths.extend(nr_install.package_restore_paths(restore))
+    if item['prefix']:
+        paths.extend([Path(item['prefix']) / 'user.reg', state / 'proton-prefix' / proton_prefix.RECORD_NAME])
+    session = Session(e.STATE_ROOT / 'desktop-operations')
+    checkpoint = session.capture(paths, label=item['row']['name'])
+    try:
+        nr_install.apply_package_restore(restore)
+        yield
+    except BaseException:
+        try:
+            session.seal(checkpoint)
+            session.checkpoints[-1]['sealed'] = False
+            session.save()
+            t.need(not e._running_processes_under_root(Path(item['row']['game'])),
+                   'Close this game before recovery. Backups are retained at ' + str(session.root))
+            session.undo(checkpoint)
+            session.complete()
+        finally:
+            LIVE.discard(str(session.root))
+        raise
+    else:
+        session.seal(checkpoint)
+        session.complete()
+
+
 def execute(review):
+    import nr_install
     e = review['engine']
     t.need(review['plans'], 'No Vulkan games were reviewed.')
     # Whole-selection preflight before touching any game.
     for item in review['plans']:
         t.need(not e._running_processes_under_root(Path(item['row']['game'])), 'A reviewed game started. Close it and review again.')
         with provider.profile(item['profile'], item['manifest']): provider._check(item['plan'])
+        nr_install.check_package_restore(item.get('split_render_restore'))
         if item['prefix']:
             import proton_prefix
             prefix=Path(item['prefix'])
@@ -375,19 +421,20 @@ def execute(review):
     with e.mutation_lock():
         for item in review['plans']:
             ui.progress('Updating Vulkan package', game=item['row']['name'], current=len(completed)+1, total=len(review['plans']))
-            with provider.profile(item['profile'], item['manifest']), provider.process_guard(lambda: e._running_processes_under_root(Path(item['row']['game']))):
-                provider.execute(item['plan'])
-            # Shared record so the other OS recognises this install (removed with the originals).
-            import cross_os
-            if review['operation'] == 'uninstall':
-                target = Path(item['plan']['target']); marker = cross_os.read(target)
-                if marker and marker.get('provider', {}).get('id') == ID:
-                    cross_os.remove(target, marker['os'])
-            else:write_record(Path(item['plan']['target']))
-            if item['prefix']:
-                import proton_prefix
-                state = Path(item['plan']['state']) / 'proton-prefix'
-                if review['operation'] == 'uninstall': proton_prefix.restore(state)
-                else: proton_prefix.apply(Path(item['prefix']), ['bink2w64'], state)
+            with split_restore_checkpoint(e, item):
+                with provider.profile(item['profile'], item['manifest']), provider.process_guard(lambda: e._running_processes_under_root(Path(item['row']['game']))):
+                    provider.execute(item['plan'])
+                # Shared record so the other OS recognises this install (removed with the originals).
+                import cross_os
+                if review['operation'] == 'uninstall':
+                    target = Path(item['plan']['target']); marker = cross_os.read(target)
+                    if marker and marker.get('provider', {}).get('id') == ID:
+                        cross_os.remove(target, marker['os'])
+                else:write_record(Path(item['plan']['target']))
+                if item['prefix']:
+                    import proton_prefix
+                    state = Path(item['plan']['state']) / 'proton-prefix'
+                    if review['operation'] == 'uninstall': proton_prefix.restore(state)
+                    else: proton_prefix.apply(Path(item['prefix']), ['bink2w64'], state)
             completed.append(item['row']['name'])
     return f"Updated {len(completed)} Vulkan game(s). Original backups are retained. Restart the game to use these settings."

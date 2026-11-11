@@ -25,6 +25,46 @@ fn appearance_command(app: tauri::AppHandle, value: Option<serde_json::Value>) -
     serde_json::from_slice(&output.stdout).map_err(|_|"Appearance storage returned invalid data.".into())
 }
 
+#[cfg(target_os = "windows")]
+fn read_system_accent() -> Option<String> {
+    use windows::UI::ViewManagement::{UIColorType, UISettings};
+    let color = UISettings::new().ok()?.GetColorValue(UIColorType::Accent).ok()?;
+    Some(format!("#{:02x}{:02x}{:02x}", color.R, color.G, color.B))
+}
+
+#[cfg(target_os = "linux")]
+fn read_system_accent() -> Option<String> {
+    use gio::{glib::variant::ToVariant, BusType, Cancellable, DBusCallFlags};
+    let bus = gio::bus_get_sync(BusType::Session, Cancellable::NONE).ok()?;
+    let parameters = ("org.freedesktop.appearance", "accent-color").to_variant();
+    let read = |method| {
+        bus.call_sync(
+            Some("org.freedesktop.portal.Desktop"),
+            "/org/freedesktop/portal/desktop",
+            "org.freedesktop.portal.Settings",
+            method, Some(&parameters), None, DBusCallFlags::NONE, 750, Cancellable::NONE,
+        )
+    };
+    let response = read("ReadOne").or_else(|_| read("Read")).ok()?;
+    let value = response.child_value(0).as_variant()?;
+    let value = value.as_variant().unwrap_or(value);
+    let (r, g, b) = value.get::<(f64, f64, f64)>()?;
+    let channels = [r, g, b];
+    if !channels.iter().all(|channel| (0.0..=1.0).contains(channel)) {
+        return None;
+    }
+    let [r, g, b] = channels.map(|channel| (channel * 255.0).round() as u8);
+    Some(format!("#{r:02x}{g:02x}{b:02x}"))
+}
+
+#[tauri::command]
+async fn system_accent() -> Option<String> {
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    return tauri::async_runtime::spawn_blocking(read_system_accent).await.ok().flatten();
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    None
+}
+
 #[tauri::command]
 async fn appearance_read(app:tauri::AppHandle)->Result<serde_json::Value,String>{
     tauri::async_runtime::spawn_blocking(move||appearance_command(app,None)).await.map_err(|_|"Appearance reader stopped.".to_string())?
@@ -32,6 +72,7 @@ async fn appearance_read(app:tauri::AppHandle)->Result<serde_json::Value,String>
 
 #[tauri::command]
 async fn appearance_write(app:tauri::AppHandle,value:serde_json::Value)->Result<serde_json::Value,String>{
+    if preview_view(std::env::args()).is_some() { return Err("Appearance changes stay in this preview.".into()); }
     tauri::async_runtime::spawn_blocking(move||appearance_command(app,Some(value))).await.map_err(|_|"Appearance writer stopped.".to_string())?
 }
 
@@ -171,12 +212,39 @@ async fn store_screenshots(app: tauri::AppHandle, appid: String) -> Result<serde
     tauri::async_runtime::spawn_blocking(move || read_snapshot(app,None,Some(appid),None,true)).await.map_err(|_| "Store screenshot list stopped.".to_string())?
 }
 
+fn preview_view(args: impl IntoIterator<Item = impl AsRef<str>>) -> Option<&'static str> {
+    args.into_iter().find_map(|arg| match arg.as_ref() {
+        "--preview-library" => Some("library"),
+        "--preview-details" => Some("details"),
+        _ => None,
+    })
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    let mut context = tauri::generate_context!();
+    let preview = preview_view(&args).is_some();
+    if preview {
+        let config = context.config_mut();
+        config.identifier.push_str(".preview");
+        if let Some(window) = config.app.windows.first_mut() {
+            window.title = "rtxForge · Game Mode Preview".into();
+            window.fullscreen = false;
+            window.center = true;
+            window.decorations = false;
+            window.width = 1440.0;
+            window.height = 810.0;
+            window.min_width = Some(720.0);
+            window.min_height = Some(405.0);
+            window.visible = false;
+            window.incognito = true;
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if args.iter().any(|arg|arg=="--desktop-mode") { close_safely(app); return; }
             if args.iter().any(|arg|arg=="--appearance") { let _ = app.emit("navigate-appearance", ()); }
+            if let Some(view) = preview_view(&args) { let _ = app.emit("navigate-preview", view); }
             let state = app.state::<desktop_parent::DesktopParent>();
             if let Ok(mut parent) = state.0.lock() {
                 if parent.is_none_or(|pid| !desktop_parent::alive(pid)) { *parent = desktop_parent::from_args(&args); }
@@ -186,6 +254,20 @@ fn main() {
         .manage(desktop_parent::DesktopParent(std::sync::Mutex::new(desktop_parent::from_args(&args))))
         .manage(controller::ControllerState::default())
         .setup(move |app| {
+            if preview {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Some(monitor) = window.current_monitor().ok().flatten().or_else(|| window.primary_monitor().ok().flatten()) {
+                        let area = monitor.work_area().size;
+                        let scale = monitor.scale_factor();
+                        let width = 1440.0_f64.min(area.width as f64 / scale - 48.0)
+                            .min((area.height as f64 / scale - 48.0) * 16.0 / 9.0).max(720.0);
+                        window.set_size(tauri::LogicalSize::new(width, width * 9.0 / 16.0))?;
+                        let _ = window.center();
+                    }
+                    window.show()?;
+                    let _ = window.set_focus();
+                }
+            }
             if args.iter().any(|arg|arg=="--desktop-mode") {
                 close_safely(app.handle());
                 return Ok(());
@@ -203,8 +285,8 @@ fn main() {
             }
             Ok(())
         })
-        .plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![controller::start_native_controller, appearance_read, appearance_write, snapshot, artwork, store_background, store_screenshots, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
-        .build(tauri::generate_context!()).expect("Could not build Game Mode")
+        .plugin(tauri_plugin_dialog::init()).manage(engine::EngineState::default()).invoke_handler(tauri::generate_handler![controller::start_native_controller, appearance_read, appearance_write, system_accent, snapshot, artwork, store_background, store_screenshots, choose_path, desktop_mode, exit_app, toggle_fullscreen, minimize_app, engine::engine_status, engine::engine_request])
+        .build(context).expect("Could not build Game Mode")
         .run(|app, event| match event {
             tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::CloseRequested { api, .. }, .. } => {
                 api.prevent_close(); close_safely(app);

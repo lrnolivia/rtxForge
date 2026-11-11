@@ -40,7 +40,7 @@ try {
   expect(prepare.params.rows).toHaveLength(1);
   expect(prepare.params.rows[0].game).toBe(game.path);
   expect(prepare.params.operation).toBe('install');
-  await page.getByRole('button', { name: 'Back to game' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: 'Install Features', exact: true }).click();
   await page.getByRole('button',{name:'Review games',exact:true}).click();
   await expect(page.getByRole('heading', { name: 'Test-only exact review' })).toBeVisible();

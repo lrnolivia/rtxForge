@@ -943,8 +943,22 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .preview-thumbnail .main-panel { min-height: 0; }
 .preview-thumbnail .overview { padding-bottom: 8dp; }
 .preview-thumbnail .neural .segments { margin-top: 8dp; }
-.preview-chrome { position: absolute; right: 24dp; top: 20dp; z-index: 100; }
+.preview-chrome { position: absolute; right: 24dp; top: 20dp; z-index: 100; gap: 6dp; }
 .preview-chrome .close { width: 38dp; height: 38dp; border-radius: 19dp; background: #27262466; }
+.preview-chrome .close:hover, .preview-chrome .close:focus { background: #272624b3; }
+.preview-fullscreen .preview-arrow { display: block; position: absolute; width: 9dp; height: 9dp; }
+.preview-fullscreen .preview-arrow.first { top: 10dp; right: 10dp; }
+.preview-fullscreen .preview-arrow.second { bottom: 10dp; left: 10dp; transform: rotate(180deg); }
+.preview-fullscreen.is-fullscreen .preview-arrow.first { transform: rotate(180deg); }
+.preview-fullscreen.is-fullscreen .preview-arrow.second { transform: none; }
+.preview-arrow .tip {
+    display: block; position: absolute; top: 0; right: 0; width: 5dp; height: 5dp;
+    border-top: 1.5dp #f5f1ea; border-right: 1.5dp #f5f1ea;
+}
+.preview-arrow .shaft {
+    display: block; position: absolute; width: 10dp; height: 1.5dp; top: 3.5dp; left: 0;
+    background: #f5f1ea; transform: rotate(-45deg);
+}
 .side-panel-position { margin-top: 20dp; }
 .side-panel-position .segments { margin-top: 12dp; }
 .desktop-preview .prototype-toolbar { transform: none; }
@@ -963,7 +977,7 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 }
 .select-menu.game-picker-menu { border-radius: 10dp; }
 .desktop-preview.preview-picker-left .prototype-toolbar { left: 24dp; right: auto; transform: none; }
-.desktop-preview.preview-picker-right .prototype-toolbar { left: auto; right: 76dp; transform: none; }
+.desktop-preview.preview-picker-right .prototype-toolbar { left: auto; right: 120dp; transform: none; }
 .desktop-preview.preview-picker-bottom .prototype-toolbar { top: auto; bottom: 24dp; }
 .desktop-preview .prototype-toolbar, .desktop-preview.clear-foreground .prototype-toolbar { background: transparent; color: #282624; }
 .desktop-preview .prototype-toolbar.dark, .desktop-preview .prototype-toolbar.clear { color: #f5f1ea; }

@@ -1,7 +1,7 @@
 import {escape as e,type Game} from './model';
 import type {Review} from './engine';
 export interface FlowState {
- stage:'startup'|'checking'|'review'|'running'|'done'|'error';title:string;kind?:string;origin?:string;
+ stage:'startup'|'checking'|'review'|'running'|'done'|'error';title:string;kind?:string;origin?:string;method?:string;
  review?:Review;progress?:Record<string,unknown>;result?:unknown;error?:string;cancelRequested?:boolean;targets?:Game[];acceptedTrust?:boolean;
 }
 type Icon=(name:string)=>string;
@@ -49,11 +49,24 @@ export function operationStep(state:FlowState,games:Game[],icon:Icon) {
  const label=state.cancelRequested?'Waiting for the engine to stop safely…':String(p.label||p.phase||(state.stage==='checking'?'Checking the selected games and required packages…':'Waiting for the engine to report progress…'));
  return `<div class="operation-step" ${color?`style="--step-accent:${e(color)}"`:''}><div class="flow-poster">${art?`<img src="${e(art)}" alt=""/>`:icon('package')}</div><div class="operation-step-copy"><p class="flow-counter">${e(counter)}</p><h2>${e(game?.name||name||'Your selected games')}</h2><p role="status" class="flow-phase">${e(label)}</p><progress max="1" ${fraction!==null?`value="${fraction}"`:''} aria-label="${caption} progress"></progress>${fraction!==null?`<span class="flow-percentage">${Math.round(fraction*100)}%</span>`:''}</div></div>`;
 }
+const stepActions:Record<string,string> = {
+ install:'Install', 'install-nr-addons':'Install', 'remove-nr-addons':'Remove',
+ 'update-dlss':'Update DLSS', uninstall:'Restore', adopt:'Adopt', 'adopt-clean':'Install',
+};
+export function flowSteps(kind:string,phase:'start'|'review'|'apply',chooseGames=false) {
+ const steps = [kind==='review'?'Review changes':'Review games',stepActions[kind] || 'Apply changes'];
+ if(kind==='install')steps.unshift('Presets');
+ if(chooseGames)steps.unshift('Choose games');
+ const current=phase==='start'?0:phase==='review'?steps.length-2:steps.length-1;
+ return `<ol class="flow-steps" aria-label="${kind==='install'?'Installation steps':'Operation steps'}">${steps.map((step,i)=>`<li ${i===current?'aria-current="step"':''}><span>${i+1}</span>${step}</li>`).join('')}</ol>`;
+}
 export function operationFlow(state:FlowState,games:Game[],icon:Icon,startup='',supported='',installOptions='') {
  const review=state.review,rows=review?.rows||review?.items||[],blocked=review?.blocked||[],warnings=review?.warnings||[];
- const steps=['Startup settings','Review games','Install'];
- const current=state.stage==='startup'?0:state.stage==='review'||state.stage==='checking'?1:2;
- const title=state.stage==='startup'?'Install Features':state.stage==='review'?state.title:state.stage==='checking'?'Preparing':state.stage==='running'?verb(state.kind):state.stage==='error'?'Operation did not complete':(state.result as Record<string,unknown>)?.cancelled?'Cancelled':'Finished';
+ const preparing = state.stage==='checking' || (state.stage==='error' && !review);
+ const starting = state.stage==='startup' || (preparing && state.kind==='install' && !state.method);
+ const phase = starting ? 'start' : preparing || state.stage==='review' ? 'review' : 'apply';
+ const title=state.stage==='startup'?'Install Features':state.stage==='review'?state.title:state.stage==='checking'?'Preparing':verb(state.kind);
+ const resultStage=state.stage==='done'||state.stage==='error';
  let body='',footer='';
  if(state.stage==='startup') {
   body=`<p class="flow-intro">Choose startup settings. You can adjust them later.</p>${startup}`;
@@ -69,8 +82,9 @@ export function operationFlow(state:FlowState,games:Game[],icon:Icon,startup='',
   const cancelled=result?.cancelled===true,failed=state.stage==='error'||errors.length>0;
   const message=state.error||String(result?.message||(typeof result?.report==='string'?result.report:'')||(typeof state.result==='string'?state.result:cancelled?'The engine stopped this operation. Review the completed steps below.':failed?'Some changes need attention.':'The engine finished the reviewed operation.'));
   const reports=Array.isArray(result?.reports)?result.reports:[];
-  body=`<div class="flow-result ${failed?'flow-result-error':''}">${icon(failed||cancelled?'warning':'check')}<div><h2>${failed?'Needs attention':cancelled?'Operation cancelled':'All done'}</h2><p role="status">${e(message)}</p>${typeof result?.completed_batches==='number'?`<p class="subtle">${result.completed_batches} reviewed batch${result.completed_batches===1?'':'es'} completed.</p>`:''}${errors.length?`<ul>${errors.map(error=>`<li>${e(error)}</li>`).join('')}</ul>`:''}</div>${reports.length ? reviewInfo('Operation result',reports.map(report=>typeof report==='string'?report:JSON.stringify(report,null,2)).join('\n\n'),icon) : ''}</div>`;
-  footer='<button class="primary" data-action="operation-back">Back to game</button>';
+  body=`<div class="flow-result ${failed?'flow-result-error':''}">${icon(failed||cancelled?'warning':'check')}<div><h2 id="page-title" tabindex="-1">${failed?'Needs attention':cancelled?'Operation cancelled':'Done'}</h2><p role="status">${e(message)}</p>${typeof result?.completed_batches==='number'?`<p class="subtle">${result.completed_batches} reviewed batch${result.completed_batches===1?'':'es'} completed.</p>`:''}${errors.length?`<ul>${errors.map(error=>`<li>${e(error)}</li>`).join('')}</ul>`:''}</div>${reports.length ? reviewInfo('Operation result',reports.map(report=>typeof report==='string'?report:JSON.stringify(report,null,2)).join('\n\n'),icon) : ''}</div>`;
+  footer='<button class="primary flow-done" data-action="operation-back">Done</button>';
  }
- return `<div class="operation-flow" data-stage="${state.stage}"><header class="flow-heading"><h1 id="page-title" tabindex="-1">${e(title)}</h1>${state.kind==='install'?`<ol class="flow-steps" aria-label="Installation steps">${steps.map((step,i)=>`<li ${i===current?'aria-current="step"':''}><span>${i+1}</span>${step}</li>`).join('')}</ol>`:''}</header><section class="glass-section flow-panel">${['checking','running'].includes(state.stage)?'<div class="flow-artwork" aria-hidden="true"></div>':''}<div class="flow-body">${body}</div><footer class="operation-actions flow-actions">${footer}</footer></section></div>`;
+ const heading=resultStage?'':`<header class="flow-heading"><h1 id="page-title" tabindex="-1">${e(title)}</h1>${flowSteps(state.kind || '',phase,state.kind==='remove-nr-addons'&&state.origin==='packages')}</header>`;
+ return `<div class="operation-flow" data-stage="${state.stage}">${heading}<section class="glass-section flow-panel">${['checking','running'].includes(state.stage)?'<div class="flow-artwork" aria-hidden="true"></div>':''}<div class="flow-body">${body}</div><footer class="operation-actions flow-actions">${footer}</footer></section></div>`;
 }

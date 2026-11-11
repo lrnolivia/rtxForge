@@ -8,6 +8,17 @@ from gi.repository import Gtk, Adw, Gdk, GdkPixbuf, Gio, GLib
 import game_mode_appearance as shared
 
 
+def color_hex(color):
+    return '#%02x%02x%02x' % tuple(round(channel * 255) for channel in (color.red, color.green, color.blue))
+
+
+def system_accent():
+    style = Adw.StyleManager.get_default()
+    if hasattr(style, 'get_system_supports_accent_colors') and style.get_system_supports_accent_colors():
+        return color_hex(style.get_accent_color_rgba())
+    return shared.FORGE_GREEN
+
+
 class AppearanceSettings:
     def __init__(self, owner):
         self.owner = owner
@@ -46,7 +57,19 @@ class AppearanceSettings:
         self.feedback = Gtk.Label(xalign=0, wrap=True, visible=False)
         self.feedback.add_css_class('dim-label')
         self.tint_row = None
+        self.custom_accent_row = None
         self.build()
+        style = Adw.StyleManager.get_default()
+        if style.find_property('accent-color-rgba'):
+            def repaint(*_):
+                if self.value['accentSource'] == 'system':
+                    self.preview.queue_draw()
+                    self.details_preview.queue_draw()
+            def track(*_):
+                self.accent_handler = style.connect('notify::accent-color-rgba', repaint)
+                repaint()
+            self.preview.connect('map', track)
+            self.preview.connect('unmap', lambda *_: style.disconnect(self.accent_handler))
 
     def message(self, text):
         self.feedback.set_label(text)
@@ -65,6 +88,8 @@ class AppearanceSettings:
             self.message('Preview only' if self.owner.options.demo else 'Saved')
             if key == 'background':
                 self.background = None
+            if self.custom_accent_row:
+                self.custom_accent_row.set_visible(self.value['accentSource'] == 'custom')
             if self.tint_row:
                 self.tint_row.set_visible(self.value['accentMode'] != 'theme')
             self.preview.queue_draw()
@@ -90,8 +115,7 @@ class AppearanceSettings:
         group.add(row)
         return row
 
-    @staticmethod
-    def preview_panel(options, sample, caption, preview_options):
+    def preview_panel(self, options, sample, caption, route, preview_options):
         panel = Adw.WrapBox(child_spacing=20, line_spacing=16, hexpand=True)
         options.set_hexpand(True)
         panel.append(options)
@@ -100,7 +124,11 @@ class AppearanceSettings:
         title.add_css_class('dim-label')
         preview.append(title)
         frame = Gtk.AspectFrame(ratio=16 / 9, obey_child=False, child=sample)
-        preview.append(Adw.Clamp(child=frame, maximum_size=480, tightening_threshold=380))
+        preview.append(Adw.Clamp(child=frame, maximum_size=560, tightening_threshold=440))
+        button = Gtk.Button(label='Open full preview', halign=Gtk.Align.START)
+        button.update_property([Gtk.AccessibleProperty.LABEL], ['Open ' + caption])
+        button.connect('clicked', lambda *_: self.owner.open_game_mode_preview(route))
+        preview.append(button)
         preview.append(preview_options)
         panel.append(preview)
         panel.set_margin_top(12); panel.set_margin_bottom(12)
@@ -122,14 +150,18 @@ class AppearanceSettings:
         main = Adw.PreferencesGroup()
         body.append(main)
         preview_options = Adw.PreferencesGroup()
-        surface.add(self.preview_panel(body, self.preview, 'Library preview', preview_options))
+        surface.add(self.preview_panel(body, self.preview, 'Library preview', 'library', preview_options))
+        self.choice(main, 'Accent', 'accentSource', shared.ACCENT_CHOICES)
         color = Gdk.RGBA(); color.parse(self.value['accent'])
         chooser = Gtk.ColorDialogButton(dialog=Gtk.ColorDialog(title='Game Mode accent color', with_alpha=False), rgba=color, valign=Gtk.Align.CENTER)
-        chooser.connect('notify::rgba', lambda control, *_: self.change('accent', '#%02x%02x%02x' % tuple(round(channel * 255) for channel in (control.get_rgba().red, control.get_rgba().green, control.get_rgba().blue))))
+        chooser.connect('notify::rgba', lambda control, *_: self.change('accent', color_hex(control.get_rgba())))
         def refresh_color():
             value = Gdk.RGBA(); value.parse(self.value['accent']); chooser.set_rgba(value)
         self.refreshers.append(refresh_color)
-        row = Adw.ActionRow(title='Accent color'); row.add_suffix(chooser); main.add(row)
+        row = Adw.ActionRow(title='Custom accent color', visible=self.value['accentSource'] == 'custom')
+        row.add_suffix(chooser); main.add(row)
+        self.custom_accent_row = row
+        self.refreshers.append(lambda: row.set_visible(self.value['accentSource'] == 'custom'))
         row = Adw.ActionRow(title='Background', subtitle='PNG, JPEG or WebP for the main Game Mode interface.')
         buttons = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
         choose = Gtk.Button(label='Choose image'); choose.connect('clicked', self.choose_background)
@@ -141,7 +173,7 @@ class AppearanceSettings:
         details = self.group('Game Details', "Surface Tint follows each game's saved color or artwork.")
         details_options = Adw.PreferencesGroup()
         details_preview_options = Adw.PreferencesGroup()
-        details.add(self.preview_panel(details_options, self.details_preview, 'Game Details preview', details_preview_options))
+        details.add(self.preview_panel(details_options, self.details_preview, 'Game Details preview', 'details', details_preview_options))
         self.choice(details_options, 'Surface', 'detailsTheme', [('same', 'Match Game Mode'), ('light', 'Light'), ('clear', 'Clear'), ('dark', 'Dark')])
         self.choice(details_options, 'Accent source', 'accentMode', [('theme', 'None'), ('adaptive', 'Adaptive'), ('custom', 'Game')])
         self.tint_row = Adw.SpinRow.new_with_range(0, 100, 5)
@@ -200,6 +232,12 @@ class AppearanceSettings:
                     self.message(str(error))
         picker.open(self.owner, None, selected)
 
+    def app_accent(self):
+        source = self.value['accentSource']
+        if source == 'system':
+            return system_accent()
+        return shared.FORGE_GREEN if source == 'green' else self.value['accent']
+
     def draw(self, _widget, cr, width, height):
         cr.scale(width / 480, height / 270)
         light = self.value['theme'] == 'light'
@@ -240,7 +278,7 @@ class AppearanceSettings:
                 cr.arc(cx, cy, radius, angle*pi, (angle+.5)*pi)
             cr.close_path()
             cr.set_source_rgba(*color); cr.fill()
-        accent = Gdk.RGBA(); accent.parse(self.value['accent'])
+        accent = Gdk.RGBA(); accent.parse(self.app_accent())
         panel(107, nav_y, 270, 30, 15, glass)
         panel(111, nav_y+3, 53, 23, 11, (accent.red, accent.green, accent.blue, .32))
         cr.set_source_rgb(.96, .95, .93); cr.set_font_size(13); cr.move_to(18, nav_y+19); cr.show_text('rtxForge')
@@ -264,7 +302,7 @@ class AppearanceSettings:
         base = (.92, .90, .87) if light else (.16, .16, .17)
         ink = (.12, .12, .12) if light else (.97, .96, .94)
         cr.set_source_rgb(*base); cr.paint()
-        accent = Gdk.RGBA(); accent.parse(self.value['accent'])
+        accent = Gdk.RGBA(); accent.parse(self.app_accent())
         tint = 0 if self.value['accentMode'] == 'theme' else self.value['tintStrength'] / 180
         tinted = tuple(channel + (hue-channel)*tint for channel, hue in zip(base, (accent.red,accent.green,accent.blue)))
         bottom = self.value['navigation'] == 'bottom'

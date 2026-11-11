@@ -127,23 +127,25 @@ def neutral_palette():
 
 
 ACCENT_PROVIDER=None
-def apply_brand_accent():
-    """rtxForge green, as Windows overrides SystemAccentColor in App.xaml.
+DESKTOP_ACCENT_SOURCE='green'
+DESKTOP_CUSTOM_ACCENT='#76b900'
 
-    Desktop accent tools write ~/.config/gtk-4.0/gtk.css at USER priority, so
-    this app-only provider sits just above it. Other apps keep the desktop accent.
-    """
+def apply_brand_accent():
+    """Set the Desktop accent for native GTK controls and rtxForge's CSS."""
     global ACCENT_PROVIDER
     if ACCENT_PROVIDER is None:
         ACCENT_PROVIDER=Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),ACCENT_PROVIDER,Gtk.STYLE_PROVIDER_PRIORITY_USER+1)
-    text='#95cf38' if Adw.StyleManager.get_default().get_dark() else '#437500'
-    ACCENT_PROVIDER.load_from_data((f':root {{ --accent-bg-color: #76b900; --accent-color: {text}; --accent-fg-color: #102000; }}'
-                                    f'@define-color accent_bg_color #76b900; @define-color accent_color {text}; @define-color accent_fg_color #102000;'
+    from native_game_mode_appearance import system_accent
+    color=system_accent() if DESKTOP_ACCENT_SOURCE=='system' else DESKTOP_CUSTOM_ACCENT if DESKTOP_ACCENT_SOURCE=='custom' else '#76b900'
+    text=ui_colors.readable(color,neutral_palette()['window'])
+    ink=ui_colors.readable('#102000',color)
+    ACCENT_PROVIDER.load_from_data((f':root {{ --accent-bg-color: {color}; --accent-color: {text}; --accent-fg-color: {ink}; }}'
+                                    f'@define-color accent_bg_color {color}; @define-color accent_color {text}; @define-color accent_fg_color {ink};'
                                     # Windows segmented control: the checked segment carries a 16x3 accent pill.
                                     '.library-filter-group button:checked, button.view-action:checked,'
                                     '.sticky-mode-selector toggle:checked, .mode-selector toggle:checked, .mfg-control toggle:checked {'
-                                    ' background-image: linear-gradient(#76b900, #76b900); background-size: 16px 3px;'
+                                    ' background-image: linear-gradient(@accent_bg_color, @accent_bg_color); background-size: 16px 3px;'
                                     ' background-position: 50% 100%; background-repeat: no-repeat; }').encode())
 
 
@@ -223,7 +225,7 @@ def apply_neutral_palette():
         .bulk-remove { color: #9b3028; }
         .library-list-chip.active, .library-list-status-dot.installed { color: #437500; }
         .operation-complete, .operation-bubble .operation-complete { color: #376b18; }
-        .operation-done .icon { color: #437500; }
+        .operation-done .icon { color: @accent_color; }
         .operation-bubble .operation-error { color: #a02d25; }
         .eyebrow { color: #437500; }
         .game-banner-title { text-shadow: none; }
@@ -239,7 +241,7 @@ def apply_neutral_palette():
     .library-status-primary { background: alpha(black,0.16); padding: 0; border-radius: 99px; }
     '''
     if not Adw.StyleManager.get_default().get_dark():
-        theme_css+='button.forge-primary, button.suggested-action { background: #deebc9; color: #345b00; } button.forge-primary label, button.suggested-action label, button.forge-primary image, button.suggested-action image { color: #345b00; }'
+        theme_css+='button.forge-primary, button.suggested-action { background: mix(@window_bg_color,@accent_bg_color,0.24); color: @accent_color; } button.forge-primary label, button.suggested-action label, button.forge-primary image, button.suggested-action image { color: @accent_color; }'
         theme_css+='button.forge-primary:disabled, button.suggested-action:disabled { background: alpha(@window_fg_color,0.08); } button.forge-primary:disabled label, button.forge-primary:disabled image, button.suggested-action:disabled label, button.suggested-action:disabled image { color: alpha(@window_fg_color,0.45); }'
     NEUTRAL_PROVIDER.load_from_data(theme_css.encode())
     sources=list(ACCENT_SOURCES.values())
@@ -765,6 +767,11 @@ def artwork_accent(path,color=None,muted=False):
 
             # The operation dialog's primary button follows the current game.
             f'.operation-flow.{name} headerbar button.suggested-action {{ '
+            f'background: {color}; '
+            f'color: {accent_fg}; '
+            f'}} '
+
+            f'.operation-flow.operation-single-game.{name} .operation-current .operation-step-number {{ '
             f'background: {color}; '
             f'color: {accent_fg}; '
             f'}} '
@@ -2526,7 +2533,26 @@ columnview.library-column-view listview row:nth-child(even):hover {
 .operation-step .job-title {
     font-size: 20px;
 }
-.operation-done .icon { color: #76b900; }
+.operation-steps {
+    font-size: 0.82em;
+    padding: 5px 16px;
+    border-radius: 17px;
+    background: alpha(@window_fg_color, 0.09);
+}
+.operation-step-number {
+    min-width: 20px;
+    min-height: 20px;
+    background: alpha(@window_fg_color, 0.10);
+    border-radius: 999px;
+}
+.operation-current .operation-step-number {
+    background: @accent_bg_color;
+    color: @accent_fg_color;
+    font-weight: 600;
+}
+.operation-done .icon { color: @accent_color; }
+.operation-flow button.operation-done-button { min-width: 0; padding: 6px 18px; background: @accent_bg_color; color: @accent_fg_color; }
+.operation-flow button.operation-done-button:hover { background: mix(@accent_bg_color,@accent_fg_color,0.08); }
 .operation-failed .icon { color: @warning_color; }
 
 .result-success {
@@ -3873,15 +3899,20 @@ class OperationFlow:
         self.review_title=title or words[0]
         self.verb,self.progress_verb=words[1],words[2]
         self.stage=None
+        self.step_phase='review'
+        self.includes_presets=False
+        self.content_width=620
         self.review=None
         self.on_confirm=None
         self.accent=None
-        self.dialog=PresentationDialog(owner,title=self.review_title,content_width=640)
+        self.dialog=PresentationDialog(owner,title=self.review_title,content_width=self.content_width)
         self.dialog.add_css_class('modal-panel')
         self.dialog.add_css_class('operation-flow')
+        if len(self.games)==1:self.dialog.add_css_class('operation-single-game')
         self.dialog.connect('closed',self._closed)
         self.dialog.connect('close-attempt',lambda *_:self.cancel())
         toolbar=Adw.ToolbarView()
+        toolbar.set_top_bar_style(Adw.ToolbarStyle.RAISED)
         self.header=Adw.HeaderBar(show_start_title_buttons=False,show_end_title_buttons=False)
         self.header.set_title_widget(Adw.WindowTitle(title=self.review_title))
         self.cancel_button=Gtk.Button(label='Cancel')
@@ -3889,6 +3920,10 @@ class OperationFlow:
         self.primary=Gtk.Button(label=self.verb,sensitive=False)
         self.primary.add_css_class('suggested-action')
         self.primary.connect('clicked',lambda *_:self._primary_clicked())
+        self.steps=Gtk.Box(spacing=12,margin_start=12,margin_end=12,margin_top=4,margin_bottom=4)
+        self.steps.add_css_class('operation-steps')
+        self.steps.update_property([Gtk.AccessibleProperty.LABEL],['Operation steps'])
+        self.header.pack_end(self.steps)
         toolbar.add_top_bar(self.header)
         # Actions sit along the bottom: Cancel, then the action, right aligned.
         actions=Gtk.Box(spacing=12,halign=Gtk.Align.END)
@@ -3910,23 +3945,56 @@ class OperationFlow:
 
     # ---------- helpers ----------
 
-    def _page(self,name,child,width=640):
+    def _page(self,name,child):
+        if name=='presets':
+            self.includes_presets=True
+            self.step_phase='presets'
+        elif name in ('checking','review'):
+            self.step_phase='review'
+        elif name=='progress' or (name=='working' and self.stage=='review'):
+            self.step_phase='apply'
+        if name!='done':self._show_steps()
+        self.toolbar.set_reveal_top_bars(name!='done')
+        self.content_width={
+            'presets':820,'review':760 if self.operation=='report' else 680,'done':500,
+        }.get(name,620)
         self.content=child
         self.toolbar.set_content(child)
-        self.dialog.set_content_width(width)
+        self.dialog.set_content_width(self.content_width)
         self.stage=name
-        self._fit(child,width)
-        GLib.idle_add(self._fit,child,width)
+        self._fit(child,self.content_width)
+        GLib.idle_add(self._fit,child,self.content_width)
+
+    def _show_steps(self):
+        action={'update-dlss':'Update DLSS','uninstall':'Restore files'}.get(self.operation,self.verb)
+        review_games=self.games or self.operation in ('install','repair','uninstall','update-dlss','nr-addons','remove-nr-addons')
+        steps=[('review','Review games' if review_games else 'Review changes'),('apply',action)]
+        if self.includes_presets:steps.insert(0,('presets','Presets'))
+        while (item:=self.steps.get_first_child()) is not None:self.steps.remove(item)
+        for number,(phase,title) in enumerate(steps,1):
+            item=Gtk.Box(spacing=6)
+            numeral=Gtk.Label(label=str(number))
+            numeral.add_css_class('operation-step-number')
+            caption=label(title)
+            if phase==self.step_phase:
+                item.add_css_class('operation-current')
+                caption.update_property([Gtk.AccessibleProperty.DESCRIPTION],['Current step'])
+            else:
+                caption.add_css_class('dim-label')
+            item.append(numeral)
+            item.append(caption)
+            self.steps.append(item)
 
     def _fit(self,child,width):
         """Size the dialog to the current stage, within the window."""
         if self.closed or self.content is not child:return False
-        header=self.header.measure(Gtk.Orientation.VERTICAL,width)[1]+self.actions.measure(Gtk.Orientation.VERTICAL,width)[1]
+        bars=self.actions.measure(Gtk.Orientation.VERTICAL,width)[1]
+        if self.stage!='done':bars+=self.header.measure(Gtk.Orientation.VERTICAL,width)[1]
         content=child.measure(Gtk.Orientation.VERTICAL,width)[1]
         if isinstance(child,Gtk.ScrolledWindow) and child.get_child() is not None:
             content=child.get_child().measure(Gtk.Orientation.VERTICAL,width)[1]
         limit=max(320,self.owner.get_height()-96)
-        self.dialog.set_content_height(min(limit,header+content))
+        self.dialog.set_content_height(min(limit,bars+content))
         return False
 
     def _rows_scroll(self,listing,visible=5):
@@ -3960,9 +4028,11 @@ class OperationFlow:
             if isinstance(row,Adw.ExpanderRow):row.connect('notify::expanded',lambda *_:GLib.idle_add(cap))
         return scroll
 
-    def _title(self,text):
+    def _title(self,text,subtitle=''):
         self.dialog.set_title(text)
-        self.header.get_title_widget().set_title(text)
+        heading=self.header.get_title_widget()
+        heading.set_title(text)
+        heading.set_subtitle(subtitle)
 
     def _body(self):
         body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
@@ -4011,20 +4081,19 @@ class OperationFlow:
     def show_presets(self,tuning,on_continue):
         """Install only: tune presets, then Cancel or Continue."""
         self.on_continue=on_continue
-        self._title('Install Features')
+        self._title('Install Features','Choose presets. You can adjust them later.')
         body=self._body()
-        body.append(label('Adjust your presets or continue. You can change these settings later in OptiScaler.','dim-label'))
         body.append(tuning)
         self.primary.set_label('Continue')
         self.primary.set_sensitive(True)
         scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True)
         scroll.set_child(body)
-        self._page('presets',scroll,width=820)
+        self._page('presets',scroll)
         def refit():
             if self.closed or self.stage!='presets':return False
             # Re-measure after responsive columns and expanders have laid out.
             # The initial vertical measurement must not leave a tall blank dialog.
-            self._fit(scroll,min(820,max(320,self.owner.get_width()-48)))
+            self._fit(scroll,min(self.content_width,max(320,self.owner.get_width()-48)))
             return True
         GLib.timeout_add(100,refit)
 
@@ -4157,8 +4226,7 @@ class OperationFlow:
         self.dialog.set_can_close(True)
         self._set_accent(None)
         heading=title or ('Done' if success else 'Could not finish')
-        # The status page carries the heading; the header bar stays plain.
-        self._title('')
+        self._title(heading)
         page=Adw.StatusPage(
             icon_name='object-select-symbolic' if success else 'dialog-warning-symbolic',
             title=heading,
@@ -4173,8 +4241,9 @@ class OperationFlow:
         self.cancel_button.set_visible(False)
         self.primary.set_visible(True)
         self.primary.set_label('Done')
+        self.primary.add_css_class('operation-done-button')
         self.primary.set_sensitive(True)
-        self._page('done',page,width=520)
+        self._page('done',page)
 
 
 class LibraryGameItem(GObject.Object):
@@ -4330,7 +4399,13 @@ class Window(Adw.ApplicationWindow):
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
-        global THEME_MODE
+        global THEME_MODE, DESKTOP_ACCENT_SOURCE, DESKTOP_CUSTOM_ACCENT
+        DESKTOP_ACCENT_SOURCE=self.settings['desktop_accent_source']
+        DESKTOP_CUSTOM_ACCENT=self.settings['desktop_accent_color']
+        style=Adw.StyleManager.get_default()
+        if style.find_property('accent-color-rgba'):
+            handler=style.connect('notify::accent-color-rgba',lambda *_:apply_brand_accent() if DESKTOP_ACCENT_SOURCE=='system' else None)
+            self.connect('destroy',lambda *_:style.disconnect(handler))
         THEME_MODE=(self.settings.get('theme') or ('dark' if self.settings['dark'] else 'light'))
         self.settings['dark']=THEME_MODE!='light'
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
@@ -5974,6 +6049,18 @@ class Window(Adw.ApplicationWindow):
             def invoke(*_,fn=fn):
                 d.close();GLib.idle_add(lambda:(fn(),False)[1])
             b.append(icon_button(title,icon,invoke))
+
+    def open_game_mode_preview(self, route):
+        import game_mode_launcher
+        try:
+            child=game_mode_launcher.activate(ROOT,preview=route)
+        except (OSError, ValueError, RuntimeError) as error:
+            self.toast(str(error))
+            return
+        def wait():
+            if code:=child.wait():
+                GLib.idle_add(self.toast,f'Game Mode preview stopped with exit {code}.')
+        threading.Thread(target=wait,daemon=True,name='game-mode-preview').start()
 
     def _open_native_game_mode(self,wait_for_idle=False):
         if not getattr(self,'_native_game_mode_requested',False):
@@ -14762,7 +14849,7 @@ class Window(Adw.ApplicationWindow):
         flow._title(flow.review_title)
         flow.primary.set_label('Export')
         flow.primary.set_sensitive(not self.options.demo)
-        flow._page('review',scroll,width=760)
+        flow._page('review',scroll)
 
     # ---------- beta reports (scripts/beta_report.py) ----------
 
@@ -14878,7 +14965,7 @@ class Window(Adw.ApplicationWindow):
         flow.dialog.set_can_close(True)
         flow.primary.set_visible(True);flow.primary.set_label('Send Report')
         flow.cancel_button.set_visible(True);flow.cancel_button.set_label('Cancel')
-        flow._page('review',scroll,width=640)
+        flow._page('review',scroll)
         ready()
         GLib.idle_add(view.grab_focus)
 
@@ -14941,7 +15028,7 @@ class Window(Adw.ApplicationWindow):
         flow.dialog.set_can_close(True)
         flow.primary.set_visible(True);flow.primary.set_label('Back');flow.primary.set_sensitive(True)
         flow.cancel_button.set_visible(False)
-        flow._page('review',scroll,width=760)
+        flow._page('review',scroll)
 
     def send_beta_report(self,flow,game,report,options,issue):
         """Keep a copy on this computer, then send; the service files the issue and keeps logs private."""
@@ -16048,6 +16135,30 @@ class Window(Adw.ApplicationWindow):
                                   change_theme, modes=('light','dark','night'))
         appearance.add(Adw.PreferencesRow(child=theme_selector))
         import native_game_mode_appearance
+        from game_mode_appearance import ACCENT_CHOICES
+        sources, captions=zip(*ACCENT_CHOICES)
+        accent_source=Adw.ComboRow(title='Accent',model=Gtk.StringList.new(captions),
+                                   selected=sources.index(self.settings['desktop_accent_source']))
+        appearance.add(accent_source)
+        rgba=Gdk.RGBA(); rgba.parse(self.settings['desktop_accent_color'])
+        chooser=Gtk.ColorDialogButton(dialog=Gtk.ColorDialog(title='Custom accent color',with_alpha=False),
+                                      rgba=rgba,valign=Gtk.Align.CENTER)
+        custom_accent=Adw.ActionRow(title='Custom accent color',visible=self.settings['desktop_accent_source']=='custom')
+        custom_accent.add_suffix(chooser)
+        appearance.add(custom_accent)
+        def change_accent(key,value):
+            global DESKTOP_ACCENT_SOURCE, DESKTOP_CUSTOM_ACCENT
+            self.settings[key]=value
+            DESKTOP_ACCENT_SOURCE=self.settings['desktop_accent_source']
+            DESKTOP_CUSTOM_ACCENT=self.settings['desktop_accent_color']
+            custom_accent.set_visible(DESKTOP_ACCENT_SOURCE=='custom')
+            apply_brand_accent()
+            if not self.options.demo:
+                saved=library_media.load_settings(self.service.config)
+                saved[key]=value
+                library_media.save_settings(self.service.config,saved)
+        accent_source.connect('notify::selected',lambda control,*_:change_accent('desktop_accent_source',sources[control.get_selected()]))
+        chooser.connect('notify::rgba',lambda control,*_:change_accent('desktop_accent_color',native_game_mode_appearance.color_hex(control.get_rgba())))
         game_mode_appearance_groups=native_game_mode_appearance.build(self)
 
         glyphs=Adw.SwitchRow(title='Button Icons',subtitle='Show action icons beside button labels.',active=self.settings.get('button_glyphs',True))

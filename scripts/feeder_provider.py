@@ -967,8 +967,25 @@ def _checks(directory, names):
     return {name: digest(directory / t.relative(name)) for name in names}
 
 
+def _review_split_restore(config, plan, entry):
+    if plan['operation'] != 'uninstall':
+        return
+    import nr_install
+    directory = Path(plan['target'])
+    restore = nr_install.prepare_package_restore(config, plan['row'], (directory / t.relative(name) for name in plan['writes']))
+    plan['split_render_restore'] = restore
+    if detail := nr_install.package_restore_detail(restore):
+        entry['detail'] += '\n' + detail
+        entry['summary'] += ' Also remove the recorded Split Render setup.'
+        if notes := restore['review'].get('notes'):
+            entry['summary'] += ' ' + ' '.join(notes)
+
+
 def _check(e, plan):
     import offline_routes
+    if plan.get('split_render_restore'):
+        import nr_install
+        nr_install.check_package_restore(plan['split_render_restore'])
     if hasattr(e, 'scan_game_files') and e.scan_game_files(Path(plan['row']['game']))[2] is not None:
         t.need(offline_routes.reviewed_route(plan['row']) is not None, 'Anti-cheat appeared after review; review offline-only use again.')
     if plan.get('legacy_recipe'):
@@ -1117,6 +1134,7 @@ def prepare(config, rows, mode, operation, settings, e):
                         import overlay_settings
                         effective = settings | overlay_settings.effective(settings, row['game'])
                         plan, entry = feeder_legacy.prepare(e, row, mode, operation, effective, recipe)
+                        _review_split_restore(config, plan, entry)
                         plans.append(plan); ready.append(entry)
                     else:
                         part = _prepare(config, [row], mode, operation, settings, e)
@@ -1318,14 +1336,15 @@ def _prepare(config, rows, mode, operation, settings, e):
             plan = dict(row=dict(row), target=str(directory), existing=existing, checks=checks,
                         baseline_before=digest(state_dir(e, directory) / 'baseline.json'), baseline=baseline,
                         inputs=inputs, writes=writes, operation=operation)
-            _check(e, plan)
-            plans.append(plan)
             detail = json.dumps({'target': str(directory), 'operation': operation,
                                  'recipe': spec['version'], 'model': (baseline or {}).get('nr_runtime'),
                                  'original_manifest': (baseline or {}).get('original_manifest'),
                                  'writes': {name: item['sha256'] if item else None for name, item in writes.items()},
                                  'preserved_settings': list(CONFIGS) if existing and operation != 'uninstall' else []}, indent=2)
-            ready.append({'name': row['name'], 'game': row['game'], 'summary': summary, 'detail': detail})
+            entry = {'name': row['name'], 'game': row['game'], 'summary': summary, 'detail': detail}
+            _review_split_restore(config, plan, entry)
+            _check(e, plan)
+            plans.append(plan); ready.append(entry)
         except (t.Refusal, e.Stop, OSError, ValueError, configparser.Error) as error:
             blocked.append({'name': row['name'], 'game': row['game'], 'reason': str(error)})
     return dict(kind='feeder', operation=operation, title='Feeder NR', rows=ready, blocked=blocked, plans=plans, engine=e)
@@ -1352,18 +1371,24 @@ def execute(review):
                 ui.progress('Backing up Feeder files', game=plan['row']['name'], current=index, total=len(review['plans']))
                 import cross_os
                 shared_marker = directory / cross_os.MARKER
-                checkpoint = session.capture([directory / name for name in plan['writes']] + [state_dir(e, directory), shared_marker], label=plan['row']['name'])
+                writes = {directory / t.relative(name): (plan['checks'][name], item) for name, item in plan['writes'].items()}
+                import nr_install
+                split_render = plan.get('split_render_restore')
+                checkpoint = session.capture([*writes, state_dir(e, directory), shared_marker,
+                                              *nr_install.package_restore_paths(split_render)], label=plan['row']['name'])
                 try:
+                    if split_render:
+                        nr_install.apply_package_restore(split_render, cancelled=cancel.is_set if cancel is not None else lambda: False)
                     # A durable baseline precedes any model replacement.
                     if plan['operation'] != 'uninstall':
                         baseline = copy.deepcopy(plan['baseline'])
                         baseline['status'] = 'preparing'
                         t.atomic_file(state_dir(e, directory) / 'baseline.json', (json.dumps(baseline, indent=2) + '\n').encode(), 0o600)
-                    for name, item in plan['writes'].items():
+                    for destination, (expected, item) in writes.items():
                         if cancel is not None and cancel.is_set():
                             raise Cancelled('Changes undone.')
-                        path = t.safe(directory / t.relative(name))
-                        t.need(digest(path) == plan['checks'][name], 'Feeder target changed during installation')
+                        path = t.safe(destination)
+                        t.need(digest(path) == expected, 'Feeder target changed during the operation')
                         if item is None:
                             if path.exists():
                                 path.unlink()

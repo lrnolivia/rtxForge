@@ -7,8 +7,10 @@ import re
 import sys
 import tempfile
 
+ACCENT_CHOICES = (('green', 'rtxForge Green'), ('system', 'System'), ('custom', 'Custom'))
+FORGE_GREEN = '#76b900'
 DEFAULTS = dict(theme='clear', detailsTheme='same', tint=True, tintStrength=50, accentMode='custom',
-                accent='#d8d5ce', motion=True, text='standard', navigation='top',
+                accentSource='custom', accent='#d8d5ce', motion=True, text='standard', navigation='top',
                 detailsNavigation='sidebar', scale='auto', libraryScale=100,
                 appearanceDefaultsVersion=2, libraryScaleVersion=1, detailsNavigationVersion=1)
 MAX_BYTES = 1700000
@@ -36,6 +38,7 @@ def normalize(value):
     for key, choices in {'theme': ('light', 'clear', 'dark'),
                          'detailsTheme': ('same', 'light', 'clear', 'dark'),
                          'accentMode': ('theme', 'adaptive', 'custom'),
+                         'accentSource': tuple(key for key, _ in ACCENT_CHOICES),
                          'text': ('standard', 'large'), 'navigation': ('top', 'bottom'),
                          'detailsNavigation': ('tabs', 'sidebar')}.items():
         if result[key] not in choices:

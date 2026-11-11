@@ -13,6 +13,18 @@ PLAIN_GAME = {'native_dlss': False, 'arch': 'x64'}
 
 
 class NrAddonTests(unittest.TestCase):
+    def test_package_restore_detects_a_new_split_render_receipt(self):
+        import nr_install
+        with tempfile.TemporaryDirectory() as folder:
+            row = {'game': str(Path(folder).resolve()), 'exe': 'game.exe'}
+            review = nr_install.prepare_package_restore({}, row, [])
+            self.assertEqual(nr_install.package_restore_paths(review), [])
+            receipt = nr_install._receipt(row)
+            receipt.parent.mkdir()
+            receipt.write_text('{}')
+            with self.assertRaisesRegex(t.Refusal, 'installed after review'):
+                nr_install.check_package_restore(review)
+
     def test_every_download_is_pinned(self):
         cat = nr.catalog()
         archives = [b['archive'] for a in cat['addons'].values() for b in a['builds'].values() if 'archive' in b]

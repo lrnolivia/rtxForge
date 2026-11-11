@@ -16,7 +16,7 @@ class NrAddonTests(unittest.TestCase):
     def test_package_restore_detects_a_new_split_render_receipt(self):
         import nr_install
         with tempfile.TemporaryDirectory() as folder:
-            row = {'game': folder, 'exe': 'game.exe'}
+            row = {'game': str(Path(folder).resolve()), 'exe': 'game.exe'}
             review = nr_install.prepare_package_restore({}, row, [])
             self.assertEqual(nr_install.package_restore_paths(review), [])
             receipt = nr_install._receipt(row)

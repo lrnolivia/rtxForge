@@ -177,17 +177,25 @@ try{
    row.querySelector('.flow-thumbnail').getBoundingClientRect().right <=
    row.querySelector('.split-game-title').getBoundingClientRect().left))).toBe(true);
  await screenshot('bulk-removal-picker');
- await page.setViewportSize({width:720,height:600});
+ await page.setViewportSize({width:480,height:400});
  await expect(picker.getByRole('button',{name:'Review selection'})).toBeInViewport();
  await expect(picker.getByRole('searchbox',{name:'Search games'})).toBeInViewport();
+ await expect(page.locator('#toast')).toHaveCSS('z-index','49');
  await page.setViewportSize({width:1440,height:990});
  await click('Review selection');
  await expect(page.getByRole('heading',{name:'Review Split Render removal',exact:true})).toBeVisible();
+ await page.setViewportSize({width:480,height:400});
+ await expect(page.getByRole('button',{name:'Remove Split Render',exact:true})).toBeInViewport();
+ await page.setViewportSize({width:1440,height:990});
  await expect(page.getByRole('button',{name:'Remove Split Render',exact:true})).toBeEnabled();
  expect(calls.filter(c=>c.method==='nr_review').at(-1).params).toMatchObject(
    {remove:true,rows:source.games.slice(0,2).map(game=>({game:game.path}))});
  const details=page.getByRole('region',{name:'Details for '+source.games[0].name,exact:true});
- await page.getByRole('button',{name:'Show details for '+source.games[0].name,exact:true}).click();
+ const infoButton=page.getByRole('button',{name:'Show details for '+source.games[0].name,exact:true});
+ await infoButton.hover();
+ await expect(infoButton).toHaveCSS('outline-style','none');
+ await expect(infoButton).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+ await infoButton.click();
  await expect(details).toContainText('Remove renodx-dlss.addon64');
  await expect(details).toBeInViewport();
  await screenshot('bulk-removal-review');

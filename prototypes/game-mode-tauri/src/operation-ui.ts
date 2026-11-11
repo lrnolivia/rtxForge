@@ -24,11 +24,11 @@ export function bindReviewInfo(root:HTMLElement) {
   if (!panel) continue;
   button.addEventListener('click', () => {
    const rect = button.getBoundingClientRect();
-   const width = Math.min(460, window.innerWidth - 32);
+   const maxWidth = Math.min(380, window.innerWidth - 32);
    const below = window.innerHeight - rect.bottom - 16;
    const above = rect.top - 16;
    const openBelow = below >= Math.min(above, 220);
-   panel.style.left = `${Math.max(16, Math.min(rect.right - width, window.innerWidth - width - 16))}px`;
+   panel.style.right = `${Math.max(16, Math.min(window.innerWidth - rect.right, window.innerWidth - maxWidth - 16))}px`;
    panel.style.top = openBelow ? `${rect.bottom + 8}px` : 'auto';
    panel.style.bottom = openBelow ? 'auto' : `${window.innerHeight - rect.top + 8}px`;
    panel.style.maxHeight = `${Math.max(64, Math.min(320, (openBelow ? below : above) - 8))}px`;

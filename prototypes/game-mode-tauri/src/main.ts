@@ -894,7 +894,7 @@ function splitRemovalPicker() {
     ${splitGamePicker()}
     <footer class="operation-actions flow-actions">
       <button class="quiet" data-action="close-split-removal">Cancel</button>
-      <button class="primary" data-action="review-nr-addons" ${splitMatching || !splitSelected.size ? 'disabled' : ''}>Review selection</button>
+      <button class="primary" data-action="review-nr-addons" ${splitMatching || !splitSelected.size ? 'disabled' : ''}>${icon('file')}Review selection</button>
     </footer>
   </div>`;
 }
@@ -1293,7 +1293,9 @@ function render() {
   document.documentElement.dataset.surface = surface;
   const pageContent = surface === 'library' ? library() : surface === 'presets' ? presets() : surface === 'details' ? details() : surface === 'packages' ? packages() : surface === 'extras' ? extras() : surface === 'operation' ? operationView() : settings();
   const content = modal ? pageContent.replace('id="page-title"','id="background-page-title"') : pageContent;
-  const overlay = modal ? `<div class="operation-backdrop"><section class="operation-modal glass-section${removalModal?' split-remove-modal':''}" role="dialog" aria-modal="true" aria-labelledby="page-title">${removalModal ? splitRemovalPicker() : operationView()}</section></div>` : '';
+  const removalReview = operationModal && operation?.kind === 'remove-nr-addons' && surface === 'packages';
+  const modalClass = removalModal ? ' split-remove-modal' : removalReview ? ' split-remove-review' : '';
+  const overlay = modal ? `<div class="operation-backdrop"><section class="operation-modal glass-section${modalClass}" role="dialog" aria-modal="true" aria-labelledby="page-title">${removalModal ? splitRemovalPicker() : operationView()}</section></div>` : '';
   app.innerHTML = `<div class="shell" ${modal?'inert aria-hidden="true"':''}><header class="app-header" data-tauri-drag-region><div class="brand"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></div><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${view === tab.id || view === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button><div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div><button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button><button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><div id="input-hints">${hints()}</div></footer></div>${overlay}`;
   const game = selectedGame(), scene = document.querySelector<HTMLElement>('#scene')!;
   if(view==='details'&&snapshot&&game)prioritizeArtwork(snapshot,game.id);
@@ -1450,7 +1452,7 @@ function bind() {
   bindReviewInfo(app);
   bindSplitRender();
   enhanceActionLabels();
-  app.querySelectorAll<HTMLElement>('button,input,select,textarea,summary,a[href]').forEach(node=>node.classList.add('ui-control'));
+  app.querySelectorAll<HTMLElement>('button:not(.review-info-button),input,select,textarea,summary,a[href]').forEach(node=>node.classList.add('ui-control'));
   app.querySelectorAll<HTMLElement>('[data-preset-control]').forEach(node=>node.dataset.presetKey='control-'+node.dataset.presetControl);
   app.querySelectorAll<HTMLSelectElement|HTMLInputElement>('[data-startup-control]').forEach(node=>node.addEventListener('change',()=>{if(!pendingInstall)return;const key=node.dataset.startupControl!;const controls={...pendingInstall.settings.feature_controls as Record<string,unknown>,[key]:Number(node.value)};pendingInstall.settings.feature_controls=controls;if(key==='intensity')pendingInstall.settings.nr_strength=Number(node.value);if(key==='sharpness')pendingInstall.settings.sharpening_strength=Number(node.value);if(key==='enabled')pendingInstall.settings.nr_on_launch=Number(node.value)!==0;}));
   app.querySelectorAll<HTMLElement>('[data-startup-mode]').forEach(node=>node.addEventListener('click',()=>{if(!pendingInstall)return;const mode=Number(node.dataset.startupMode),values=pendingInstall.settings;values.mfg_saved_mode=mode;values.mfg_multiplier=mode===0?'auto':values.mfg_saved_multiplier||2;values.dynamic_mfg=mode===2?1:0;render();app.querySelector<HTMLElement>(`[data-startup-mode="${mode}"]`)?.focus();}));

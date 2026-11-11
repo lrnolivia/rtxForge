@@ -33,7 +33,7 @@ struct NrAddonControls {
     std::string Control(const HdrField& f) {
         const auto id="addon-"+f.key;
         const bool choice=f.kind=="choice";
-        const auto glyph=f.key.ends_with("_character_mask")?"circle-half":f.key.ends_with("_resolution_scale")?
+        const auto glyph=f.key.ends_with("_hook_point")?"lightning":f.key.ends_with("_character_mask")?"circle-half":f.key.ends_with("_resolution_scale")?
             "app-window":f.key.ends_with("_character")?"sliders-horizontal":f.key.ends_with("_passes")?"stack":"";
         const auto icon=std::string(glyph).empty()?"":std::string("<img class=\"glyph\" src=\"icons/")+glyph+"-light.png\"/>";
         std::string out=std::string("<div class=\"slider-field addon-field")+(choice?" addon-choice":"")+
@@ -57,6 +57,7 @@ struct NrAddonControls {
         std::string markup;
         const auto rank=[](const HdrField& field) {
             const auto& key=field.key;
+            if(key.ends_with("_hook_point"))return -1;
             if(key.ends_with("_character_mask"))return 0;
             if(key.ends_with("_resolution_scale"))return 1;
             if(key.ends_with("_character"))return 2;
@@ -68,7 +69,7 @@ struct NrAddonControls {
             const auto glyph=first->key.starts_with("character_")?"circle-half":"app-window";
             markup+=std::string("<div class=\"option-group\"><h3 class=\"split-addon-title\"><img class=\"glyph\" src=\"icons/")+
                 glyph+"-light.png\"/><span>"+Escape(first->section)+"</span></h3>";
-            for(int priority=0;priority<4;++priority)
+            for(int priority=-1;priority<4;++priority)
                 for(auto field=first;field!=end;++field)
                     if(rank(*field)==priority)markup+=Control(*field);
             if(std::any_of(first,end,[&](const auto& field){return rank(field)==4;})) {

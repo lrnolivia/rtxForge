@@ -84,6 +84,7 @@ bool UseVerifiedShortFuse(const std::function<bool(ShortFuseSetter)>& use) {
 
 bool ApplyShortFuse(const ForgeGlass::HdrField& field,float value) {
     constexpr std::pair<std::string_view,const char*> keys[]{
+        {"hook_point","DirectNeuralRenderingHookStage"},
         {"character_mask","DirectNeuralRenderingAutoMask"},
         {"character","DirectNeuralRenderingSkinStructureStrength"},
         {"resolution_scale","DirectNeuralRenderingProcessingScale"},
@@ -385,11 +386,13 @@ struct Runtime {
             for(uint32_t i=0;i<std::min(snapshot.defaultCount,128u);i++)if(snapshot.defaults&&snapshot.defaults[i].key&&current.contains(snapshot.defaults[i].key)&&std::isfinite(snapshot.defaults[i].value))c.defaults[snapshot.defaults[i].key]=snapshot.defaults[i].value;
             supportedKeys.clear();for(const auto& [key,value]:current)supportedKeys.insert(key);
             c.values["mfg_enabled"]=current.contains("multiplier")&&current["multiplier"]!=0;
-            if(receivedSnapshot&&current.contains("enabled")&&beforeValues.at("enabled")!=current.at("enabled"))c.Notify(current.at("enabled")?"Neural rendering on":"Neural rendering off","cpu");receivedSnapshot=true;
+            if(receivedSnapshot&&current.contains("enabled")&&beforeValues.at("enabled")!=current.at("enabled"))c.Notify(c.NeuralStateText(current.at("enabled")!=0),"cpu");receivedSnapshot=true;
             if(c.values!=beforeValues)c.Sync();c.Capabilities(snapshot.nrAvailable,snapshot.fgAvailable);
             if(snapshot.title)Text(document->QuerySelector("h1"),Rml::StringUtilities::EncodeRml(snapshot.title));
             if(snapshot.accent){const std::string color=snapshot.accent;if(color.size()==7&&color[0]=='#'&&color.find_first_not_of("0123456789abcdefABCDEF",1)==std::string::npos){const auto rgb=std::stoul(color.substr(1),nullptr,16);c.accent={float((rgb>>16)&255)/255,float((rgb>>8)&255)/255,float(rgb&255)/255};}}
-            const int runtimeKind=current.contains("__runtime_kind")?int(current.at("__runtime_kind")):0;const std::string stack=runtimeKind==1?(ReShadeLoaded()?"OptiScaler + ReShade":"OptiScaler"):runtimeKind==2?"ReShade · Feeder NR":runtimeKind==3?"ReShade":"Not reported";for(const auto* id:{"overview-stack","popup-stack"})Text(c.Element(id),stack);
+            const int runtimeKind=current.contains("__runtime_kind")?int(current.at("__runtime_kind")):0;
+            c.SetNeuralProviderLabel(runtimeKind==1&&c.addons.HasShortFuse());
+const std::string stack=runtimeKind==1?(ReShadeLoaded()?"OptiScaler + ReShade":"OptiScaler"):runtimeKind==2?"ReShade · Feeder NR":runtimeKind==3?"ReShade":"Not reported";for(const auto* id:{"overview-stack","popup-stack"})Text(c.Element(id),stack);
             for(const auto* id:{"compact-api","overview-api","popup-api"})Text(c.Element(id),dx12Interop?"DirectX 12":"DirectX 11");for(const auto* id:{"compact-output","overview-output","popup-output"})Text(c.Element(id),outputSpace==1?"HDR · scRGB":outputSpace==2?"HDR10":"SDR");Text(c.Element("open-session")->QuerySelector(".session-name"),"Live session");
             // Advanced reparents this row into overview-metadata. Resolve it
             // by its stable identity instead of its compact-layout ancestor.
@@ -439,7 +442,7 @@ struct Runtime {
             lastValues=c.values;
         }
         if(c.primaryMenu=="optiscaler"){nrActivationPending=false;frame.visible=false;for(const auto* id:{"main-panel","type-panel","inspector","welcome"})c.Visible(id,false);}
-        if(hostVisible!=frame.visible){if(!frame.visible){c.EndNrPreview();if(c.BarSettings())c.Settings(false);}hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible){c.Enter("main-panel");c.MaybeSetup();}else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
+        if(hostVisible!=frame.visible){if(!frame.visible){c.EndNrPreview();if(c.StandaloneSettings())c.Settings(false);}hostVisible=frame.visible;c.Visible("main-panel",hostVisible);if(hostVisible){c.Enter("main-panel");c.MaybeSetup();}else{c.Visible("inspector",false);c.Visible("type-panel",false);}}
         const auto beforeSettings=SettingsValues();c.PollColorPick();const int oldShortcut=c.shortcut,oldModifiers=c.shortcutModifiers;
         const bool focused=GetForegroundWindow()==frame.window;const int modifiers=focused?((frame.keys[VK_CONTROL]?Rml::Input::KM_CTRL:0)|(frame.keys[VK_SHIFT]?Rml::Input::KM_SHIFT:0)|(frame.keys[VK_MENU]?Rml::Input::KM_ALT:0)):0;
         context->ProcessMouseMove(focused?int(frame.mouseX):-1,focused?int(frame.mouseY):-1,modifiers);

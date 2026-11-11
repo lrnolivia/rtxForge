@@ -39,11 +39,11 @@
             <img class="glyph" src="icons/gauge-light.png" /><span class="button-label">Overview</span></button>
           <button id="nav-neural">
             <img class="glyph" src="icons/cpu-light.png" /><span class="button-label">Neural rendering</span></button>
-          <button id="nav-look">
+          <button id="nav-look" class="neural-subpage">
             <img class="glyph" src="icons/sliders-horizontal-light.png" /><span class="button-label">Look &amp; detail</span></button>
-          <button id="nav-passes">
+          <button id="nav-passes" class="neural-subpage">
             <img class="glyph" src="icons/stack-light.png" /><span class="button-label">Pass tuning</span></button>
-          <button id="nav-addons" style="display: none"><img class="glyph" src="icons/stack-light.png" /><span class="button-label">Split Render</span></button>
+          <button id="nav-addons" class="neural-subpage" style="display: none"><img class="glyph" src="icons/stack-light.png" /><span class="button-label">Split Render</span></button>
           <button id="nav-frame">
             <img class="glyph" src="icons/film-strip-light.png" /><span class="button-label">Frame generation</span></button>
           <button id="nav-effects" style="display: none"><img class="glyph" src="icons/stack-light.png"/><span class="button-label">Effects</span></button>
@@ -120,7 +120,7 @@
             </div>
             <div id="compact-live" class="compact-live">
               <div class="mini-stat"><span class="mini-stat-label"><img class="glyph" src="icons/film-strip-light.png" /><span>Frame generation</span><span id="compact-ratio" class="metric-badge" /></span><span id="compact-frames" class="mini-stat-value">—</span></div>
-              <div class="mini-stat"><span class="mini-stat-label"><img class="glyph" src="icons/cpu-light.png" /><span>Neural rendering</span></span><span class="mini-stat-reading"><span id="compact-neural" class="mini-stat-value">—</span><span id="compact-nr-size" class="mini-stat-detail">Dimensions not reported</span><span id="compact-frame-time" class="mini-stat-detail"/></span></div>
+              <div class="mini-stat"><span class="mini-stat-label"><img class="glyph" src="icons/cpu-light.png" /><span id="compact-nr-title">Neural rendering</span></span><span class="mini-stat-reading"><span id="compact-neural" class="mini-stat-value">—</span><span id="compact-nr-size" class="mini-stat-detail">Dimensions not reported</span><span id="compact-frame-time" class="mini-stat-detail"/></span></div>
             </div>
           </button>
           <div class="metadata-expanded" id="overview-metadata">
@@ -179,15 +179,18 @@
           </div>
           <div id="hdr-page" class="hdr-page"><h2><img class="glyph" src="icons/sun-light.png" /><span>HDR</span></h2><p id="hdr-main-note" class="hint"/><div id="hdr-main-fields"/></div>
           <div id="tuning-content">
-            <div class="preset-row">
-              <select id="presets">
-                <option value="natural">Natural</option>
-                <option value="cinematic">Cinematic</option>
-              </select>
-              <button id="save" class="save">
-                <img class="glyph" src="icons/floppy-disk-light.png" /><span class="button-label">Save preset</span></button>
+            <div id="game-presets">
+              <label for="presets" class="preset-caption">Game preset</label>
+              <div class="preset-row">
+                <select id="presets">
+                  <option value="natural">Natural</option>
+                  <option value="cinematic">Cinematic</option>
+                </select>
+                <button id="save" class="save">
+                  <img class="glyph" src="icons/floppy-disk-light.png" /><span class="button-label">Save preset</span></button>
+              </div>
+              <div id="save-sheet" class="save-sheet" style="display: none"><label>Preset name</label><input type="text" id="preset-name" maxlength="60" /><div class="save-actions"><button id="delete-preset" class="quiet"><span class="button-label">Delete selected</span></button><button id="save-cancel" class="quiet"><span class="button-label">Cancel</span></button><button id="save-confirm" class="save"><span class="button-label">Save for this game</span></button></div></div>
             </div>
-            <div id="save-sheet" class="save-sheet" style="display: none"><label>Preset name</label><input type="text" id="preset-name" maxlength="60" /><div class="save-actions"><button id="delete-preset" class="quiet"><span class="button-label">Delete selected</span></button><button id="save-cancel" class="quiet"><span class="button-label">Cancel</span></button><button id="save-confirm" class="save"><span class="button-label">Save for this game</span></button></div></div>
             <div class="tuning-sections">
               <section id="frame-section">
                 <div class="section-heading">
@@ -218,7 +221,7 @@
               </section>
               <section class="neural" id="neural-section">
                 <div class="section-heading">
-                  <h2><img class="glyph" src="icons/cpu-light.png" /><span>NEURAL RENDERING</span></h2>
+                  <h2><img class="glyph" src="icons/cpu-light.png" /><span id="nr-section-title">NEURAL RENDERING</span></h2>
                   <button id="open-processing" class="icon-button" title="More options">
                     <img class="glyph" src="icons/sliders-light.png" />
                   </button>
@@ -235,31 +238,33 @@
                     <button id="style-natural" class="selected"><span class="button-label">Natural</span></button>
                     <button id="style-cinematic"><span class="button-label">Cinematic</span></button>
                   </div>
-                  <div class="slider-field">
-                    <div class="field-heading">
-                      <label data-control="intensity">Strength</label>
-                      <span id="strength-value">1.00</span>
+                  <div id="nr-primary">
+                    <div class="slider-field">
+                      <div class="field-heading">
+                        <label data-control="intensity">Strength</label>
+                        <span id="strength-value">1.00</span>
+                      </div>
+                      <input id="strength" class="range" type="range" min="0" max="2" step="0.01" value="1" />
                     </div>
-                    <input id="strength" class="range" type="range" min="0" max="2" step="0.01" value="1" />
-                  </div>
-                  <div class="slider-field">
-                    <div class="field-heading"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span data-control="work_scale">Render resolution</span></label><span id="render-resolution-value">100%</span></div>
-                    <input id="render-resolution" class="range" type="range" min="25" max="200" step="1" value="100" />
-                  </div>
-                  <div class="model-field model-single">
-                      <label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span data-control="preset">Model</span></label>
-                      <select id="model-preset">
-                        <option value="0">Automatic</option>
-                        <option value="1">Preset 1</option>
-                        <option value="2">Preset 2</option>
-                        <option value="3">Preset 3</option>
-                      </select>
-                  </div>
-                  <div class="model-row">
-                    <div class="model-field"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span data-control="pre_sr">Processing stage</span></label><select id="processing-stage"><option value="1">Before upscaling</option><option value="0">After upscaling</option></select></div>
-                    <div class="model-field">
-                      <label class="icon-label"><img class="glyph" src="icons/stack-light.png" /><span data-control="passes">Passes</span></label>
-                      <div class="count-stepper"><button id="pass-minus" aria-label="Fewer passes" title="Fewer passes"><span class="button-label">−</span></button><span id="pass-count">3 passes</span><button id="pass-plus" aria-label="More passes" title="More passes"><span class="button-label">+</span></button></div>
+                    <div class="slider-field">
+                      <div class="field-heading"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span data-control="work_scale">Render resolution</span></label><span id="render-resolution-value">100%</span></div>
+                      <input id="render-resolution" class="range" type="range" min="25" max="200" step="1" value="100" />
+                    </div>
+                    <div class="model-field model-single">
+                        <label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span data-control="preset">Model</span></label>
+                        <select id="model-preset">
+                          <option value="0">Automatic</option>
+                          <option value="1">Preset 1</option>
+                          <option value="2">Preset 2</option>
+                          <option value="3">Preset 3</option>
+                        </select>
+                    </div>
+                    <div class="model-row">
+                      <div class="model-field"><label class="icon-label"><img class="glyph" src="icons/cpu-light.png" /><span data-control="pre_sr">Processing stage</span></label><select id="processing-stage"><option value="1">Before upscaling</option><option value="0">After upscaling</option></select></div>
+                      <div class="model-field">
+                        <label class="icon-label"><img class="glyph" src="icons/stack-light.png" /><span data-control="passes">Passes</span></label>
+                        <div class="count-stepper"><button id="pass-minus" aria-label="Fewer passes" title="Fewer passes"><span class="button-label">−</span></button><span id="pass-count">3 passes</span><button id="pass-plus" aria-label="More passes" title="More passes"><span class="button-label">+</span></button></div>
+                      </div>
                     </div>
                   </div>
                   <div class="inspector-links">
@@ -333,6 +338,10 @@
         <div id="addons-inspector" style="display: none"><div id="addons-live" class="split-live" style="display: none"><img class="glyph" src="icons/lightning-light.png" /><p id="addons-live-status" class="hint"/></div><p id="addons-note" class="hint split-note"/><div id="addons-fields"/></div>
         <div id="pass-inspector">
           <div id="feeder-split-context" style="display: none">
+            <div class="inherit-row">
+              <label for="feeder-extra-passes">Extra NR passes</label>
+              <button id="feeder-extra-passes" class="switch" aria-label="Extra NR passes" aria-pressed="false"><span /></button>
+            </div>
             <h3 id="feeder-pass-title" class="split-role">Pass 1 · Full frame</h3>
             <p id="feeder-split-note" class="hint split-note" />
           </div>
@@ -418,6 +427,7 @@
           </div>
           <div id="extra-look" />
         </div>
+        <div id="processing-primary" class="option-group" />
         <div id="extra-processing" style="display: none" />
         <div id="extra-frame-popup" style="display: none" />
         <div class="metadata-expanded" id="popup-metadata" style="display: none">

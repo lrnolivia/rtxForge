@@ -308,7 +308,7 @@ static void TestLayout(Controller& c,Rml::Context* context)
                 const auto stats=rect(c.Element("bar-live")),actions=rect(c.document->QuerySelector(".window-actions"));Require(stats[2]<=actions[0]+2||stats[3]<=actions[1]+2||actions[3]<=stats[1]+2,"Bar stats overlap window actions");
                 contains("preview-original",rect(c.Element("main-panel")));contains("defaults",rect(c.Element("main-panel")));
                 const auto history=rect(c.Element("defaults")),compare=rect(c.Element("preview-original"));Require(history[2]<=compare[0]+2||history[3]<=compare[1]+2||compare[3]<=history[1]+2,"Bar history and comparison overlap");
-                c.Open("look");c.Settings(true);settle();contains("inspector",viewport);Require(c.Element("settings-screen")->GetParentNode()->GetId()=="settings-modal-host"&&c.Element("overview")->IsVisible()&&!c.Element("look-inspector")->IsVisible(),"Bar Settings is not an isolated modal over its bar");const auto modal=rect(c.Element("inspector"));Require(std::fabs((modal[0]+modal[2])*.5f-view.x*.5f)<2,"Bar Settings must be centered");c.ToggleOverlay();Require(!c.settingsOpen&&!c.document->IsClassSet("bar-settings"),"Closing Bar Settings trapped the overlay");c.ToggleOverlay();settle();Require(c.Element("main-panel")->IsVisible(),"Bar did not reopen after Settings");
+                c.Open("look");c.Settings(true);settle();contains("inspector",viewport);Require(c.Element("settings-screen")->GetParentNode()->GetId()=="settings-modal-host"&&c.Element("overview")->IsVisible()&&!c.Element("look-inspector")->IsVisible(),"Bar Settings is not an isolated modal over its bar");const auto modal=rect(c.Element("inspector"));Require(std::fabs((modal[0]+modal[2])*.5f-view.x*.5f)<2,"Bar Settings must be centered");c.ToggleOverlay();Require(!c.settingsOpen&&!c.document->IsClassSet("standalone-settings"),"Closing Bar Settings trapped the overlay");c.ToggleOverlay();settle();Require(c.Element("main-panel")->IsVisible(),"Bar did not reopen after Settings");
             }
             if(c.layout=="centered"){
                 c.Page("nav-overview");settle();auto* facts=c.document->QuerySelector("#overview-metadata .session-facts");Require(facts->GetScrollWidth()<=facts->GetClientWidth()+2,"Session metadata overflows its content card");
@@ -364,11 +364,33 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
         Require(c.layout!="centered"||c.activeNavigation=="nav-overview","Advanced Back did not return to Overview");
         c.Settings(true);
         context->Update();
-        Require(c.Element("window-back")->IsVisible(true)==(c.layout!="bar"),"Settings Back did not follow the layout");
-        c.Settings(false);
+        Require(c.Element("window-back")->IsVisible(true)==(c.layout=="centered"),"Settings Back did not follow the layout");
+        if(c.layout!="centered") {
+            Require(c.Element("settings-screen")->GetParentNode()->GetId()=="settings-modal-host"&&
+                c.Element("settings-modal-close")->IsVisible(true)&&c.Element("overview")->IsVisible(true),
+                "Compact layout did not open standalone Settings over its controls");
+            activate("settings-modal-close");
+            Require(!c.settingsOpen&&c.layout==layout,"Closing Settings changed the active layout");
+        } else c.Settings(false);
     }
+    c.Layout("bar");
+    c.values["enabled"]=1;
+    c.Sync();
+    activate("open-processing");
+    Require(c.Element("nr-primary")->GetParentNode()->GetId()=="processing-primary","Bar opened processing without its primary controls");
+    for(const auto* id:{"strength","render-resolution","model-preset","processing-stage","pass-count"})
+        Require(c.Element(id)->IsVisible(true),"Bar processing hid a core Neural Rendering control");
+    Require(!c.Element("field-extra-popup-pre_sr")->IsVisible(true)&&!c.Element("field-extra-popup-work_scale")->IsVisible(true),
+        "Bar showed duplicate processing controls");
+    activate("inspector-back");
+    c.Reflow();
+    Require(c.Element("nr-primary")->GetParentNode()->GetId()=="nr-body","Closing Bar processing did not return the shared controls");
+
     c.Layout("centered");
-    c.addons.Set({{"character_resolution_scale","Resolution scale","Character detail · ShortFuse",
+    Require(c.Element("presets")->IsVisible(true),"Advanced Overview lost its game presets");
+    c.addons.Set({{"character_hook_point","ShortFuse processing","Character detail · ShortFuse",
+        "choice",R"(<option value="0">Off</option><option value="1">Before upscaling</option><option value="2">After upscaling</option><option value="3">Before presentation</option>)","",0,3,1,0,3,false,false},
+        {"character_resolution_scale","Resolution scale","Character detail · ShortFuse",
         "slider","","%",25,100,1,100,74,false,false},
         {"character_local_tone","Local tone","Character detail · ShortFuse",
         "slider","","",0,2,.01f,1,1,false,false},
@@ -376,12 +398,25 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
         "choice","<option value=\"0\">Off</option><option value=\"1\">On</option>","",0,1,1,1,1,false,false}},
         true,"Environment changes apply at next launch.");
     c.RefreshSplitRenderEntry();
+    for(const auto* page:{"nav-neural","nav-frame"}) {
+        c.Page(page);
+        context->Update();
+        Require(!c.Element("addons-section")->IsVisible(true)&&!c.Element("presets")->IsVisible(true),
+            "Advanced feature page exposed an unrelated Split Render card or game preset");
+    }
     activate("nav-addons");
     Require(c.Element("addon-character_resolution_scale")->IsVisible(true)&&!c.Element("reset-inspector")->IsVisible(true),
         "Advanced Split Render did not open the installed add-on settings");
     auto* scale=dynamic_cast<Rml::ElementFormControl*>(c.Element("addon-character_resolution_scale"));
     Require(scale->IsDisabled(),"Unverified ShortFuse offered edits");
     c.addons.SetShortFuseLive(true);
+    auto* processing=dynamic_cast<Rml::ElementFormControl*>(c.Element("addon-character_hook_point"));
+    const auto mainSettings=c.values;
+    processing->SetValue("0");
+    processing->DispatchEvent("change",{});
+    Require(c.addons.FlushLive([](const ForgeGlass::HdrField& f,float value){
+        return f.key=="character_hook_point"&&value==0;
+    })&&c.values==mainSettings,"ShortFuse Off did not go live independently of the main rendering settings");
     scale->SetValue("82");
     scale->DispatchEvent("change",{});
     Require(!c.addons.Flush([](const std::string&){return true;}),"ShortFuse was queued for startup");
@@ -447,6 +482,12 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
         Require(c.FeederSplitActive()&&c.Element("pass-inspector")->IsVisible(true),"Feeder Split Render entry did not open");
         Require(c.inspectorAnchored==(c.layout=="bar"),"Bar Split Render did not attach to its entry");
     }
+    const auto feederSettings=c.values;
+    activate("feeder-extra-passes");
+    Require(c.values["passes"]==1&&c.values["enabled"]==feederSettings.at("enabled")&&
+        c.values["mfg_enabled"]==feederSettings.at("mfg_enabled"),"Turning off extra Feeder passes changed base NR or frame generation");
+    activate("feeder-extra-passes");
+    Require(c.values==feederSettings,"Re-enabling extra Feeder passes did not restore their count and tuning");
     c.SetFeederSplitRender(false);
     c.values=savedValues;
     c.edits=savedEdits;
@@ -728,6 +769,8 @@ int wmain(int argc,wchar_t** argv)
             controller.passesMax=8;
             controller.Layout(requestedLayout);
             controller.addons.Set({
+                {"character_hook_point","ShortFuse processing","Character detail · ShortFuse","choice",
+                 R"(<option value="0">Off</option><option value="1">Before upscaling</option><option value="2">After upscaling</option><option value="3">Before presentation</option>)","",0,3,1,0,3,false,false},
                 {"character_character_mask","Character mask","Character detail · ShortFuse","choice",
                     "<option value=\"0\">Off</option><option value=\"1\">On</option>","",0,1,1,1,1,false,false},
                 {"character_resolution_scale","Resolution scale","Character detail · ShortFuse","slider","","%",25,100,1,100,74,false,false},
@@ -742,16 +785,19 @@ int wmain(int argc,wchar_t** argv)
             controller.addons.SetShortFuseLive(true);
             controller.addons.LiveMessage("Preview · Live controls in game");
             controller.RefreshSplitRenderEntry();
-            if(controller.layout=="centered")controller.Page("nav-addons");
+            controller.SetNeuralProviderLabel(true);
+            if(settings)controller.Settings(true);
+            else if(controller.layout=="centered")controller.Page(requestedPage.empty()?"nav-addons":"nav-"+requestedPage);
             else {
                 controller.Page("nav-neural");
                 context->Update();
-                controller.Element("open-addons")->ScrollIntoView(false);
-                controller.Open("addons");
+                const bool processing=controller.layout=="bar"&&requestedPage=="neural";
+                controller.Element(processing?"open-processing":"open-addons")->ScrollIntoView(false);
+                controller.Open(processing?"processing":"addons");
             }
             controller.Message("Preview · changes stay in this window.");
             context->Update();
-            Require(controller.Element("addons-inspector")->IsVisible(true),"ShortFuse preview did not open");
+            if(!settings&&requestedPage.empty())Require(controller.Element("addons-inspector")->IsVisible(true),"ShortFuse preview did not open");
         }
         if(onboarding){controller.nativeShortcuts.clear();if(onboardingMenus>0)controller.nativeShortcuts.push_back({"OptiScaler","Insert",true});if(onboardingMenus>1)controller.nativeShortcuts.push_back({"ReShade","Ctrl+Shift+Home",true});controller.BeginSetup();if(onboardingNative){controller.setupStep=2;controller.UpdateSetup();}}
         if(thumbnail&&controller.layout=="centered")controller.Page("nav-neural");

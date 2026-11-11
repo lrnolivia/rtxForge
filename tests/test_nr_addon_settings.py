@@ -55,9 +55,20 @@ class NrAddonSettingsTests(unittest.TestCase):
         keys = {f['key'] for f in result['controls']}
         self.assertIn('character_resolution_scale', keys)
         self.assertIn('environment_independent_skin', keys)
-        for unverified in ('hook_point', 'encoding', 'upscaling_resources'):
+        for unverified in ('encoding', 'upscaling_resources'):
             self.assertFalse(any(k.endswith(unverified) for k in keys), unverified)
         self.assertFalse(any('ini' in f for f in result['controls']), 'ReShade.ini keys stay in the helper')
+
+    def test_shortfuse_off_uses_global_hook_method_and_requires_verified_build(self):
+        self.ini.write_text(t.setvalue(self.ini.read_text(), 'RENODX-DLSS', 'DirectNeuralRenderingHookStage', '3'))
+        result = settings.snapshot({}, self.row)
+        field = next(f for f in result['controls'] if f['key'] == 'character_hook_point')
+        self.assertEqual(field['choices'], ['Off', 'Before upscaling', 'After upscaling', 'Before presentation'])
+        self.assertEqual(result['values']['character_hook_point'], 3)
+        settings.save({}, self.row, {'character_hook_point': 0})
+        self.assertEqual(self.value('RENODX-DLSS', 'DirectNeuralRenderingHookStage'), '0')
+        self.install({'character': {'addon': 'shortfuse', 'build': 'unknown'}})
+        self.assertNotIn('character_hook_point', settings.snapshot({}, self.row)['values'])
 
     def test_shortfuse_resolution_scale_reads_and_writes_a_whole_percent(self):
         field = next(f for f in settings.snapshot({}, self.row)['controls'] if f['key'] == 'character_resolution_scale')

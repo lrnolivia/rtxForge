@@ -37,6 +37,7 @@ struct NrAddonControls {
             "app-window":f.key.ends_with("_character")?"sliders-horizontal":f.key.ends_with("_passes")?"stack":"";
         const auto icon=std::string(glyph).empty()?"":std::string("<img class=\"glyph\" src=\"icons/")+glyph+"-light.png\"/>";
         std::string out=std::string("<div class=\"slider-field addon-field")+(choice?" addon-choice":"")+
+            (f.key.ends_with("_hook_point")?" addon-processing":"")+
             "\"><div class=\"field-heading\"><label class=\"split-control-label\" for=\""+id+"\">"+icon+"<span>"+Escape(f.label)+"</span></label>";
         if(f.kind!="choice")out+="<span id=\""+id+"-value\"/>";
         out+="</div>";

@@ -1052,6 +1052,7 @@ select selectbox { opacity: 0; }
 #addons-fields .addon-choice { display: flex; align-items: center; gap: 12dp; }
 #addons-fields .addon-choice .field-heading { flex: 1; min-width: 0; }
 #addons-fields .addon-choice select { width: 112dp; }
+#addons-fields .addon-processing select { width: 192dp; max-width: 58%; }
 #addons-fields .split-more-trigger { width: 100%; margin-top: 14dp; }
 .split-extra-options { display: none; margin-top: 16dp; }
 .split-extra-options.expanded, .layout-centered .split-extra-options { display: block; }

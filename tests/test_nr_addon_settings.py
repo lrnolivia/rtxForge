@@ -63,7 +63,7 @@ class NrAddonSettingsTests(unittest.TestCase):
         self.ini.write_text(t.setvalue(self.ini.read_text(), 'RENODX-DLSS', 'DirectNeuralRenderingHookStage', '3'))
         result = settings.snapshot({}, self.row)
         field = next(f for f in result['controls'] if f['key'] == 'character_hook_point')
-        self.assertEqual(field['choices'], ['Off', 'Before upscaling', 'After upscaling', 'Before presentation'])
+        self.assertEqual(field['choices'], ['Off', 'Before upscaling', 'After upscaling', 'Before display'])
         self.assertEqual(result['values']['character_hook_point'], 3)
         settings.save({}, self.row, {'character_hook_point': 0})
         self.assertEqual(self.value('RENODX-DLSS', 'DirectNeuralRenderingHookStage'), '0')

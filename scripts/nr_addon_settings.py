@@ -43,7 +43,7 @@ def _group(slot, addon_id, second_pass=False, build=None):
                        'section': title, 'unit': '', 'reset': False,
                        'ini': [section, addon['settings']['hook_point']], 'whole': True,
                        'kind': 'choice', 'min': 0, 'max': 3, 'step': 1, 'default': 0,
-                       'choices': ['Off', 'Before upscaling', 'After upscaling', 'Before presentation']})
+                       'choices': ['Off', 'Before upscaling', 'After upscaling', 'Before display']})
     for name, key in addon['settings'].items():
         if not key or not (name in nr_addons.RANGES or name in nr_addons.SWITCHES or name in nr_addons.COUNTS):
             continue  # an unverified encoding is never written

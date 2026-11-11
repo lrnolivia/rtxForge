@@ -389,7 +389,7 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
     c.Layout("centered");
     Require(c.Element("presets")->IsVisible(true),"Advanced Overview lost its game presets");
     c.addons.Set({{"character_hook_point","ShortFuse processing","Character detail · ShortFuse",
-        "choice",R"(<option value="0">Off</option><option value="1">Before upscaling</option><option value="2">After upscaling</option><option value="3">Before presentation</option>)","",0,3,1,0,3,false,false},
+        "choice",R"(<option value="0">Off</option><option value="1">Before upscaling</option><option value="2">After upscaling</option><option value="3">Before display</option>)","",0,3,1,0,3,false,false},
         {"character_resolution_scale","Resolution scale","Character detail · ShortFuse",
         "slider","","%",25,100,1,100,74,false,false},
         {"character_local_tone","Local tone","Character detail · ShortFuse",
@@ -770,7 +770,7 @@ int wmain(int argc,wchar_t** argv)
             controller.Layout(requestedLayout);
             controller.addons.Set({
                 {"character_hook_point","ShortFuse processing","Character detail · ShortFuse","choice",
-                 R"(<option value="0">Off</option><option value="1">Before upscaling</option><option value="2">After upscaling</option><option value="3">Before presentation</option>)","",0,3,1,0,3,false,false},
+                 R"(<option value="0">Off</option><option value="1">Before upscaling</option><option value="2">After upscaling</option><option value="3">Before display</option>)","",0,3,1,0,3,false,false},
                 {"character_character_mask","Character mask","Character detail · ShortFuse","choice",
                     "<option value=\"0\">Off</option><option value=\"1\">On</option>","",0,1,1,1,1,false,false},
                 {"character_resolution_scale","Resolution scale","Character detail · ShortFuse","slider","","%",25,100,1,100,74,false,false},

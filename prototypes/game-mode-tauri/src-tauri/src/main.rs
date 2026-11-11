@@ -91,6 +91,7 @@ fn close_safely(app: &tauri::AppHandle) {
 
 #[tauri::command]
 fn toggle_fullscreen(window: tauri::Window) -> Result<bool,String> {
+    if preview_view(std::env::args()).is_some() { return Ok(false); }
     let fullscreen=!window.is_fullscreen().map_err(|e|e.to_string())?;
     window.set_fullscreen(fullscreen).map_err(|e|e.to_string())?;
     Ok(fullscreen)
@@ -223,16 +224,20 @@ fn preview_view(args: impl IntoIterator<Item = impl AsRef<str>>) -> Option<&'sta
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut context = tauri::generate_context!();
-    if preview_view(&args).is_some() {
+    let preview = preview_view(&args).is_some();
+    if preview {
         let config = context.config_mut();
         config.identifier.push_str(".preview");
         if let Some(window) = config.app.windows.first_mut() {
             window.title = "rtxForge · Game Mode Preview".into();
             window.fullscreen = false;
             window.center = true;
-            window.decorations = true;
+            window.decorations = false;
             window.width = 1440.0;
             window.height = 810.0;
+            window.min_width = Some(720.0);
+            window.min_height = Some(405.0);
+            window.visible = false;
             window.incognito = true;
         }
     }
@@ -250,6 +255,20 @@ fn main() {
         .manage(desktop_parent::DesktopParent(std::sync::Mutex::new(desktop_parent::from_args(&args))))
         .manage(controller::ControllerState::default())
         .setup(move |app| {
+            if preview {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Some(monitor) = window.current_monitor().ok().flatten().or_else(|| window.primary_monitor().ok().flatten()) {
+                        let area = monitor.work_area().size;
+                        let scale = monitor.scale_factor();
+                        let width = 1440.0_f64.min(area.width as f64 / scale - 48.0)
+                            .min((area.height as f64 / scale - 48.0) * 16.0 / 9.0).max(720.0);
+                        window.set_size(tauri::LogicalSize::new(width, width * 9.0 / 16.0))?;
+                        let _ = window.center();
+                    }
+                    window.show()?;
+                    let _ = window.set_focus();
+                }
+            }
             if args.iter().any(|arg|arg=="--desktop-mode") {
                 close_safely(app.handle());
                 return Ok(());

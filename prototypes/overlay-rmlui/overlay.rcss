@@ -464,7 +464,10 @@ button:active { transform: scale(.98); }
 .settings-screen { padding: 0 0 18dp; }
 .settings-title { display: flex; align-items: center; justify-content: space-between; margin: 8dp 0 28dp; }
 .settings-title h2 { font-size: 30dp; }
-.settings-title button { padding: 0 16dp; height: 44dp; }
+.settings-title .modal-close { width: 44dp; height: 44dp; padding: 0; }
+.settings-title .modal-close:hover { background: #00000030; }
+.settings-title .modal-close:active { background: #00000048; }
+.settings-title .modal-close .stroke { width: 16dp; height: 2dp; margin-left: -8dp; margin-top: -1dp; pointer-events: none; }
 .settings-appearance { position: relative; display: flex; align-items: center; width: 100%; padding: 20dp 24dp; background: #ffffff18; text-align: left; height: auto; line-height: 1.4; }
 .settings-appearance .glyph { width: 26dp; height: 26dp; margin-right: 18dp; }
 .settings-appearance .chevron { right: 24dp; top: 30dp; }
@@ -577,7 +580,7 @@ button:active { transform: scale(.98); }
 .compact-content .runtime-metric { width: 100%; }
 .layout-bar .main-panel { height: auto; margin: 0; }
 .layout-bar .tuning-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 18dp 28dp; margin-top: 18dp; padding-top: 16dp; border-top: 1dp #ffffff24; }
-.layout-bar .footer { flex: 1; margin: 0; padding: 0; border: 0; gap: 16dp; }
+.layout-bar .footer { flex: 1 0 auto; margin: 0; padding: 0; border: 0; gap: 16dp; }
 .layout-bar #defaults { margin-left: 0; }
 .layout-bar.compact-bar .tuning-sections { flex-direction: column; }
 .layout-bar.compact-bar .tuning-sections section { flex: auto; width: 100%; }
@@ -618,16 +621,18 @@ select selectvalue { min-width: 0; padding-right: 28dp; }
 .main-panel > .overview, .main-panel > .settings-screen { flex: 1; }
 .tuning-footer { margin-top: 20dp; padding-top: 16dp; border-top: 1dp #ffffff24; }
 .tuning-footer .footer { margin: 0; padding: 0; border: 0; gap: 12dp; }
+.tuning-footer .footer button, .preview-original { flex-shrink: 0; }
 .preview-original { width: 100%; margin-top: 14dp; font-size: 17dp; }
 .preview-original.selected { background: var(--accent-soft); }
-.layout-centered .tuning-footer { margin: 0; position: absolute; left: 280dp; right: 40dp; bottom: 26dp; display: flex; align-items: center; gap: 16dp; }
-.layout-centered .tuning-footer .footer { flex: 1; }
+.layout-centered .tuning-footer { margin: 0; position: absolute; left: 280dp; right: 40dp; bottom: 26dp; display: flex; flex-wrap: wrap; align-items: center; gap: 16dp; }
+.layout-centered .tuning-footer .footer { flex: 1 0 auto; }
 .layout-centered .preview-original { width: auto; margin: 0; padding: 0 16dp; }
 .layout-bar .overview { position: relative; overflow-y: auto; }
 .layout-bar .tuning-footer { display: flex; align-items: center; gap: 18dp; }
 .layout-bar .preview-original { width: auto; margin: 0; padding: 0 20dp; }
 .settings-page .main-panel > .tuning-footer { display: none; }
-.standalone-settings .main-panel > .tuning-footer { display: flex; }
+.standalone-settings .main-panel > .tuning-footer { display: block; }
+.layout-bar.standalone-settings .main-panel > .tuning-footer { display: flex; }
 .standalone-settings .main-panel { pointer-events: none; }
 .standalone-settings .main-panel > h1 { display: block; }
 .layout-bar.standalone-settings .main-panel > h1 { display: none; }
@@ -823,7 +828,7 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .layout-bar.compact-height .mini-stat { min-height: 54dp; padding: 6dp 10dp; }
 .layout-bar.compact-height .mini-stat-value { margin-top: 4dp; font-size: var(--meta-size); }
 .layout-bar.compact-height #compact-frame-time { display: inline; width: auto; }
-.layout-bar.compact-height .tuning-footer { flex-wrap: nowrap; gap: 12dp; margin-top: 8dp; padding-top: 8dp; }
+.layout-bar.compact-height .tuning-footer { gap: 12dp; margin-top: 8dp; padding-top: 8dp; }
 .layout-bar.compact-height .footer { flex: 0 0 auto; }
 .layout-bar.compact-height .footer button, .layout-bar.compact-height .preview-original { height: 34dp; padding-left: 10dp; padding-right: 10dp; }
 .layout-centered .sidebar button, .layout-centered .sidebar .neural-subpage { padding-left: 20dp; padding-right: 20dp; }

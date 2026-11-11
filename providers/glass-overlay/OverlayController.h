@@ -335,7 +335,7 @@ struct Controller : Rml::EventListener
     void PositionWelcome() {
         if(!document->IsVisible())return;
         if(welcomePosition!="top-right"&&welcomePosition!="top-left"&&welcomePosition!="top-center"&&welcomePosition!="bottom-right"&&welcomePosition!="bottom-left")welcomePosition="top-right";
-        entrances.erase("welcome");pendingEntrance.erase("welcome");coasting.erase("welcome");
+        coasting.erase("welcome");
         for(const auto* prop:{"left","right","top","bottom","margin-left","margin-top"})Element("welcome")->RemoveProperty(prop);
         const auto view=document->GetContext()->GetDimensions();const float dp=document->GetContext()->GetDensityIndependentPixelRatio();
         document->GetContext()->Update();auto* welcome=Element("welcome");const auto size=welcome->GetBox().GetSize(Rml::BoxArea::Border);
@@ -346,7 +346,15 @@ struct Controller : Rml::EventListener
         // every selected toast anchor, including variable-width notifications.
         if(!bottom)if(auto* toolbar=document->QuerySelector(".prototype-toolbar");toolbar&&toolbar->IsVisible()){const auto at=toolbar->GetAbsoluteOffset(Rml::BoxArea::Border);const auto bounds=toolbar->GetBox().GetSize(Rml::BoxArea::Border);if(x<at.x+bounds.x&&x+size.x>at.x&&y<at.y+bounds.y)y=at.y+bounds.y+12*dp;}
         welcome->SetProperty("right","auto");welcome->SetProperty("bottom","auto");
-        welcome->SetProperty("left",std::to_string(std::clamp(x,12*dp,std::max(12*dp,view.x-size.x-12*dp)))+"px");welcome->SetProperty("top",std::to_string(std::clamp(y,12*dp,std::max(12*dp,view.y-size.y-12*dp)))+"px");
+        x=std::clamp(x,12*dp,std::max(12*dp,view.x-size.x-12*dp));
+        y=std::clamp(y,12*dp,std::max(12*dp,view.y-size.y-12*dp));
+        welcome->SetProperty("left",std::to_string(x)+"px");
+        welcome->SetProperty("top",std::to_string(y)+"px");
+        if(auto entrance=entrances.find("welcome");entrance!=entrances.end())entrance->second.target={x,y};
+        else if(!pendingEntrance.contains("welcome")){
+            welcome->SetProperty("opacity","1");
+            welcome->SetProperty("--window-opacity","1");
+        }
     }
     void Metadata() {const auto view=document->GetContext()->GetDimensions();const auto size=std::to_string(view.x)+" × "+std::to_string(view.y);for(const auto* id:{"compact-size","overview-size","popup-size"})Element(id)->SetInnerRML(size);}
     double toastUntil=0;
@@ -399,7 +407,7 @@ struct Controller : Rml::EventListener
             const auto customSize=layoutSizes[layout];const float defaultWidth=centered?std::max(1160.f*dp,std::min(1760.f*dp,view.x*.60f*overlayScale/100.f)):660.f*dp;
             const float width=bar?maxWidth:std::clamp(customSize.x>0?customSize.x*dp:defaultWidth,minimumWidth,limitWidth);
             const float top=std::max(inset,std::min(76*dp,view.y*.08f)),available=view.y-inset-24*dp;
-            const float defaultHeight=std::min(available,780*dp);
+            const float defaultHeight=std::min(available,width*10.f/16.f);
             main->SetProperty("width",std::to_string(width)+"px");const float maxHeight=bar?std::min(view.y*.68f,available):available;main->SetProperty("height",customSize.y>0?std::to_string(std::clamp(customSize.y*dp,std::min(280*dp,maxHeight),maxHeight))+"px":centered?std::to_string(defaultHeight)+"px":"auto");
             main->SetProperty("max-height",std::to_string(centered?available:bar?std::min(view.y*.68f,available):view.y-top-24*dp)+"px");
             main->SetProperty("margin-left","0px");main->SetProperty("margin-top","0px");
@@ -408,7 +416,7 @@ struct Controller : Rml::EventListener
             document->SetClass("compact-height",view.y/dp<700);
             const float nav=(copySize*11.f+64)*dp,left=nav+56*dp,contentWidth=width-left-40*dp;
             document->SetClass("compact-content",(centered?contentWidth:width-132*dp)/dp<500);document->SetClass("wide-content",centered&&contentWidth/dp>=820);document->SetClass("three-columns",centered&&contentWidth/dp>=1200);
-            if(centered){auto* footer=Element("tuning-footer");footer->SetProperty("left",std::to_string(left)+"px");footer->SetProperty("width",std::to_string(contentWidth)+"px");footer->SetProperty("right","auto");const float height=std::max(80*dp,std::min(900*dp,available)-(contentTop+32)*dp);
+            if(centered){auto* footer=Element("tuning-footer");footer->SetProperty("left",std::to_string(left)+"px");footer->SetProperty("width",std::to_string(contentWidth)+"px");footer->SetProperty("right","auto");const float height=std::max(80*dp,defaultHeight-(contentTop+32)*dp);
                 for(const auto* id:{"overview","settings-screen"}){auto* e=Element(id);e->SetProperty("left",std::to_string(left)+"px");e->SetProperty("top",std::to_string(contentTop)+"dp");e->SetProperty("width",std::to_string(contentWidth)+"px");e->SetProperty("height",std::to_string(height)+"px");}
                 auto* navElement=document->QuerySelector(".sidebar");navElement->SetProperty("width",std::to_string(nav)+"px");navElement->SetProperty("top",std::to_string(contentTop)+"dp");navElement->SetProperty("height",std::to_string(height)+"px");
                 auto* editor=Element("inspector");editor->SetProperty("width",std::to_string(contentWidth)+"px");editor->SetProperty("height",std::to_string(height)+"px");editor->SetProperty("max-height",std::to_string(height)+"px");
@@ -785,7 +793,7 @@ struct Controller : Rml::EventListener
         Element("mfg-hint")->SetInnerRML(values["dynamic_mfg"]!=0 ? "Adjusts frame generation up to the selected limit.":values["multiplier"]<0 ? "Follows the game’s frame generation setting.":"Uses the selected frame generation multiplier.");
         Select("ratios","ratio-"+std::to_string(int(values["multiplier"])));
         Element("preview-original")->SetClass("selected",nrPreviewActive);
-        Element("preview-original-label")->SetInnerRML(nrPreviewActive?"Without NR · release to return":"Hold to preview without NR");
+        Element("preview-original-label")->SetInnerRML(nrPreviewActive?"Release to restore":"Hold to compare");
         Disabled("preview-original",(!nrPreviewActive&&values["enabled"]==0)||Element("nr-toggle")->IsPseudoClassSet("disabled"));
         Disabled("undo",edits.past.empty());Disabled("redo",edits.future.empty());
         for(const auto& [id,key] : std::map<std::string,std::string>{{"model-preset","preset"},{"processing-stage","pre_sr"}})

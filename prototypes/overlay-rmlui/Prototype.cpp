@@ -283,6 +283,22 @@ static void TestPreviewGameMenu(Rml::Context* context, Rml::ElementFormControlSe
     }
     throw std::runtime_error("No scrolled preview game row was visible");
 }
+static void RefreshPreviewChoices(Rml::ElementFormControlSelect& select,const PreviewLibrary& library)
+{
+    if(select.IsSelectBoxVisible()||size_t(select.GetNumOptions())>=library.names.size())return;
+    const auto selected=select.GetValue();
+    for(size_t i=size_t(select.GetNumOptions());i<library.names.size();++i){
+        const auto title=Rml::StringUtilities::ToLower(library.names[i]);
+        int before=1;
+        for(;before<select.GetNumOptions();++before){
+            const auto existing=std::stoul(select.GetOption(before)->GetAttribute<Rml::String>("value","0"));
+            if(title<Rml::StringUtilities::ToLower(library.names[existing]))break;
+        }
+        select.Add(Rml::StringUtilities::EncodeRml(library.names[i]),std::to_string(i),before);
+    }
+    if(!selected.empty())select.SetValue(selected);
+}
+
 static void TestPreviewPicker(Controller& c,Rml::Context* context)
 {
     const auto view=context->GetDimensions();const auto layout=c.layout,side=c.sidePanelSide,bar=c.barPosition;
@@ -324,6 +340,29 @@ static void TestPreviewPicker(Controller& c,Rml::Context* context)
     c.Layout("floating");c.PanelSide("right");context->Update();PlacePreviewPicker(c);context->Update();
     {auto* label=c.document->QuerySelector(".prototype-toolbar .preview-label");const auto at=label->GetAbsoluteOffset(Rml::BoxArea::Border),size=label->GetBox().GetSize(Rml::BoxArea::Border);context->ProcessMouseMove(int(at.x+size.x*.5f),int(at.y+size.y*.5f),0);context->ProcessMouseButtonDown(0,0);Require(c.dragged==nullptr,"Game chooser chrome must not begin window dragging");context->ProcessMouseMove(int(at.x+size.x*.5f+80),int(at.y+size.y*.5f+20),0);context->ProcessMouseButtonUp(0,0);}
     context->SetDimensions(view);c.Layout(layout);c.PanelSide(side);c.BarEdge(bar);c.document->SetClass("desktop-preview",desktop);PlacePreviewPicker(c);context->Update();
+    auto* select=dynamic_cast<Rml::ElementFormControlSelect*>(c.Element("scene-select"));
+    std::vector<std::pair<std::string,std::string>> oldOptions;
+    for(int i=0;i<select->GetNumOptions();++i){
+        auto* option=select->GetOption(i);
+        oldOptions.emplace_back(option->GetInnerRML(),option->GetAttribute<Rml::String>("value",""));
+    }
+    const auto oldValue=select->GetValue();
+    select->HideSelectBox();select->RemoveAll();context->Update();
+    PreviewLibrary verified({});
+    Require(verified.AddChoice({{"available","Control Resonant"},{"index",0}})&&
+        verified.AddChoice({{"available","The Witcher 3"},{"index",1}}),"Verified preview games were rejected");
+    RefreshPreviewChoices(*select,verified);select->SetValue("1");context->Update();
+    Require(select->GetNumOptions()==2,"Verified preview choices did not populate");
+    select->ShowSelectBox();
+    Require(!verified.AddChoice({{"available","Missing scene"},{"index",3}})&&
+        verified.AddChoice({{"available","Cyberpunk 2077"},{"index",2}}),"Preview picker accepted an invalid discovery sequence");
+    RefreshPreviewChoices(*select,verified);
+    Require(select->GetNumOptions()==2,"Preview picker changed the menu while open");
+    select->HideSelectBox();RefreshPreviewChoices(*select,verified);
+    Require(select->GetNumOptions()==3&&select->GetValue()=="1"&&
+        select->GetOption(1)->GetInnerRML()=="Cyberpunk 2077","New preview games disturbed the selected scene");
+    select->RemoveAll();for(const auto& [label,value]:oldOptions)select->Add(label,value);
+    select->SetValue(oldValue);c.sceneRequest=-1;
     std::cout<<"preview_game_picker_edge_checks=passed cases=18 bar_top_bottom_cases=6\n";
 }
 static void TestLayout(Controller& c,Rml::Context* context)
@@ -376,6 +415,18 @@ static void TestLayout(Controller& c,Rml::Context* context)
         Require(std::string(side)=="right"?appearance[2]<main[0]:appearance[0]>main[2],"Side Panel Appearance did not open inward");
     }
     c.PanelSide(originalSide);c.Visible("type-panel",false);
+    c.Settings(true);settle();
+    const auto history=rect(c.document->QuerySelector(".tuning-footer .footer"));
+    const auto compare=rect(c.Element("preview-original"));
+    Require(history[3]<=compare[1],"Side Panel Settings compressed the footer into one row");
+    c.Settings(false);
+    c.Notify("Preview screenshot unavailable");
+    const auto motion=c.reducedMotion;c.reducedMotion=false;
+    const auto now=Rml::GetSystemInterface()->GetElapsedTime();
+    c.Animate(now);c.Animate(now+.05);
+    c.PositionWelcome();c.Animate(now+.5);
+    Require(c.Element("welcome")->GetProperty("opacity")->Get<float>()>=.99f,"Repositioning froze the toast fade");
+    c.reducedMotion=motion;c.toastUntil=0;
     std::cout<<"native_side_panel_edge_checks=passed left_right_inward_popouts\n";
     c.overlayScale=originalScale;c.copySize=originalCopy;c.values=originalValues;context->SetDimensions(originalView);c.Typography();c.Layout("floating");c.Sync();c.Visible("welcome",false);settle();
     std::cout<<"native_layout_matrix_checks=passed cases=54\n";
@@ -411,8 +462,15 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
             Require(c.Element("settings-screen")->GetParentNode()->GetId()=="settings-modal-host"&&
                 c.Element("settings-modal-close")->IsVisible(true)&&c.Element("overview")->IsVisible(true),
                 "Compact layout did not open standalone Settings over its controls");
-            activate("settings-modal-close");
-            Require(!c.settingsOpen&&c.layout==layout,"Closing Settings changed the active layout");
+            auto* close=c.Element("settings-modal-close");
+            const auto at=close->GetAbsoluteOffset(Rml::BoxArea::Border),size=close->GetBox().GetSize(Rml::BoxArea::Border);
+            Require(std::abs(size.x-size.y)<1&&size.x>=40*context->GetDensityIndependentPixelRatio(),"Settings close button lost its hit area");
+            context->ProcessMouseMove(int(at.x+size.x*.5f),int(at.y+size.y*.5f),0);
+            context->ProcessMouseButtonDown(0,0);context->ProcessMouseButtonUp(0,0);context->Update();
+            Require(!c.settingsOpen&&c.layout==layout,"Clicking Settings Close did not return to the active layout");
+            c.Settings(true);close->Focus();
+            context->ProcessKeyDown(Rml::Input::KI_RETURN,0);context->ProcessKeyUp(Rml::Input::KI_RETURN,0);context->Update();
+            Require(!c.settingsOpen&&c.layout==layout,"Keyboard Settings Close did not return to the active layout");
         } else c.Settings(false);
     }
     c.Layout("bar");
@@ -668,7 +726,7 @@ static void TestController(Controller& c,Rml::Context* context)
     auto* main=c.Element("main-panel");main->SetProperty("left","120px");main->SetProperty("top","120px");c.mainMoved=true;context->Update();c.Reflow();context->Update();const auto moved=main->GetAbsoluteOffset(Rml::BoxArea::Border);
     for(const auto* page:{"nav-neural","nav-frame","nav-look","nav-passes","nav-overview"}){click(page);c.pendingEntrance.clear();c.entrances.clear();c.Reflow();context->Update();const auto at=main->GetAbsoluteOffset(Rml::BoxArea::Border);Require(std::fabs(at.x-moved.x)<.5f&&std::fabs(at.y-moved.y)<.5f,"Advanced navigation recenters a moved window");}
     c.Settings(true);c.Settings(false);context->Update();Require(std::fabs(main->GetAbsoluteOffset(Rml::BoxArea::Border).x-moved.x)<.5f,"Settings recenters a moved Advanced window");
-    const auto view=context->GetDimensions();c.layoutSizes.clear();context->SetDimensions({1920,1080});c.Layout("centered");context->Update();const auto smallerSize=main->GetBox().GetSize(Rml::BoxArea::Border);context->SetDimensions({3840,2160});c.Reflow();context->Update();const auto largerSize=main->GetBox().GetSize(Rml::BoxArea::Border);Require(largerSize.x>smallerSize.x*1.35f&&std::fabs(largerSize.y-smallerSize.y)<2,"Advanced must grow wider while retaining its compact height");context->SetDimensions(view);c.Layout("floating");
+    const auto view=context->GetDimensions();c.layoutSizes.clear();context->SetDimensions({1920,1080});c.Layout("centered");context->Update();const auto smallerSize=main->GetBox().GetSize(Rml::BoxArea::Border);context->SetDimensions({3840,2160});c.Reflow();context->Update();const auto largerSize=main->GetBox().GetSize(Rml::BoxArea::Border);Require(largerSize.x>smallerSize.x*1.35f&&largerSize.y>smallerSize.y*1.3f&&std::fabs(largerSize.y-largerSize.x*10.f/16.f)<2,"Advanced must grow to its 16:10 default where it fits");context->SetDimensions(view);c.Layout("floating");
     c.UseAppearance(3,true);c.accentMode="adaptive";c.BeginSetup();context->Update();Require(c.setupStep==0&&!c.Element("main-panel")->IsVisible()&&c.Element("setup-layout-centered")->IsVisible(true)&&!c.Element("theme-menu")->IsVisible(true),"Setup must focus on layout and hide the overlay initially");
     click("setup-layout-centered");context->Update();Require(c.layout=="centered"&&c.setupStep==0&&c.Element("main-panel")->IsVisible(),"Choosing layout does not reveal its preview");click("setup-appearance");context->Update();Require(c.setupStep==1&&c.Element("theme-menu")->IsVisible(true)&&!c.Element("appearance-more")->IsVisible(true)&&!c.Element("appearance-god-mode")->IsVisible(true),"Optional Appearance leaked advanced controls");click("appearance-back");Require(c.setupStep==0,"Optional Appearance cannot return to layout");click("setup-next");Require(c.setupComplete&&c.setupStep<0&&!c.Element("type-panel")->IsVisible(),"Setup does not complete");c.MaybeSetup();Require(!c.Element("type-panel")->IsVisible(),"Completed setup reopens");
     c.BeginSetup();std::string nativeRequest;c.requestJson=[&](const std::string& value){nativeRequest=value;return true;};c.nativeShortcuts={{"OptiScaler","Insert",true},{"ReShade","Ctrl+Home",false}};click("setup-native");context->Update();Require(c.setupStep==2&&!c.nativeOverlayPending,"Native overlays must ask for confirmation");{auto* keys=c.Element("setup-native-shortcuts");auto* global=c.Element("setup-native-global")->GetParentNode();auto* message=c.Element("setup-native-message");Require(global->GetAbsoluteOffset().y>=keys->GetAbsoluteOffset().y+keys->GetBox().GetSize(Rml::BoxArea::Border).y&&message->GetAbsoluteOffset().y>global->GetAbsoluteOffset().y,"Native confirmation content must stack without overlap");}click("setup-native-confirm");Require(c.nativeOverlayPending&&nlohmann::json::parse(nativeRequest)["global_default"]==false,"Native-overlay opt-out must default to this game");c.NativeOverlaysResult(true);Require(c.setupStep==2&&!c.nativeOverlayPending,"Failed native opt-out must remain recoverable");c.Element("setup-native-global")->SetAttribute("checked","");click("setup-native-confirm");Require(nlohmann::json::parse(nativeRequest)["global_default"]==true,"Explicit native-overlay default choice was lost");c.NativeOverlaysResult(false);context->Update();Require(c.setupComplete&&c.setupStep<0&&c.primaryMenu=="optiscaler"&&!c.Element("main-panel")->IsVisible(),"Native opt-out did not close the overlay after acknowledgement");c.requestJson={};c.primaryMenu="game";c.BeginSetup();click("setup-skip");Require(c.setupComplete&&c.setupStep<0,"Setup skip did not complete");
@@ -875,7 +933,7 @@ int wmain(int argc,wchar_t** argv)
             sceneSelect->Add("Current scene","0");
             for(const auto& scene:ScenePresets)if(fs::exists(sceneCache/scene.file))sceneSelect->Add(Rml::StringUtilities::EncodeRml(scene.title),std::to_string(scene.app));
         }else{
-            for(size_t i=0;i<library.names.size();++i)sceneSelect->Add(Rml::StringUtilities::EncodeRml(library.names[i]),std::to_string(i));
+            RefreshPreviewChoices(*sceneSelect,library);
             sceneSelect->SetSelection(0);controller.sceneRequest=-1;
             Require(sceneSelect->GetNumOptions()==int(library.names.size())&&sceneSelect->GetValue()=="0","Preview game choices did not initialize");
         }
@@ -909,7 +967,13 @@ int wmain(int argc,wchar_t** argv)
                 for(const auto& scene:ScenePresets)if(scene.app==chosen){path=sceneCache/scene.file;selectedCrop=0;selectedAccent={float((scene.accent>>16)&255)/255,float((scene.accent>>8)&255)/255,float(scene.accent&255)/255};title=scene.title;}
                 auto next=LoadImage(path);const auto uv=CropImage(next,width,height,selectedCrop);backdrop->SetPhoto(next.rgba.data(),next.width,next.height,uv.data());image=std::move(next);activeCrop=selectedCrop;selectedScene=chosen;controller.PositionScene(std::to_string(chosen));nextSample=0;controller.nextAccentSample=0;controller.accent=selectedAccent;changePoster(CachedScenePoster(chosen));controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(title));dynamic_cast<Rml::ElementFormControl*>(controller.Element("scene-select"))->SetValue(std::to_string(chosen));document->SetProperty("--accent",Controller::Hex(selectedAccent[0],selectedAccent[1],selectedAccent[2]));controller.filtered={};controller.lastAdapt=-1;controller.nextAccentSample=0;
             }catch(const std::exception&){controller.Notify("Could not load preview scene");}}
-            if(!library.names.empty())if(auto reply=library.Poll())try{
+            const auto reply=library.names.empty()?std::optional<nlohmann::json>{}:library.Poll();
+            if(!library.names.empty()){
+                const int requested=controller.sceneRequest;
+                RefreshPreviewChoices(*sceneSelect,library);
+                controller.sceneRequest=requested;
+            }
+            if(reply)try{
                 const auto& value=*reply;
                 if(value.contains("error"))throw std::runtime_error(value["error"].get<std::string>());
                 const auto color=value.at("accent").get<std::string>();

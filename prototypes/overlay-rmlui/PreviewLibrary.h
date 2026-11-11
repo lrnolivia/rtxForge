@@ -15,6 +15,15 @@ struct PreviewLibrary {
         Require(json.is_array()&&json.size()<=1000,"Invalid preview catalog");
         for(const auto& name:json){Require(name.is_string()&&name.get_ref<const std::string&>().size()<=4096,"Invalid preview game name");names.push_back(name.get<std::string>());}
     }
+    bool AddChoice(const nlohmann::json& value) {
+        const auto name=value.find("available"), index=value.find("index");
+        if(name==value.end()||!name->is_string()||index==value.end()||!index->is_number_integer()
+            ||names.size()>=1000||*index!=names.size())return false;
+        const auto& title=name->get_ref<const std::string&>();
+        if(title.empty()||title.size()>4096)return false;
+        names.push_back(title);
+        return true;
+    }
     void Choose(int index) {
         if(index<0||size_t(index)>=names.size())return;
         ++request;
@@ -31,7 +40,10 @@ struct PreviewLibrary {
         while((end=incoming.find('\n'))!=std::string::npos){
             auto line=incoming.substr(0,end);incoming.erase(0,end+1);
             auto value=nlohmann::json::parse(line,nullptr,false);
-            if(value.is_object()&&value.value("request",0)==request)latest=std::move(value);
+            if(!value.is_object())continue;
+            if(value.contains("available")) {AddChoice(value);continue;}
+            const auto reply=value.find("request");
+            if(reply!=value.end()&&reply->is_number_integer()&&*reply==request)latest=std::move(value);
         }
         return latest;
     }

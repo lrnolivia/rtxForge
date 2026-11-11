@@ -347,14 +347,9 @@ def check(e, plan):
     t.need(f.digest(f.state_dir(e, directory) / 'baseline.json') == plan['baseline_before'], 'Feeder install record changed since review')
     for item in plan['inputs'].values():
         t.need(f.digest(f.cached_input(e, item)) == item['sha256'], 'Feeder source or original backup changed since review')
-    if plan.get('split_render_restore'):
-        import nr_install
-        nr_install.check_files(plan['split_render_restore'])
-    elif 'split_render_receipt' in plan:
-        t.need(not t.safe(plan['split_render_receipt']).exists(), 'Split Render was installed after review. Review the restore again.')
 
 
-def prepare(config, e, row, mode, operation, settings, recipe):
+def prepare(e, row, mode, operation, settings, recipe):
     import feeder_provider as f
     t.need(mode == 'nr-only' or operation == 'uninstall', 'Feeder provides NR Only. Frame generation is not available for this route')
     t.need(f._windows(e), 'DX9/DX10 Feeder setup is available on Windows only in this release')
@@ -439,21 +434,7 @@ def prepare(config, e, row, mode, operation, settings, recipe):
     plan = dict(row=dict(row), target=str(directory), existing=existing, checks=checks,
                 baseline_before=f.digest(f.state_dir(e, directory) / 'baseline.json'), baseline=baseline,
                 inputs=sources, writes=writes, operation=operation, legacy_recipe=recipe, exe_hash=f.digest(exe))
-    split_render_details = []
-    if operation == 'uninstall':
-        import nr_install
-        receipt, split_render = nr_install.prepare_feeder_restore(config, row)
-        plan['split_render_receipt'] = str(receipt)
-        if split_render:
-            plan['split_render_restore'] = split_render
-            feeder_paths = {directory / name for name in writes}
-            changes = [change for change in split_render['changes'] if root / change['path'] not in feeder_paths]
-            split_render_details = nr_install.describe_changes(dict(split_render, changes=changes)).splitlines()
-            summary += ' Also remove the recorded Split Render setup.'
-            if split_render.get('notes'):
-                summary += ' ' + ' '.join(split_render['notes'])
     check(e, plan)
     detail = json.dumps({'target': str(directory), 'recipe': recipe, 'runtime_verified': False,
-                         'writes': {name: item['sha256'] if item else None for name, item in writes.items()},
-                         **({'split_render': split_render_details} if split_render_details else {})}, indent=2)
+                         'writes': {name: item['sha256'] if item else None for name, item in writes.items()}}, indent=2)
     return plan, {'name': row['name'], 'game': row['game'], 'summary': summary, 'detail': detail}

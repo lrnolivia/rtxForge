@@ -943,7 +943,12 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .side-panel-position { margin-top: 20dp; }
 .side-panel-position .segments { margin-top: 12dp; }
 .desktop-preview .prototype-toolbar { transform: none; }
-.desktop-preview #scene-select { width: 352dp; }
+.desktop-preview #scene-select { --scene-width: 352dp; --scene-height: 44dp; width: var(--scene-width); height: var(--scene-height); padding: 0; }
+.desktop-preview #scene-select selectvalue {
+    width: var(--scene-width); box-sizing: border-box; padding: 0 34dp;
+    line-height: var(--scene-height); text-align: center; text-overflow: ellipsis;
+}
+.desktop-preview #scene-select selectarrow { margin-top: 17dp; }
 .desktop-preview .prototype-toolbar .preview-label { min-width: 62dp; }
 .desktop-preview #scene-select selectbox { max-height: 360dp; margin-top: 6dp; margin-bottom: 6dp; }
 .desktop-preview #scene-select option, .select-menu.game-picker-menu .menu-option {

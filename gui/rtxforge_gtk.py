@@ -3897,7 +3897,7 @@ class OperationFlow:
         self.stage=None
         self.step_phase='review'
         self.includes_presets=False
-        self.content_width=760 if operation=='report' else 640
+        self.content_width=620
         self.review=None
         self.on_confirm=None
         self.accent=None
@@ -3950,6 +3950,9 @@ class OperationFlow:
             self.step_phase='apply'
         if name!='done':self._show_steps()
         self.toolbar.set_reveal_top_bars(name!='done')
+        self.content_width={
+            'presets':820,'review':760 if self.operation=='report' else 680,'done':500,
+        }.get(name,620)
         self.content=child
         self.toolbar.set_content(child)
         self.dialog.set_content_width(self.content_width)
@@ -4080,7 +4083,6 @@ class OperationFlow:
         self.primary.set_sensitive(True)
         scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True)
         scroll.set_child(body)
-        self.content_width=820
         self._page('presets',scroll)
         def refit():
             if self.closed or self.stage!='presets':return False

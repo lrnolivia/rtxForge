@@ -837,11 +837,15 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 
 .operation-backdrop{position:fixed;inset:0;z-index:50;display:grid;grid-template-rows:minmax(0,1fr);place-items:center;padding:clamp(12px,4vw,56px);background:rgb(16 18 20 / .60)}
 .operation-modal{
-  width:min(100%,1120px);max-height:min(100%,850px);min-height:0;
+  --operation-width:1120px;
+  width:min(100%,var(--operation-width));max-height:min(100%,850px);min-height:0;
   display:flex;flex-direction:column;overflow:auto;padding:clamp(12px,2.5vw,30px);
   background:color-mix(in srgb,var(--glass) 82%,var(--ink));backdrop-filter:blur(20px);
   box-shadow:0 24px 80px #0005,inset 0 0 0 1px var(--rim)
 }
+.operation-modal:has(>.operation-flow[data-stage=review]){--operation-width:960px}
+.operation-modal:has(>.operation-flow:is([data-stage=checking],[data-stage=running])){--operation-width:760px}
+.operation-modal:has(>.operation-flow:is([data-stage=done],[data-stage=error])){--operation-width:540px}
 .operation-modal>.operation-flow{height:auto;max-width:100%}
 .operation-modal>.operation-flow>.flow-panel{flex:0 1 auto;min-height:0}
 .shell[inert] .content>*{animation:none}
@@ -1002,9 +1006,10 @@ body:has(.operation-backdrop) #toast{z-index:49}
 .split-games-toolbar .operation-actions{margin:0;gap:8px}
 .split-selection-count{margin:12px 0 0;font-size:.85rem}
 .split-remove-modal,.split-remove-review{
-  width:min(100%,760px);height:auto;max-height:100%;display:flex;flex-direction:column;overflow:hidden
+  height:auto;max-height:100%;display:flex;flex-direction:column;overflow:hidden
 }
-.split-remove-modal{padding:0}
+.split-remove-modal{--operation-width:760px;padding:0}
+.split-remove-review:has(>.operation-flow[data-stage=review]){--operation-width:760px}
 .split-removal-flow{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto}
 .split-removal-flow header{padding:24px 24px 16px}
 .split-removal-flow h1{font-size:clamp(1.3rem,3vw,1.7rem);margin:0}

@@ -32,7 +32,6 @@ public sealed class ReviewDialog
         this.emptyMessage = emptyMessage;
         initialTitle = title;
         dialog = shell.NewDialog();
-        OperationDialog.SetWidth(dialog, 568);
         dialog.PrimaryButtonClick += OnPrimary;
         dialog.Closing += (_, e) => { if (stage == Stage.Working) e.Cancel = true; };
     }
@@ -59,6 +58,7 @@ public sealed class ReviewDialog
 
     void ShowWorking(string text)
     {
+        OperationDialog.SetWidth(dialog, 440, 560);
         dialog.Title = review?.Title ?? initialTitle;
         var body = new StackPanel { Spacing = 16, Padding = new Thickness(0, 12, 0, 12) };
         body.Children.Add(new ProgressBar { IsIndeterminate = true });
@@ -75,6 +75,7 @@ public sealed class ReviewDialog
     void ShowReview(EngineReview review)
     {
         stage = Stage.Review;
+        OperationDialog.SetWidth(dialog, 568, 688);
         dialog.Title = review.Title;
         var body = new StackPanel { Spacing = 14 };
         if (!review.Ready)
@@ -201,6 +202,7 @@ public sealed class ReviewDialog
     void ShowDone(bool success, string message)
     {
         stage = Stage.Done;
+        OperationDialog.SetWidth(dialog, 420, 560);
         AutomationProperties.SetName(dialog, success ? "Done" : "Could not finish");
         var line = new Grid { ColumnSpacing = 24 };
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

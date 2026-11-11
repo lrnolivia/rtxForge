@@ -20,7 +20,6 @@ public sealed class OperationDialog
     enum Stage { Review, Progress, Done }
     enum FlowStep { Presets, Review, Apply }
     const double InstallWidth = 808;
-    const double ReviewWidth = 688;
     const double DialogInset = 24;
 
     readonly MainWindow shell;
@@ -51,7 +50,7 @@ public sealed class OperationDialog
         this.targets = targets;
         this.includesPresets = includesPresets;
         dialog = shell.NewDialog();
-        var width = SetWidth(dialog, includesPresets ? InstallWidth : ReviewWidth);
+        var width = SetWidth(dialog, 560, 640);
         checkingPanel.Root.MaxWidth = progressPanel.Root.MaxWidth = width - 2 * DialogInset;
         checkingPanel.AccentChanged += palette =>
         {
@@ -123,7 +122,7 @@ public sealed class OperationDialog
         var dialog = shell.NewDialog();
         await AccentResources.ApplyAsync(dialog.Resources, game);
         dialog.Title = "Install Features";
-        var editorWidth = SetWidth(dialog, InstallWidth) - 2 * DialogInset;
+        var editorWidth = SetWidth(dialog, 640, mode == "nr-mfg" ? InstallWidth : 688) - 2 * DialogInset;
         var tuning = new PresetControlsView(initial, shell.Settings.OverlayControls == "classic", embedded: true, installation: true) { Width = editorWidth };
         tuning.SetMode(mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.DynamicMfgSupported);
         var body = new StackPanel { Spacing = 16 };
@@ -196,6 +195,7 @@ public sealed class OperationDialog
 
     void ShowReview(OperationReview review)
     {
+        SetWidth(dialog, 640, 760);
         dialog.Title = Title();
         stepAccent.Color = DialogAccent(dialog).Color;
         var body = new StackPanel { Spacing = 16 };
@@ -360,13 +360,13 @@ public sealed class OperationDialog
         dialog.Resources.ContainsKey("AccentButtonBackground") && dialog.Resources["AccentButtonBackground"] is SolidColorBrush accent
             ? accent : (SolidColorBrush)Application.Current.Resources["AccentFillColorDefaultBrush"];
 
-    internal static double SetWidth(ContentDialog dialog, double preferred)
+    internal static double SetWidth(ContentDialog dialog, double minimum, double maximum)
     {
         var available = dialog.XamlRoot?.Size.Width ?? 0;
-        var width = available > 0 ? Math.Min(preferred, Math.Max(280, available - 2 * DialogInset)) : preferred;
-        dialog.Resources["ContentDialogMinWidth"] = width;
-        dialog.Resources["ContentDialogMaxWidth"] = width;
-        return width;
+        if (available > 0) maximum = Math.Min(maximum, Math.Max(280, available - 2 * DialogInset));
+        dialog.Resources["ContentDialogMinWidth"] = Math.Min(minimum, maximum);
+        dialog.Resources["ContentDialogMaxWidth"] = maximum;
+        return maximum;
     }
 
     internal static StackPanel WithReviewSteps(ContentDialog dialog, UIElement content, bool applying, string action) =>
@@ -563,6 +563,7 @@ public sealed class OperationDialog
     async Task RunAsync()
     {
         stage = Stage.Progress;
+        SetWidth(dialog, 560, 640);
         cancel = new CancellationTokenSource();
         dialog.Title = ProgressVerb();
         dialog.PrimaryButtonText = "";
@@ -636,6 +637,7 @@ public sealed class OperationDialog
     void ShowDone(bool success, string message, string? title = null)
     {
         stage = Stage.Done;
+        SetWidth(dialog, 420, 560);
         dialog.SecondaryButtonText = "";
         dialog.Title = null;
         AutomationProperties.SetName(dialog, title ?? (success ? "Done" : "Could not finish"));

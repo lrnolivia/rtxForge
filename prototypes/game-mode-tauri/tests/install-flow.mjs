@@ -240,10 +240,11 @@ try{
  const reviewWidth=(await page.getByRole('dialog').boundingBox()).width;
  await page.getByRole('dialog').getByRole('button',{name:'Update DLSS',exact:true}).click();
  await expect(activeStep()).toHaveText('2Update DLSS');
- expect((await page.getByRole('dialog').boundingBox()).width).toBeCloseTo(reviewWidth,0);
+ const progressWidth=(await page.getByRole('dialog').boundingBox()).width;
+ expect(progressWidth).toBeLessThan(reviewWidth);
  await finishExecution();await expect(page.getByText('Reviewed installation completed.',{exact:true})).toBeVisible();
  await expect(page.getByRole('dialog',{name:'Done',exact:true}).locator('.flow-heading')).toHaveCount(0);
- expect((await page.getByRole('dialog').boundingBox()).width).toBeCloseTo(reviewWidth,0);
+ expect((await page.getByRole('dialog').boundingBox()).width).toBeLessThan(progressWidth);
  await click('Back to game');
  splitEnabled=false;await click('Packages');
  await expect(page.getByText('New setups are paused while performance and image quality are improved.')).toBeVisible();

@@ -150,7 +150,7 @@ def configured_state(target, record):
             'mfg_enabled': enabled, 'mfg_route': 'Native DLSS-G · MFG Unlock ' + record['version'] + ' (configured)'}
 
 
-def check_target(e, game, baseline):
+def check_target(e, game, baseline, *, package_update=False):
     """Do not replace an unmanaged host/addon or switch a recorded MFG recipe."""
     record = validate(e.Y4MY_PROVIDER['mfg_component'])
     # The 1.4.4 + ReShade 6.8 composition hangs at inZOI's first Present,
@@ -164,7 +164,8 @@ def check_target(e, game, baseline):
            'Choose another MFG package for this game; restore first if already installed.')
     current = (baseline or {}).get('current') or {}
     installed = ((current.get('archive') or {}).get('release') or {}).get('mfg_component')
-    t.need(not current or installed == record, 'Restore before changing MFG components.')
+    same_owner = package_update and installed and validate(installed)['id'] == record['id']
+    t.need(not current or installed == record or same_owner, 'Restore before changing MFG components.')
     if not installed:
         for name in ('ReShade64.dll', 'renodx-mfgunlock.addon64'):
             t.need(not (game.target_dir / name).exists(), 'Unmanaged MFG host/addon already exists: ' + name)

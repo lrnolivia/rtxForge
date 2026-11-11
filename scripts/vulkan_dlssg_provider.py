@@ -297,7 +297,7 @@ def _default_config():
     return data.encode()
 
 
-def plan_install(game, archive, loader, state_root, *, experimental=False, nr_on_launch=None):
+def plan_install(game, archive, loader, state_root, *, experimental=False, nr_on_launch=None, package_update=False):
     t.need(experimental, 'The BG3 Vulkan route requires explicit Experimental opt-in')
     root = target(game)
     t.need(not running(root), 'Close ' + _game_name() + ' before changing its provider')
@@ -305,6 +305,8 @@ def plan_install(game, archive, loader, state_root, *, experimental=False, nr_on
     spec, data = pin(), payload(archive, loader)
     current = _record(root, state)
     active = current and current['status'] != 'restored'
+    t.need(not package_update or current and current['status'] == 'active',
+           'Repair the recorded Vulkan package before updating')
     names = _names(spec)
     checks = _snapshot(root, names)
     if active:
@@ -315,7 +317,8 @@ def plan_install(game, archive, loader, state_root, *, experimental=False, nr_on
             if name in _mutable():
                 continue
             before = (current['originals'][name] or {}).get('sha256')
-            t.need(checks[name] in (installed, before, None), 'Managed file changed; refusing repair: ' + name)
+            accepted = (installed,) if package_update else (installed, before, None)
+            t.need(checks[name] in accepted, 'Managed file changed; refusing repair: ' + name)
     else:
         bink = t.safe(root / PROXY).read_bytes()
         stock = spec['loader']['game_original']
@@ -347,13 +350,25 @@ def plan_install(game, archive, loader, state_root, *, experimental=False, nr_on
                    and runtime.get('sha256') == current['installed'].get(name) == checks.get(name), 'Selected Vulkan runtime ownership differs.')
             data[name] = t.safe(root / name).read_bytes()
             preserved_runtimes[name] = checks[name]
+    if package_update:
+        model = 'NativeMods/nvngx_dlssnr.dll'
+        t.need(checks.get(CONFIG) and checks.get(model), 'Repair the Vulkan model and tuning before updating')
+        data[model] = t.safe(root / model).read_bytes()
+        preserved_runtimes[model] = checks[model]
+        changes = [name for name, raw in data.items() if _hash(raw) != checks.get(name)]
+        t.need(changes, 'Already up to date')
+        name = changes[0]
+        before = checks.get(name)
+        version = f"{name.rsplit('/', 1)[-1]} · {before[:8] if before else 'New file'} → {_hash(data[name])[:8]}"
+    else:
+        version = None
     return _seal({'schema': 1, 'recipe': _identity(), 'operation': 'repair' if active else 'install', 'target': str(root),
                   'state': str(state), 'state_root': str(t.safe(state_root)), 'checks': checks,
                   'record_before': _digest(state / 'baseline.json'),
                   'inputs': {str(t.safe(p)): _digest(p) for p in (archive, loader, _pin_path(),
                              _pin_path().parent / 'loader/LICENSE.exports.txt', root / _executables()[0], root / 'nvngx_dlss.dll')},
                   'archive': str(t.safe(archive)), 'loader': str(t.safe(loader)), 'nr_on_launch': nr_on_launch,
-                  'preserved_runtimes': preserved_runtimes,
+                  'preserved_runtimes': preserved_runtimes, 'update_version': version,
                   'after': {name: _hash(value) for name, value in data.items()}})
 
 

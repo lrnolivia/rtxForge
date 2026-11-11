@@ -3787,6 +3787,7 @@ class ResizablePanelWindow(Adw.Window):
 
 
 OPERATION_WORDS={
+    'update': ('Review Feature Updates','Update Features','Updating'),
     # operation: (review title, action verb, progress verb)
     'install':('Review Installation','Install','Installing'),
     'repair':('Review Repair','Repair','Repairing'),
@@ -4146,7 +4147,8 @@ class OperationFlow:
             body.append(self._rows_scroll(listing))
         blocked=review.get('blocked',[])
         if blocked:
-            body.append(label(f'Needs attention · {len(blocked)}','heading'))
+            caption='Skipped' if self.operation=='update' else 'Needs attention'
+            body.append(label(f'{caption} · {len(blocked)}','heading'))
             skipped=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
             skipped.add_css_class('boxed-list');skipped.add_css_class('review-list')
             for item in blocked:
@@ -10133,7 +10135,7 @@ class Window(Adw.ApplicationWindow):
         if self.needs_linux_setup(game):
             return action_labels.ADAPT,'install'
         if game.get('installed') and game.get('installed_on')!='windows':
-            return 'Update Features','repair'
+            return action_labels.UPDATE,'update'
         return action_labels.INSTALL,'install'
 
     def pending_linux_setup(self):
@@ -10184,7 +10186,7 @@ class Window(Adw.ApplicationWindow):
         else:
             # A Windows install with shared state is adapted for Linux (Set Up) or restored right here.
             feature_label,feature_op=self.game_feature_action(game)
-            add(feature_label,lambda:self.launch_action(feature_op,targets=[game]),not game.get('blocked') and not self.busy)
+            add(feature_label,lambda:self.launch_action(feature_op,targets=[game]),(feature_op=='update' or not game.get('blocked')) and not self.busy)
             add('Restore Original Files',lambda:self.launch_action('uninstall',targets=[game]),bool(game.get('installed')) and not self.busy)
         add('Open Folder',lambda:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None),not self.options.demo)
         if self.adoptable(game):add('Adopt Existing Setup…',lambda:self.choose_adoption([game]),not self.busy)
@@ -10498,9 +10500,11 @@ class Window(Adw.ApplicationWindow):
         pool=self.selected_games() if count else self.games
         adapt=bool(pool) and all(game.get('installed_on')=='windows' for game in pool)
         pending=0 if count else len(self.pending_linux_setup())
+        scope=pool if count else [game for game in pool if self.game_matches_view(game)]
+        update=self.library_feature_update(scope)
         for name in ('install_all','sticky_install_all'):
             widget=getattr(self,name,None)
-            if widget:widget.set_label(action_labels.library(count,adapt,pending)[0])
+            if widget:widget.set_label(action_labels.library(count,adapt,pending,update=update)[0])
         for name in ('uninstall_all','sticky_remove_all'):
             widget=getattr(self,name,None)
             if widget:widget.set_label(action_labels.library(count,adapt)[1])
@@ -10608,6 +10612,10 @@ class Window(Adw.ApplicationWindow):
         except ScopeError as error:
             self.toast(str(error));return []
 
+    def library_feature_update(self, games):
+        return any(self.game_feature_action(game)[1]=='update' for game in games) and (
+            bool(self.selected_game_ids) or all(game.get('installed') for game in games))
+
     def launch_scoped(self,operation,**kwargs):
         """Toolbar actions: never widen past the selection or current view."""
         if operation=='install' and not self.selected_game_ids:
@@ -10617,6 +10625,10 @@ class Window(Adw.ApplicationWindow):
                 self.launch_action('install',False,targets=pending,**kwargs);return
         targets=self.selected_or_library()
         if not targets:return
+        if operation=='install' and self.library_feature_update(targets):
+            operation='update'
+        elif operation=='install':
+            targets=[game for game in targets if self.game_feature_action(game)[1]!='update']
         self.launch_action(operation,not bool(self.selected_game_ids),targets=targets,**kwargs)
 
     def update_dlss_games(self,games):
@@ -11482,8 +11494,9 @@ class Window(Adw.ApplicationWindow):
             self.operation_cancel=None
             flow=getattr(self,'operation_flow',None)
             if flow is not None and not flow.closed and flow.stage=='progress':
-                self.show_operation_status('Cancelled · changes undone',True,'process-stop-symbolic')
-                self.finish_progress(False,'Changes to the games in progress were undone.',title='Cancelled')
+                message = error[0] if error and error[0].startswith('Update cancelled.') else 'Changes to the games in progress were undone.'
+                self.show_operation_status('Cancelled',True,'process-stop-symbolic')
+                self.finish_progress(False,message,title='Cancelled')
                 return
             if self.dialog:self.dialog.force_close()
             self.dialog=None;self.job_label=None;self.show_operation_status('Cancelled · changes undone',True,'process-stop-symbolic')
@@ -13583,19 +13596,21 @@ class Window(Adw.ApplicationWindow):
         install_label,feature_op=self.game_feature_action(game)
         hero_install=icon_button(install_label,'folder-download-symbolic',lambda *_:self.launch_action(feature_op,targets=[game]),'hero-install')
         # Same rule as the Installation rows below (demo reviews never write).
-        hero_install.set_sensitive(not game.get('blocked') and not self.busy and bool(self.hardware_info and self.hardware_info['ready']))
+        hero_install.set_sensitive((feature_op=='update' or not game.get('blocked')) and not self.busy and bool(self.hardware_info and self.hardware_info['ready']))
         hero_restore=icon_button('Restore Original Files','edit-undo-symbolic',lambda *_:self.launch_action('uninstall',targets=[game]),'hero-restore')
         hero_restore.set_sensitive(bool(game.get('installed')) and not self.busy)
         hero_report=icon_button('Bug Report','dialog-warning-symbolic',lambda *_:self.prepare_beta_reports([game]),'hero-report')
         hero_report.set_tooltip_text('Report a problem with this game');hero_report.set_sensitive(not self.options.demo)
         more=Gio.Menu()
         more.append('Update DLSS','win.detail-update-dlss')
+        if feature_op=='update':more.append(action_labels.REPAIR,'win.detail-repair-features')
         if self.adoptable(game):more.append('Adopt with rtxForge','win.detail-adopt')
         more.append('Open Folder','win.detail-open-folder')
         danger=Gio.Menu();danger.append('Remove from library','win.detail-remove');more.append_section(None,danger)
         hero_more=Gtk.MenuButton(icon_name='view-more-horizontal-symbolic',menu_model=more,valign=Gtk.Align.CENTER)
         hero_more.set_tooltip_text('More options');hero_more.update_property([Gtk.AccessibleProperty.LABEL],['More options'])
         for name,callback in (('detail-update-dlss',lambda *_:self.update_dlss_games([game])),
+                              ('detail-repair-features',lambda *_:self.launch_action('repair',targets=[game])),
                               ('detail-adopt',lambda *_:self.choose_adoption([game])),
                               ('detail-open-folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None)),
                               ('detail-remove',lambda *_:self.confirm_remove_game(game))):
@@ -13895,7 +13910,7 @@ class Window(Adw.ApplicationWindow):
             (
                 install_label,
                 'Review updates for the installed package and keep your presets.'
-                if feature_op=='repair' else 'Review the selected feature package.',
+                if feature_op=='update' else 'Review the selected feature package.',
                 feature_op,
             ),
             (
@@ -13908,7 +13923,7 @@ class Window(Adw.ApplicationWindow):
             maintenance.add(maintenance_row)
 
             action=button(
-                ('Update' if op=='repair' else 'Adapt' if install_label==action_labels.ADAPT else 'Install')
+                ('Update' if op=='update' else 'Adapt' if install_label==action_labels.ADAPT else 'Install')
                 if op!='uninstall' else 'Restore',
                 lambda _,o=op:self.launch_action(
                     o,
@@ -13928,7 +13943,7 @@ class Window(Adw.ApplicationWindow):
                     'uninstall',
                 )
                 else (
-                    not game.get('blocked')
+                    (op=='update' or not game.get('blocked'))
                     and bool(
                         self.hardware_info
                         and self.hardware_info['ready']
@@ -15109,7 +15124,7 @@ class Window(Adw.ApplicationWindow):
                 ]
             )
         )
-        rows=[g for g in rows if not g.get('blocked')]
+        if operation!='update':rows=[g for g in rows if not g.get('blocked')]
         if entire and operation in ('install','repair'):rows=[g for g in rows if g.get('test_record',{}).get('status')!='Bench']
         if operation=='reset':rows=[g for g in rows if g.get('installed')]
         if not rows:self.toast('No eligible games selected.');return
@@ -15122,8 +15137,7 @@ class Window(Adw.ApplicationWindow):
             flow.show_presets(tuning,lambda:self.launch_action(operation,entire,targets,self.tuning_values(widgets),True,_flow=flow))
             return
         applying_strength=operation=='reset' and entire and self.defaults_changed()
-        title={'install':'Install Features','repair':'Repair Feature Files','uninstall':'Restore Original Files','reset':'Reset Presets'}[operation]
-        if operation=='repair' and targets and len(rows)==1:title='Update Features'
+        title={'install':'Install Features','update':'Update Features','repair':'Repair Feature Files','uninstall':'Restore Original Files','reset':'Reset Presets'}[operation]
         if applying_strength:title='Apply Settings to Library'
         elif operation=='reset' and visual_settings is not None:title='Apply Presets'
         self.operation_previous=targets[0] if targets and len(targets)==1 else None
@@ -15768,6 +15782,8 @@ class Window(Adw.ApplicationWindow):
         """The "Install · DLSS-Unlocked · MFG 4×" line under the review summary."""
         operation=review.get('operation','install')
         details=[OPERATION_WORDS.get(operation,OPERATION_WORDS['reset'])[1]]
+        if operation=='update':
+            details.append('Keep each game’s package, feature mode, tuning, and original backups.')
         if operation in ('install','repair','reset'):
             provider=self.settings.get('runtime_provider',library_media.default_provider())
             details.append(action_labels.provider_name(provider))
@@ -15877,7 +15893,7 @@ class Window(Adw.ApplicationWindow):
         if review.get('kind') in ('rollback','restore-cleanup','operation','cleanup'):flow.show_working(flow.progress_verb+'…')
         else:flow.show_progress((len(review.get('rows',[])) or len(self.operation_games))+sum(len(o.get('games',[])) for o in review.get('_chosen_offers') or []))
         flow.rescan=True
-        if review.get('kind')=='engine':
+        if review.get('kind') in ('engine','feature-update'):
             self.operation_executing=True;review['cancel_event']=self.operation_cancel
             # Close the cancellation window on the GTK thread before the engine's
             # final cancellation check. A late click must never promise an undo

@@ -121,6 +121,40 @@ assert not (fresh/'INSTALL.bat').exists() and (fresh/'nvngx.dll_dlssnr.dll').is_
 installed_row=host.scan({'folders':[str(fresh)],'runtime_provider':'skynizz','feature_mode':'nr-mfg'})[0]
 assert installed_row['feature_mode']=='nr-only' and installed_row['blocked']=='' and installed_row['skynizz_blocked']=='',installed_row
 checks.append('active install, read-only review, SR-only eligibility, source/model provenance and honest route')
+# One real update review keeps the installed profile even when Library defaults differ.
+updated=game('Update fixture');original=files(updated)
+run(prepare(updated))
+update_ini=updated/'OptiScaler.ini'
+update_ini.write_text(update_ini.read_text().replace('CacheInterval=1','CacheInterval=7'))
+saved_bytes=update_ini.read_bytes()
+current_files=files(updated)
+untouched=game('No install fixture')
+next_archive=root/'release-next.zip'
+next_tag='v1.3.1'
+next_release=fixtures.fixture(next_archive,{'DLSS5-Optimised/OptiScaler.dll':fixtures.pe()+b'next build'})
+next_name='OptiScaler-DLSS5-1.3.1-win-x64.zip'
+next_release.update(tag=next_tag,archive=next_name,url=f'https://github.com/{provider.REPO}/releases/download/{next_tag}/{next_name}')
+original_pins=engine_bridge.providers
+def pinned_download(url,*args,**kwargs):
+    return next_archive if url==next_release['url'] else download(url,*args,**kwargs)
+with patch.object(engine_bridge,'providers',lambda: original_pins() | {'skynizz':next_release}), patch.object(packages,'download',pinned_download):
+    params={'rows':[scan(updated),scan(untouched)],'mode':'mfg-only','operation':'update',
+            'settings':settings | {'runtime_provider':'y4my','nr_on_launch':False,'nr_runtime':'ignore-library-model.dll'}}
+    checked=host.review_prepare(params)
+    assert len(checked['steps'])==1 and checked['blocked'][0]['reason']=='No features installed',checked
+    step=checked['steps'][0]['review']
+    assert step['rows'][0]['summary']=='Skynizz v1.3.0 → v1.3.1',step
+    assert files(updated)==current_files
+    host.execute({'token':step['token']})
+    after=baseline(updated)
+    assert after['archive']['release']['tag']==next_tag and after['feature_mode']=='nr-only',after
+    assert after['nr_runtime']['sha256']==record['nr_runtime']['sha256'] and after['nr_on_launch'] is True,after
+    assert update_ini.read_bytes()==saved_bytes
+    checked=host.review_prepare(params)
+    assert not checked['steps'] and any(row['reason']=='Already up to date' for row in checked['blocked']),checked
+run(prepare(updated,'uninstall'))
+assert files(updated)==original,files(updated)
+checks.append('batch package update keeps mode, exact tuning and original backups and skips current or uninstalled games')
 # Exercise the existing y4my MFG policy through the same lifecycle, using only
 # synthetic payload bytes. This establishes config/ownership regression, not GPU MFG.
 original_payload=engine_bridge.payload
@@ -641,7 +675,7 @@ class WindowsSkynizzTest(unittest.TestCase):
                                     env=env, capture_output=True, text=True, timeout=180)
             self.assertEqual(result.returncode, 0, result.stderr[-12000:] + result.stdout[-3000:])
             receipt = json.loads(result.stdout.strip().splitlines()[-1])
-            self.assertEqual(receipt['count'], 33)
+            self.assertEqual(receipt['count'], 34)
             print('PASS: ' + '; '.join(receipt['checks']))
 
 

@@ -148,7 +148,7 @@ public sealed partial class GamePage : Page
             ToolTipService.SetToolTip(OsBadge, CrossOs.Tooltip(oses));
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(OsBadge, CrossOs.Tooltip(oses));
         }
-        InstallButton.IsEnabled = (!game.Blocked || game.AdoptionAvailable) && !shell.Busy;
+        InstallButton.IsEnabled = (!game.Blocked || game.AdoptionAvailable || game.CanUpdateFeatures) && !shell.Busy;
         RestoreButton.IsEnabled = game.Installed && !game.AdoptionAvailable && !shell.Busy;
         BugReportButton.IsEnabled = !shell.Service.IsPreview;
         AdoptionItem.Visibility = game.AdoptionAvailable ? Visibility.Visible : Visibility.Collapsed;
@@ -178,7 +178,7 @@ public sealed partial class GamePage : Page
             SelectSection((string)item.Tag);
     }
 
-    void OnInstall(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", [game]);
+    void OnInstall(object sender, RoutedEventArgs e) => _ = shell.LaunchAction(game.FeatureOperation, [game]);
     void OnRestore(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("uninstall", [game]);
     void OnBugReport(object sender, RoutedEventArgs e) => _ = shell.PrepareBetaReportsAsync([game]);
     void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", [game]);

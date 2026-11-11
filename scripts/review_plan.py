@@ -144,6 +144,14 @@ def plan(prepare, discard, rows, operation, mode, settings, prefetch_files=None)
     'rows', 'blocked', 'warnings', 'trust'}; discard(tokens) releases ones not
     kept. Returns {'steps': [...], 'offers': [...], 'blocked': [...], 'warnings': [...]},
     each step and offer carrying its route, provider and host review."""
+    if operation == 'update':
+        result = prepare(rows, mode, operation, settings)
+        steps = []
+        if result.get('rows'):
+            steps.append(dict(route='update', operation=operation, provider=None, mode=mode, review=result))
+        else:
+            discard([result['token']])
+        return dict(steps=steps, offers=[], blocked=result.get('blocked', []), warnings=result.get('warnings', []))
     groups = batches(rows, operation, mode, settings)
     downloads = prefetch(groups, operation, mode, settings)
     if downloads and prefetch_files:
@@ -265,7 +273,9 @@ class ReviewedRoutes:
         if default_review:
             rows_out.append({'name': 'Library defaults', 'detail': 'Keep these tuning values for new installs: ' +
                              ', '.join(key.replace('_', ' ') + ': ' + str(value) for key, value in defaults.items())})
-        return {'token': token, 'title': 'Review selected changes', 'action': 'Apply reviewed changes',
+        return {'token': token, 'title': 'Review Feature Updates' if operation == 'update' else 'Review selected changes',
+                'action': 'Update Features' if operation == 'update' else 'Apply reviewed changes',
+                'summary': 'Keep each game’s package, feature mode, tuning, and original backups.' if operation == 'update' else None,
                 'rows': rows_out, 'blocked': result['blocked'], 'warnings': result['warnings'],
                 'trust': '\n'.join(trusts) or None,
                 'supported': [{'token': offer['review']['token'], 'nr': offer['nr'], 'mfg': offer['mfg'],
@@ -307,7 +317,11 @@ class ReviewedRoutes:
                 completed.append(self._execute({'token': review['token'], 'offline_acknowledged': params.get('offline_acknowledged') is True}))
             if record.get('defaults') and not record['cancel'].is_set():
                 completed.append(self._defaults[1]({'token': record['defaults']['token']}))
-            return {'completed_batches': len(completed), 'cancelled': record['cancel'].is_set(), 'reports': completed}
+            result = {'completed_batches': len(completed), 'cancelled': record['cancel'].is_set(), 'reports': completed}
+            if record['operation'] == 'update' and completed and not result['cancelled']:
+                games = sum(len(review['rows']) for review in selected)
+                result['message'] = f"{games} {'game' if games == 1 else 'games'} updated."
+            return result
         except Exception as error:
             raise ValueError(f'{error} {len(completed)} review batch(es) completed; their recovery records are kept.') from error
         finally:

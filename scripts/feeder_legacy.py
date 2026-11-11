@@ -365,7 +365,7 @@ def prepare(e, row, mode, operation, settings, recipe):
     f.eligible(e, row, existing=existing)
     if existing:
         inspect(e, row, current, cached=False)
-    t.need(operation in ('install', 'repair', 'uninstall', 'apply'), 'Unsupported legacy Feeder operation')
+    t.need(operation in ('install', 'update', 'repair', 'uninstall', 'apply'), 'Unsupported legacy Feeder operation')
     t.need(existing or operation == 'install', 'Install this Feeder recipe first')
     allowed = names(recipe)
     writes, sources = {}, {}
@@ -374,6 +374,14 @@ def prepare(e, row, mode, operation, settings, recipe):
         writes = dict(current['originals'])
         sources = {name: item for name, item in writes.items() if item}
         summary = 'Restore every original DX9/DX10 Feeder file, including the translation layer and helper.'
+    elif operation == 'update':
+        base, legacy = f.lock(), lock()
+        assets = {dest: (base, name[5:]) if name.startswith('base:') else (legacy, name)
+                  for dest, name in layout(recipe).items()}
+        changes, summary = f.package_updates(directory, assets)
+        payload = inputs(e, settings, recipe)
+        writes = sources = {name: payload[name] for name in changes}
+        baseline['updated_utc'] = t.now()
     elif operation == 'apply':
         name = ('host64/' if helper(recipe) else '') + 'ReShade.ini'
         text = (directory / name).read_text(encoding='utf-8-sig')

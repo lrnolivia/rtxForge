@@ -117,11 +117,11 @@ def _import_shared_recovery(target, key, config=None):
             raise
 
 
-def write_record(target):
+def write_record(target, mode='nr-mfg'):
     import cross_os
     previous = cross_os.read(target)
     record = cross_os.write(target, cross_os.THIS_OS, RECORD_NAMES, {'id': ID, 'name': TITLE, 'version': ''},
-                            'nr-mfg', PROXY, PROTON_OVERRIDES)
+                            mode, PROXY, PROTON_OVERRIDES)
     oses = {cross_os.THIS_OS}
     if previous and previous.get('provider', {}).get('id') == ID and previous.get('proxy') == PROXY:
         oses.add(previous['os'])
@@ -324,7 +324,7 @@ def prefix_for(row):
 
 
 def prepare(config, rows, mode, operation, settings, e):
-    t.need(operation in ('install', 'repair', 'uninstall'), 'Use the Vulkan in-game overlay for presets; install, repair and restore are reviewed here.')
+    t.need(operation in ('install', 'update', 'repair', 'uninstall'), 'Use the Vulkan in-game overlay for presets; install, repair and restore are reviewed here.')
     if operation != 'uninstall':
         t.need(mode in ('nr-mfg', 'mfg-only'), 'This Vulkan package includes frame generation. Choose NR + MFG or MFG Only.')
     folder, manifest, archive, data = local_model(settings.get('nr_runtime') if operation != 'uninstall' else None, e, e.STATE_ROOT)
@@ -341,7 +341,8 @@ def prepare(config, rows, mode, operation, settings, e):
             with provider.profile(key, manifest):
                 plan = (provider.plan_restore(target, state_root(config)) if operation == 'uninstall'
                         else provider.plan_install(target, archive, folder / ('loader-'+key) / 'bink2w64.dll', state_root(config), experimental=True,
-                                                   nr_on_launch=mode != 'mfg-only' and bool(settings.get('nr_on_launch', False))))
+                                                   nr_on_launch=mode != 'mfg-only' and bool(settings.get('nr_on_launch', False)),
+                                                   package_update=operation == 'update'))
             import nr_install
             restore = nr_install.prepare_package_restore(config, row, (target / t.relative(name) for name in plan['checks'])) if operation == 'uninstall' else None
             values = overlay_settings.effective(settings, row['game'])
@@ -357,10 +358,13 @@ def prepare(config, rows, mode, operation, settings, e):
                 detail += '\n' + cleanup
             ready.append({'name': row['name'], 'game': row['game'], 'summary': 'Restore Vulkan original files' if operation == 'uninstall' else TITLE,
                           'detail': detail + '\n' + overlay_settings.describe(values)})
+            if operation == 'update':
+                ready[-1].update(summary=f"{TITLE} · {plan['update_version']}",
+                                 detail='Keep the installed NR model, settings and original backups.')
             ui.progress('Game checked', phase='review-check', game=row['name'], checked=index+1, total=len(rows))
         except (t.Refusal, e.Stop, OSError, ValueError, KeyError) as error:
             blocked.append({'name': row['name'], 'game': row.get('game'), 'reason': str(error)})
-    return {'kind': ID, 'operation': operation, 'title': TITLE, 'engine': e, 'plans': plans, 'rows': ready, 'blocked': blocked}
+    return {'kind': ID, 'operation': operation, 'mode': mode, 'title': TITLE, 'engine': e, 'plans': plans, 'rows': ready, 'blocked': blocked}
 
 
 @contextlib.contextmanager
@@ -420,6 +424,8 @@ def execute(review):
     completed = []
     with e.mutation_lock():
         for item in review['plans']:
+            if review.get('cancel_event') and review['cancel_event'].is_set():
+                break
             ui.progress('Updating Vulkan package', game=item['row']['name'], current=len(completed)+1, total=len(review['plans']))
             with split_restore_checkpoint(e, item):
                 with provider.profile(item['profile'], item['manifest']), provider.process_guard(lambda: e._running_processes_under_root(Path(item['row']['game']))):
@@ -430,8 +436,8 @@ def execute(review):
                     target = Path(item['plan']['target']); marker = cross_os.read(target)
                     if marker and marker.get('provider', {}).get('id') == ID:
                         cross_os.remove(target, marker['os'])
-                else:write_record(Path(item['plan']['target']))
-                if item['prefix']:
+                else:write_record(Path(item['plan']['target']), review['mode'] if review['operation'] == 'update' else 'nr-mfg')
+                if item['prefix'] and review['operation'] != 'update':
                     import proton_prefix
                     state = Path(item['plan']['state']) / 'proton-prefix'
                     if review['operation'] == 'uninstall': proton_prefix.restore(state)

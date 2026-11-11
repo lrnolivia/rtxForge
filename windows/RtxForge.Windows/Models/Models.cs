@@ -105,6 +105,8 @@ public sealed class Game
     public bool DynamicMfgAvailable => RuntimeProvider == "skynizz" && EngineRow?["dynamic_mfg_available"] is JsonValue flag
         && flag.TryGetValue<bool>(out var available) && available;
     public string DynamicMfgDetail => EngineRow?["dynamic_mfg_detail"] is JsonValue detail && detail.TryGetValue<string>(out var text) ? text : "";
+    public bool CanUpdateFeatures => Installed && !AdoptionAvailable && !InstalledOnLinux;
+    public string FeatureOperation => CanUpdateFeatures ? "update" : "install";
     public string InstallLabel => AdoptionAvailable ? "Adopt with rtxForge" : InstalledOnLinux ? "Set Up for Windows"
         : Installed ? "Update Features" : UsesFeeder ? "Install Feeder NR" : "Install Features";
     /// <summary>The engine's scan row, passed back unchanged for review and execution.</summary>

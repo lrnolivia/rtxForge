@@ -1118,6 +1118,28 @@ def _execute_linux(review):
     return str(path)
 
 
+def package_updates(directory, assets):
+    changes, versions = [], []
+    for dest, (spec, name) in assets.items():
+        pinned = spec['assets'][name]['sha256']
+        actual = digest(directory / dest)
+        if actual == pinned:
+            continue
+        previous = next((item for item in spec.get('previous_assets', {}).get(name, [])
+                         if item['sha256'] == actual), None)
+        t.need(previous, 'The installed Feeder component could not be verified: ' + dest)
+        changes.append(dest)
+        if name == 'renodx-dlss5.addon64':
+            label, version = 'RenoDX', spec['sources'][1]['version']
+        else:
+            label, version = 'Feeder NR', spec['sources'][0]['version']
+        summary = f"{label} {previous['version']} → {version}"
+        if summary not in versions:
+            versions.append(summary)
+    t.need(changes, 'Already up to date')
+    return changes, ' · '.join(versions)
+
+
 def prepare(config, rows, mode, operation, settings, e):
     with review_session(e):
         import feeder_legacy
@@ -1153,7 +1175,7 @@ def prepare(config, rows, mode, operation, settings, e):
 
 def _prepare(config, rows, mode, operation, settings, e):
     t.need(mode == 'nr-only' or operation == 'uninstall', 'Feeder provides NR Only. Frame generation is not available for this route')
-    t.need(operation in ('install', 'repair', 'uninstall', 'reset', 'apply'), 'Unsupported Feeder operation')
+    t.need(operation in ('install', 'update', 'repair', 'uninstall', 'reset', 'apply'), 'Unsupported Feeder operation')
     ready, blocked, plans, seen = [], [], [], set()
     base_settings = dict(settings)
     for index, row in enumerate(rows):
@@ -1189,7 +1211,7 @@ def _prepare(config, rows, mode, operation, settings, e):
             names = list(spec['assets']) + [*CONFIGS, MODEL]
             inputs, writes = {}, {}
             baseline = copy.deepcopy(current)
-            if operation in ('uninstall', 'reset', 'repair', 'apply'):
+            if operation in ('uninstall', 'reset', 'repair', 'update', 'apply'):
                 t.need(current is not None, 'Recognize this Feeder installation with its original backups first')
             if current or existing:
                 found = inspect(e, row, cached=False, tolerate=mend)
@@ -1199,6 +1221,13 @@ def _prepare(config, rows, mode, operation, settings, e):
                         inputs['original:' + name] = original
                     writes[name] = original
                 summary = 'Restore the original files recorded for this Feeder setup.'
+            elif operation == 'update':
+                t.need(existing and current['status'] == 'active', 'Repair Feeder NR before updating')
+                changes, summary = package_updates(directory, {name: (spec, name) for name in spec['assets']})
+                files = stack_files(e, settings)
+                for name in changes:
+                    inputs[name] = writes[name] = files[name]
+                baseline['updated_utc'] = t.now()
             elif operation == 'reset':
                 t.need(False, 'Edit Feeder NR settings in its ReShade panel. Your saved tuning has been kept')
             elif operation == 'apply':

@@ -125,6 +125,39 @@ class FeederTest(unittest.TestCase):
         self.apply(self.prepare(row, 'uninstall'))
         self.assertEqual(self.files(row), {'game.exe': before['game.exe'], 'save.dat': before['save.dat']})
 
+    def test_package_update_keeps_model_tuning_and_originals(self):
+        row = self.game()
+        directory = Path(row['game'])
+        before = self.files(row)
+        current_version = self.spec['version']
+        self.spec['version'] = 'Feeder 1.19.0'
+        self.apply(self.prepare(row))
+        self.spec['version'] = current_version
+        ini = directory / 'ReShade.ini'
+        ini.write_bytes(ini.read_bytes().replace(b'NRPasses=1', b'NRPasses=3'))
+        (directory / 'dlss5-feed.cfg').write_bytes(b'my feeder tuning')
+        installed = self.files(row)
+        addon = 'dlss5-feed.addon64'
+        self.spec['previous_assets'][addon] = [self.spec['assets'][addon] | {'version': '1.19.0'}]
+        next_build = self.assets[addon] + b'new release'
+        self.spec['assets'][addon] = {'sha256': t.sha(next_build), 'size': len(next_build)}
+        (self.source / addon).write_bytes(next_build)
+        review = self.prepare(row, 'update', nr_runtime=str(self.source / feeder.MODEL))
+        self.assertEqual(self.files(row), installed)
+        self.assertTrue(review['plans'], review['blocked'])
+        self.assertEqual(set(review['plans'][0]['writes']), {addon})
+        self.assertIn('1.19.0 →', review['rows'][0]['summary'])
+        self.apply(review)
+        after = self.files(row)
+        self.assertEqual({name for name in installed if installed[name] != after[name]},
+                         {addon, '.rtxforge-install.json'})
+        skipped = self.prepare(row, 'update')
+        self.assertFalse(skipped['rows'])
+        self.assertEqual(skipped['blocked'][0]['reason'], 'Already up to date')
+        self.apply(self.prepare(row, 'uninstall'))
+        self.assertEqual((directory / 'dlss5-feed.cfg').read_bytes(), b'my feeder tuning')
+        self.assertEqual({name: digest for name, digest in self.files(row).items() if name != 'dlss5-feed.cfg'}, before)
+
     def test_generated_cfg_not_required_to_recognize_installed(self):
         row = self.game(installed=True)
         self.assertFalse((Path(row['game']) / 'dlss5-feed.cfg').exists())

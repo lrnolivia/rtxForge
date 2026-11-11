@@ -122,6 +122,29 @@ class AppRoutes(unittest.TestCase):
         app.execute(self.prepare('repair'))
         self.assertEqual(model,(self.fixture.game/'NativeMods/nvngx_dlssnr.dll').read_bytes())
 
+    def test_package_update_preserves_model_tuning_and_originals(self):
+        f = self.fixture
+        before = f.files()
+        app.execute(self.prepare())
+        config = f.game / 'NativeMods/fgvk.ini'
+        config.write_bytes(b'[fgvk]\nDLSSGFrames=3\n')
+        model = 'NativeMods/nvngx_dlssnr.dll'
+        model_before = (f.game / model).read_bytes()
+        f.members[model] += b'a different bundled model'
+        f.members['NativeMods/fgvk.dll'] = pe(b'new Vulkan build')
+        f.repack()
+        review = self.prepare('update')
+        self.assertFalse(review['blocked'])
+        self.assertIn(' → ', review['rows'][0]['summary'])
+        app.execute(review)
+        self.assertEqual((f.game / model).read_bytes(), model_before)
+        self.assertEqual(config.read_bytes(), b'[fgvk]\nDLSSGFrames=3\n')
+        skipped = self.prepare('update')
+        self.assertFalse(skipped['rows'])
+        self.assertEqual(skipped['blocked'][0]['reason'], 'Already up to date')
+        app.execute(self.prepare('uninstall'))
+        self.assertEqual(f.files(), before)
+
     def test_bulk_overlay_update_preserves_model_tuning_and_originals(self):
         sys.path.append(str(Path(__file__).resolve().parents[1]/'windows/engine-host'))
         import overlay_package_routes as routes

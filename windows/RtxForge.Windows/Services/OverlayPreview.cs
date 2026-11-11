@@ -14,6 +14,7 @@ namespace RtxForge.Windows.Services;
 static class OverlayPreview
 {
     public sealed record Screenshot(string Path, string Credit, float Crop=0);
+    sealed record Scene(Game Game, Screenshot Photo);
     static readonly HttpClient Http = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(12) };
     static readonly string Cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "overlay-preview");
     static string Key(Game game) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(game.Id))).ToLowerInvariant()[..24];
@@ -143,11 +144,12 @@ static class OverlayPreview
         if (await ScenePixelsAsync(shot.Path) == 0)
             throw new IOException("Choose a game with a 1440p or 4K screenshot to open the preview.");
         var color = initialAccent ?? (await OverlayAccent.ForGameAsync(game)).Color;
-        var choices=new[]{game}.Concat((library??[]).Where(item=>game.AppId is null || item.AppId!=game.AppId))
-            .DistinctBy(g=>g.Id).Take(1000).ToArray();
+        var choices=(library??[]).Where(item=>item.Id!=game.Id && (game.AppId is null || item.AppId!=game.AppId)
+            && !string.IsNullOrWhiteSpace(item.Name) && Encoding.UTF8.GetByteCount(item.Name)<=4096)
+            .DistinctBy(item=>item.Id).Take(999).ToArray();
         Directory.CreateDirectory(Cache);
         var catalog=Path.Combine(Cache,"session-"+Guid.NewGuid().ToString("N")+".json");
-        await File.WriteAllTextAsync(catalog,JsonSerializer.Serialize(choices.Select(g=>g.Name)));
+        await File.WriteAllTextAsync(catalog,JsonSerializer.Serialize(new[]{game.Name}));
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(executable)!,
             RedirectStandardInput=true,RedirectStandardOutput=true,StandardInputEncoding=new UTF8Encoding(false),StandardOutputEncoding=new UTF8Encoding(false) };
         foreach (var arg in new[] { "--desktop-preview", "--assets", assets, "--font", Path.Combine(assets, "RobotoVariable.ttf"), "--background", shot.Path, "--game-title", game.Name,
@@ -157,43 +159,88 @@ static class OverlayPreview
         if(shot.Crop>0){start.ArgumentList.Add("--crop-left");start.ArgumentList.Add(shot.Crop.ToString(System.Globalization.CultureInfo.InvariantCulture));}
         try {
             var process=Process.Start(start) ?? throw new IOException("The overlay preview could not start.");
-            _=ServeGamesAsync(process,choices,game,shot,catalog);return process;
+            _=ServeGamesAsync(process,choices,new(game,shot),catalog);return process;
         }catch{File.Delete(catalog);throw;}
     }
     // Only this isolated preview receives game choices. The injected overlay
     // continues to target its verified game session, never a picker selection.
-    static async Task ServeGamesAsync(Process process, Game[] games, Game initial, Screenshot initialShot, string catalog)
+    static async Task ServeGamesAsync(Process process, Game[] candidates, Scene initial, string catalog)
     {
+        var games=new List<Scene>{initial};
         CancellationTokenSource? pending=null;Task current=Task.CompletedTask;var tasks=new List<Task>();
         using var writes=new SemaphoreSlim(1,1);
-        async Task ChangeAsync(int index,int request,CancellationTokenSource cancel)
+        using var lifetime=new CancellationTokenSource();
+        async Task WriteAsync(object value,CancellationToken token)
+        {
+            await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(value).AsMemory(),token);
+            await process.StandardInput.FlushAsync(token);
+        }
+
+        async Task DiscoverAsync()
+        {
+            var online=ForgeSettings.Load().OnlineArt;
+            var options=new ParallelOptions { MaxDegreeOfParallelism=3, CancellationToken=lifetime.Token };
+            await Parallel.ForEachAsync(candidates,options,async (game,token)=>
+            {
+                Screenshot? shot;
+                using var lookup=CancellationTokenSource.CreateLinkedTokenSource(token);
+                lookup.CancelAfter(TimeSpan.FromSeconds(30));
+                try { shot=(await ScreenshotsAsync(game,online,lookup.Token)).FirstOrDefault(); }
+                catch(OperationCanceledException) when(!token.IsCancellationRequested) { return; }
+                catch(Exception error) when(error is IOException or HttpRequestException or JsonException or UnauthorizedAccessException) { return; }
+                if(shot is null)return;
+
+                await writes.WaitAsync(token);
+                try
+                {
+                    int index;
+                    lock(games) { index=games.Count; games.Add(new(game,shot)); }
+                    await WriteAsync(new{available=game.Name,index},token);
+                }
+                finally { writes.Release(); }
+            });
+        }
+
+        async Task ChangeAsync(Scene scene,int index,int request,CancellationTokenSource cancel)
         {
             bool Latest()=>ReferenceEquals(pending,cancel)&&!cancel.IsCancellationRequested;
-            async Task SendAsync(object value){await writes.WaitAsync(cancel.Token);try{if(Latest()){await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(value));await process.StandardInput.FlushAsync();}}finally{writes.Release();}}
+            async Task SendAsync(object value){await writes.WaitAsync(cancel.Token);try{if(Latest())await WriteAsync(value,cancel.Token);}finally{writes.Release();}}
             try {
-                var game=games[index];var palette=await OverlayAccent.ForGameAsync(game);var c=palette.Color;
+                var (game,shot)=scene;
+                var palette=await OverlayAccent.ForGameAsync(game);var c=palette.Color;
                 var accent=$"#{c.R:X2}{c.G:X2}{c.B:X2}";
-                var shot=game.Id==initial.Id?initialShot:(await ScreenshotsAsync(game,ForgeSettings.Load().OnlineArt,cancel.Token)).FirstOrDefault();
-                if(shot is null){await SendAsync(new{request,index,error="No 1440p or 4K screenshot is available for this game."});return;}
+                if(!File.Exists(shot.Path)){await SendAsync(new{request,index,error="This preview screenshot is no longer available."});return;}
                 await SendAsync(new{request,index,accent,title=game.Name,path=shot.Path,crop=shot.Crop,poster=Poster(game)??""});
             }catch(OperationCanceledException){}
             catch(Exception error)when(error is IOException or HttpRequestException or JsonException or UnauthorizedAccessException or InvalidOperationException or ObjectDisposedException){
                 try{await SendAsync(new{request,index,error="Could not load this game. Try another."});}catch(Exception sendError)when(sendError is IOException or InvalidOperationException or ObjectDisposedException or OperationCanceledException){}
             }
         }
+        var discovery=DiscoverAsync();
         try {
             while(await process.StandardOutput.ReadLineAsync() is { } line){
                 if(line.Length>1024||!line.StartsWith("{\"previewGame\":"))continue;
                 using var json=JsonDocument.Parse(line);var root=json.RootElement;
-                if(!root.TryGetProperty("previewGame",out var selected)||!selected.TryGetInt32(out var index)||index<0||index>=games.Length
+                if(!root.TryGetProperty("previewGame",out var selected)||!selected.TryGetInt32(out var index)||index<0
                     ||!root.TryGetProperty("request",out var sequence)||!sequence.TryGetInt32(out var request)||request<1)continue;
+                Scene scene;
+                lock(games) { if(index>=games.Count)continue; scene=games[index]; }
                 var previousCancel=pending;previousCancel?.Cancel();var cancel=new CancellationTokenSource();pending=cancel;
-                var previous=current;current=ChangeAsync(index,request,cancel);
+                var previous=current;current=ChangeAsync(scene,index,request,cancel);
                 tasks.RemoveAll(task=>task.IsCompleted);tasks.Add(current);
                 _=previous.ContinueWith(_=>previousCancel?.Dispose(),TaskScheduler.Default);
             }
         }catch(Exception error)when(error is IOException or JsonException or InvalidOperationException or ObjectDisposedException){}
-        finally{pending?.Cancel();await Task.WhenAll(tasks);pending?.Dispose();try{File.Delete(catalog);}catch(IOException){}}
+        finally
+        {
+            lifetime.Cancel();
+            pending?.Cancel();
+            try { await discovery; }
+            catch(Exception error) when(error is IOException or InvalidOperationException or OperationCanceledException) {}
+            await Task.WhenAll(tasks);
+            pending?.Dispose();
+            try { File.Delete(catalog); } catch(IOException) {}
+        }
     }
     public static void Close(Process? process)
     {

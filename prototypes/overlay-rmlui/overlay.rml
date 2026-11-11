@@ -51,7 +51,7 @@
           <button id="nav-settings"><img class="glyph" src="icons/sliders-light.png" /><span class="button-label">Settings</span></button>
         </div>
         <div id="settings-screen" class="settings-screen" style="display: none">
-          <div class="settings-title"><button id="settings-back" class="back-button" title="Back" aria-label="Back"><img class="glyph" src="icons/arrow-left-light.png" /></button><h2><img class="glyph" src="icons/sliders-light.png" /><span>SETTINGS</span></h2><button id="settings-modal-close" class="close modal-close" title="Close settings"><span class="stroke first"/><span class="stroke second"/></button></div>
+          <div class="settings-title"><button id="settings-back" class="back-button" title="Back" aria-label="Back"><img class="glyph" src="icons/arrow-left-light.png" /></button><h2><img class="glyph" src="icons/sliders-light.png" /><span>SETTINGS</span></h2><button id="settings-modal-close" class="close modal-close" title="Close settings" aria-label="Close settings"><span class="stroke first"/><span class="stroke second"/></button></div>
           <button id="open-appearance" class="settings-appearance"><img class="glyph" src="icons/palette-light.png" /><span>Appearance<span class="setting-description">Surface, text and scale</span></span><span class="chevron" /></button>
           <div id="settings-cards"><div class="settings-group"><h3>LAYOUT</h3>
             <div id="layout-switch" class="settings-layouts">
@@ -316,7 +316,7 @@
             </div>
             <button id="defaults" class="quiet"><img class="glyph" src="icons/arrow-counter-clockwise-light.png"/><span class="button-label">Reset</span></button>
           </div>
-          <button id="preview-original" class="quiet preview-original" title="Temporarily view the image without neural rendering. Release to return."><span id="preview-original-label" class="button-label">Hold to preview without NR</span></button>
+          <button id="preview-original" class="quiet preview-original" title="Temporarily view the image without neural rendering. Release to return."><span id="preview-original-label" class="button-label">Hold to compare</span></button>
         </div>
         <div id="resize-top" class="resize-edge resize-top"/>
         <div id="resize-right" class="resize-edge resize-right"/>

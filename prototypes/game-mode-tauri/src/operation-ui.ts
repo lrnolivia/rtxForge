@@ -55,7 +55,7 @@ const stepActions:Record<string,string> = {
 };
 export function flowSteps(kind:string,phase:'start'|'review'|'apply',chooseGames=false) {
  const steps = ['Review games',stepActions[kind] || 'Apply changes'];
- if(kind==='install')steps.unshift('Startup settings');
+ if(kind==='install')steps.unshift('Presets');
  if(chooseGames)steps.unshift('Choose games');
  const current=phase==='start'?0:phase==='review'?steps.length-2:steps.length-1;
  return `<ol class="flow-steps" aria-label="${kind==='install'?'Installation steps':'Operation steps'}">${steps.map((step,i)=>`<li ${i===current?'aria-current="step"':''}><span>${i+1}</span>${step}</li>`).join('')}</ol>`;

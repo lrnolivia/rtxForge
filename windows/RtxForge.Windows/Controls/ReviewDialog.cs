@@ -61,7 +61,7 @@ public sealed class ReviewDialog
         body.Children.Add(new ProgressBar { IsIndeterminate = true });
         var phase = Prefs.Label(text);
         body.Children.Add(phase);
-        dialog.Content = body;
+        dialog.Content = WithSteps(body, stage == Stage.Working);
         dialog.PrimaryButtonText = "";
         dialog.CloseButtonText = stage == Stage.Working ? "" : "Cancel";
         Phase = phase;
@@ -78,7 +78,7 @@ public sealed class ReviewDialog
         {
             body.Children.Add(new TextBlock { Text = emptyMessage ?? (review.Summary.Length > 0 ? review.Summary : "Nothing to change."), FontSize = 18, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
             AddBlocked(body, review);
-            dialog.Content = body;
+            dialog.Content = WithSteps(body, applying: false);
             dialog.PrimaryButtonText = "";
             dialog.CloseButtonText = "Close";
             return;
@@ -97,7 +97,7 @@ public sealed class ReviewDialog
             body.Children.Add(trust);
         }
         else body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
-        dialog.Content = body;
+        dialog.Content = WithSteps(body, applying: false);
         dialog.PrimaryButtonText = review.Action;
         dialog.IsPrimaryButtonEnabled = review.Trust is null;
         dialog.CloseButtonText = "Cancel";
@@ -197,6 +197,7 @@ public sealed class ReviewDialog
 
     void ShowDone(bool success, string message)
     {
+        var applying = stage == Stage.Working;
         stage = Stage.Done;
         var line = new Grid { ColumnSpacing = 24, MinWidth = 440 };
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -211,9 +212,12 @@ public sealed class ReviewDialog
         text.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, Style = Prefs.GetStyle("ForgeDimTextStyle") });
         Grid.SetColumn(text, 1);
         line.Children.Add(text);
-        dialog.Content = line;
+        dialog.Content = WithSteps(line, applying);
         dialog.PrimaryButtonText = "";
         dialog.CloseButtonText = "Close";
         dialog.DefaultButton = ContentDialogButton.Close;
     }
+
+    StackPanel WithSteps(UIElement content, bool applying) =>
+        OperationDialog.WithReviewSteps(content, applying, review?.Action is { Length: > 0 } action ? action : "Apply changes");
 }

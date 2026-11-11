@@ -2526,6 +2526,18 @@ columnview.library-column-view listview row:nth-child(even):hover {
 .operation-step .job-title {
     font-size: 20px;
 }
+.operation-steps { font-size: 0.875em; }
+.operation-step-number {
+    min-width: 22px;
+    min-height: 22px;
+    border: 1px solid alpha(@window_fg_color, 0.35);
+    border-radius: 999px;
+}
+.operation-current { font-weight: 600; }
+.operation-current .operation-step-number {
+    box-shadow: inset 0 0 0 1px @accent_color;
+    border-color: @accent_color;
+}
 .operation-done .icon { color: #76b900; }
 .operation-failed .icon { color: @warning_color; }
 
@@ -3873,6 +3885,8 @@ class OperationFlow:
         self.review_title=title or words[0]
         self.verb,self.progress_verb=words[1],words[2]
         self.stage=None
+        self.step_phase='review'
+        self.includes_presets=False
         self.review=None
         self.on_confirm=None
         self.accent=None
@@ -3890,6 +3904,10 @@ class OperationFlow:
         self.primary.add_css_class('suggested-action')
         self.primary.connect('clicked',lambda *_:self._primary_clicked())
         toolbar.add_top_bar(self.header)
+        self.steps=Gtk.Box(spacing=12,halign=Gtk.Align.START,margin_start=24,margin_end=24)
+        self.steps.add_css_class('operation-steps')
+        self.steps.update_property([Gtk.AccessibleProperty.LABEL],['Operation steps'])
+        toolbar.add_top_bar(self.steps)
         # Actions sit along the bottom: Cancel, then the action, right aligned.
         actions=Gtk.Box(spacing=12,halign=Gtk.Align.END)
         actions.add_css_class('operation-actions')
@@ -3911,6 +3929,14 @@ class OperationFlow:
     # ---------- helpers ----------
 
     def _page(self,name,child,width=640):
+        if name=='presets':
+            self.includes_presets=True
+            self.step_phase='presets'
+        elif name in ('checking','review'):
+            self.step_phase='review'
+        elif name=='progress' or (name=='working' and self.stage=='review'):
+            self.step_phase='apply'
+        self._show_steps()
         self.content=child
         self.toolbar.set_content(child)
         self.dialog.set_content_width(width)
@@ -3918,10 +3944,30 @@ class OperationFlow:
         self._fit(child,width)
         GLib.idle_add(self._fit,child,width)
 
+    def _show_steps(self):
+        action={'update-dlss':'Update DLSS','uninstall':'Restore files'}.get(self.operation,self.verb)
+        review_games=self.games or self.operation in ('install','repair','uninstall','update-dlss','nr-addons','remove-nr-addons')
+        steps=[('review','Review games' if review_games else 'Review changes'),('apply',action)]
+        if self.includes_presets:steps.insert(0,('presets','Presets'))
+        while (item:=self.steps.get_first_child()) is not None:self.steps.remove(item)
+        for number,(phase,title) in enumerate(steps,1):
+            item=Gtk.Box(spacing=6)
+            numeral=Gtk.Label(label=str(number))
+            numeral.add_css_class('operation-step-number')
+            caption=label(title)
+            if phase==self.step_phase:
+                item.add_css_class('operation-current')
+                caption.update_property([Gtk.AccessibleProperty.DESCRIPTION],['Current step'])
+            else:
+                caption.add_css_class('dim-label')
+            item.append(numeral)
+            item.append(caption)
+            self.steps.append(item)
+
     def _fit(self,child,width):
         """Size the dialog to the current stage, within the window."""
         if self.closed or self.content is not child:return False
-        header=self.header.measure(Gtk.Orientation.VERTICAL,width)[1]+self.actions.measure(Gtk.Orientation.VERTICAL,width)[1]
+        header=sum(bar.measure(Gtk.Orientation.VERTICAL,width)[1] for bar in (self.header,self.steps,self.actions))
         content=child.measure(Gtk.Orientation.VERTICAL,width)[1]
         if isinstance(child,Gtk.ScrolledWindow) and child.get_child() is not None:
             content=child.get_child().measure(Gtk.Orientation.VERTICAL,width)[1]

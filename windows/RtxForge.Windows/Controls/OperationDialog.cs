@@ -1,5 +1,6 @@
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System.Text.Json.Nodes;
@@ -17,11 +18,13 @@ namespace RtxForge.Windows.Controls;
 public sealed class OperationDialog
 {
     enum Stage { Review, Progress, Done }
+    enum FlowStep { Presets, Review, Apply }
 
     readonly MainWindow shell;
     readonly string operation;
     readonly IReadOnlyList<Game> targets;
     readonly Tuning values;
+    readonly bool includesPresets;
     OperationReview? review;
     EngineReview? preparedReview;
     readonly ContentDialog dialog;
@@ -36,12 +39,13 @@ public sealed class OperationDialog
     readonly OperationStepPanel checkingPanel = new();
     readonly OperationStepPanel progressPanel = new();
 
-    OperationDialog(MainWindow shell, string operation, IReadOnlyList<Game> targets, Tuning values)
+    OperationDialog(MainWindow shell, string operation, IReadOnlyList<Game> targets, Tuning values, bool includesPresets = false)
     {
         this.shell = shell;
         this.operation = operation;
         this.values = values;
         this.targets = targets;
+        this.includesPresets = includesPresets;
         dialog = shell.NewDialog();
         dialog.Resources["ContentDialogMaxWidth"] = 760.0;
         dialog.PrimaryButtonClick += OnPrimary;
@@ -56,9 +60,9 @@ public sealed class OperationDialog
     }
 
     /// <summary>Review, then run with progress, then report. Returns when the dialog closes: true when the reviewed run completed.</summary>
-    public static async Task<bool> ShowAsync(MainWindow shell, string operation, IReadOnlyList<Game> targets, Tuning values)
+    public static async Task<bool> ShowAsync(MainWindow shell, string operation, IReadOnlyList<Game> targets, Tuning values, bool includesPresets)
     {
-        var flow = new OperationDialog(shell, operation, targets, values);
+        var flow = new OperationDialog(shell, operation, targets, values, includesPresets);
         flow.ShowChecking();
         // One game: its accent from the first screen, as in its Details.
         await AccentResources.ApplyAsync(flow.dialog.Resources, AccentResources.Single(targets));
@@ -121,8 +125,9 @@ public sealed class OperationDialog
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
         var separateStartup = shell.Settings.RuntimeProvider != "skynizz";
         if (separateStartup && mode != "mfg-only") body.Children.Add(startup);
-        dialog.Content = new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled,
-            MaxHeight = Math.Max(280, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Height ?? 900) - 280) };
+        dialog.Content = WithSteps(new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled,
+            MaxHeight = Math.Max(240, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Height ?? 900) - 312) },
+            FlowStep.Presets, "Install", includesPresets: true);
         dialog.PrimaryButtonText = "Review games";
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
@@ -140,7 +145,7 @@ public sealed class OperationDialog
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
         checkingPanel.Show("Preparing", targets.FirstOrDefault(), 0, listGames && targets.Count > 0 ? targets.Count : null, "Downloading packages/files…");
-        dialog.Content = checkingPanel.Root;
+        dialog.Content = WithSteps(checkingPanel.Root, FlowStep.Review);
     }
 
     /// <summary>The game being checked now; the one before it is done.</summary>
@@ -223,11 +228,11 @@ public sealed class OperationDialog
             _ = AddNrChoicesAsync(body, engine, review, UpdatePrimary);
         body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
 
-        dialog.Content = operation == "install" ? new ScrollViewer
+        dialog.Content = WithSteps(operation == "install" ? new ScrollViewer
         {
             Content = body, HorizontalScrollMode = ScrollMode.Disabled,
-            MaxHeight = Math.Max(240, dialog.XamlRoot.Size.Height - 184),
-        } : body;
+            MaxHeight = Math.Max(208, dialog.XamlRoot.Size.Height - 216),
+        } : body, FlowStep.Review);
         dialog.PrimaryButtonText = ActionVerb();
         offlineAcknowledged = false;
         if ((preparedReview?.Trust ?? review.RequiredTrust) is { Length: > 0 } trust)
@@ -334,6 +339,54 @@ public sealed class OperationDialog
         "adopt-clean" => "Adopt and clean install",
         _ => "Apply presets",
     };
+
+    UIElement WithSteps(UIElement content, FlowStep current) =>
+        WithSteps(content, current, operation switch
+        {
+            "update-dlss" => "Update DLSS",
+            "uninstall" => "Restore files",
+            _ => ActionVerb(),
+        }, includesPresets);
+
+    internal static StackPanel WithReviewSteps(UIElement content, bool applying, string action) =>
+        WithSteps(content, applying ? FlowStep.Apply : FlowStep.Review, action, includesPresets: false, reviewLabel: "Review changes");
+
+    static StackPanel WithSteps(UIElement content, FlowStep current, string action, bool includesPresets, string reviewLabel = "Review games")
+    {
+        var body = new StackPanel { Spacing = 12 };
+        var steps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        AutomationProperties.SetName(steps, "Operation steps");
+        var phases = new List<(FlowStep Step, string Label)>();
+        if (includesPresets) phases.Add((FlowStep.Presets, "Presets"));
+        phases.Add((FlowStep.Review, reviewLabel));
+        phases.Add((FlowStep.Apply, action));
+        for (var index = 0; index < phases.Count; index++)
+        {
+            var (step, label) = phases[index];
+            var active = step == current;
+            var number = (index + 1).ToString();
+            var item = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            var numeral = Prefs.Label(number, active ? "ForgeHeadingTextStyle" : "ForgeCaptionDimTextStyle");
+            numeral.FontSize = 12;
+            numeral.HorizontalAlignment = HorizontalAlignment.Center;
+            numeral.VerticalAlignment = VerticalAlignment.Center;
+            item.Children.Add(new Border
+            {
+                Child = numeral, Width = 24, Height = 24, CornerRadius = new CornerRadius(12),
+                BorderThickness = new Thickness(active ? 2 : 1),
+                BorderBrush = (Brush)Application.Current.Resources[active ? "AccentFillColorDefaultBrush" : "CardStrokeColorDefaultBrush"],
+            });
+            var caption = Prefs.Label(label, active ? "ForgeHeadingTextStyle" : "ForgeCaptionDimTextStyle");
+            caption.FontSize = 12;
+            caption.VerticalAlignment = VerticalAlignment.Center;
+            if (active) AutomationProperties.SetItemStatus(caption, "Current step");
+            item.Children.Add(caption);
+            steps.Children.Add(item);
+        }
+        body.Children.Add(steps);
+        body.Children.Add(content);
+        return body;
+    }
 
     IEnumerable<string> Details()
     {
@@ -462,7 +515,7 @@ public sealed class OperationDialog
         dialog.CloseButtonText = preparedReview is null ? "Cancel" : "";
         progressPanel.AccentChanged += TintButtons;
         progressPanel.Show(ProgressVerb(), review!.Ready.FirstOrDefault()?.Game, 0, review.Ready.Count, "Starting");
-        dialog.Content = progressPanel.Root;
+        dialog.Content = WithSteps(progressPanel.Root, FlowStep.Apply);
 
         var done = 0;
         var progress = new Progress<OperationStep>(step =>
@@ -526,6 +579,7 @@ public sealed class OperationDialog
 
     void ShowDone(bool success, string message, string? title = null)
     {
+        var current = stage == Stage.Progress ? FlowStep.Apply : FlowStep.Review;
         stage = Stage.Done;
         dialog.SecondaryButtonText = "";
         dialog.Title = null;
@@ -545,7 +599,7 @@ public sealed class OperationDialog
         Grid.SetColumn(text, 1);
         line.Children.Add(text);
 
-        dialog.Content = line;
+        dialog.Content = WithSteps(line, current);
         dialog.CloseButtonText = "";
         dialog.PrimaryButtonText = "Done";
         dialog.IsPrimaryButtonEnabled = true;

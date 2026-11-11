@@ -308,12 +308,13 @@ public sealed partial class MainWindow : Window
             if (targets.Count == 0) return false;
         }
 
-        if (operation == "install" && values is null)
+        var includesPresets = operation == "install" && values is null;
+        if (includesPresets)
         {
             values = await OperationDialog.AskPresetsAsync(this, targets.Count == 1 ? GameTuning(targets[0]) : Settings.Presets, AccentResources.Single(targets), targets);
             if (values is null) return false;
         }
-        return await OperationDialog.ShowAsync(this, operation, targets, values ?? Settings.Presets);
+        return await OperationDialog.ShowAsync(this, operation, targets, values ?? Settings.Presets, includesPresets);
     }
 
     /// <summary>Runs one reviewed operation against the engine; used by the progress stage of the modal.</summary>

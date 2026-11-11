@@ -98,7 +98,7 @@ try{
  await page.emulateMedia({reducedMotion:'reduce'});
  await start();
  expect(calls.filter(c=>c.method==='prepare_routes')).toHaveLength(0);
- await expect(activeStep()).toHaveText('1Startup settings');
+ await expect(activeStep()).toHaveText('1Presets');
  await expect(page.locator('.startup-group').first()).toHaveCSS('padding-top','14px');
  await expect(page.locator('.number-stepper button').first()).toHaveCSS('border-top-left-radius','8px');
  const more=page.locator('.startup-more > summary');

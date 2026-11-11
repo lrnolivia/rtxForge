@@ -505,13 +505,15 @@ universal=game('UniversalMfg');(universal/'nvngx_dlssg.dll').write_bytes(fixture
 universal_before=files(universal)
 universal_payload={universal_mfg_provider.PLUGIN:fixtures.pe(),'OptiScaler/licenses/MFG-Unlocker-LICENSE.txt':b'fixture license',
                    'OptiScaler/licenses/MFG-Unlocker-NOTICE.md':b'fixture notice'}
-universal_mfg_provider.load_payload=lambda config,record:dict(universal_payload)
+universal_mfg_provider.load_payload=lambda config,record:universal_payload | universal_mfg_provider.startup_payload(record)
 review=service.prepare([scan(universal)],'nr-mfg','install',visual_settings=settings | {'mfg_provider':'universal','mfg_multiplier':4})
 assert files(universal)==universal_before and review['rows'],review['blocked']
 run(review);record=baseline(universal)
 assert record['mfg_provider']['ownership']=='managed-optiscaler-plugin'
 assert record['compatibility_policy']['mfg_route']=='native-dlssg-universal-plugin'
 assert (universal/universal_mfg_provider.PLUGIN).read_bytes()==universal_payload[universal_mfg_provider.PLUGIN]
+startup=json.loads((universal/universal_mfg_provider.CONTROL).read_bytes())
+assert startup['optiScalerUi']=='optiscaler' and startup['dlss5'] is False
 ini=(universal/'OptiScaler.ini').read_text()
 for value in ('AdaMfgUnlock=false','AdaBlackwellKernels=false','LoadAsiPlugins=true','FGOutput=nofg'):
     assert value in ini,value

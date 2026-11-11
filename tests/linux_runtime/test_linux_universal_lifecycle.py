@@ -56,7 +56,7 @@ class LinuxUniversalLifecycleTest(unittest.TestCase):
         self.release = fixtures.bridge_fixture(archive, root / 'production-sr.dll')
         self.config = {'storage': {'root': str(root / 'state'), 'reserve_bytes': 0}}
         component = universal.pinned()
-        known = {'1.6.1': (component['commit'], component['sha256'], component['release_size'],
+        known = {component['version']: (component['commit'], component['sha256'], component['release_size'],
                            hashlib.sha256(PLUGIN).hexdigest(), len(PLUGIN))}
         # The real pinned identity, with only the DLL digest swapped for the fixture plugin's.
         fixture_component = dict(component, dll={'sha256': hashlib.sha256(PLUGIN).hexdigest(), 'size': len(PLUGIN)})
@@ -84,7 +84,7 @@ class LinuxUniversalLifecycleTest(unittest.TestCase):
         def plugin_payload(config, record):
             universal.validate(record)
             return {universal.PLUGIN: PLUGIN, 'OptiScaler/licenses/MFG-Unlocker-LICENSE.txt': b'fixture license',
-                    'OptiScaler/licenses/MFG-Unlocker-NOTICE.md': b'fixture notice'}
+                    'OptiScaler/licenses/MFG-Unlocker-NOTICE.md': b'fixture notice', **universal.startup_payload(record)}
 
         self.patches = [
             patch.dict(os.environ, {'RTXFORGE_DLSS_UNLOCKED_STATE': str(root / 'engine-state')}),
@@ -125,12 +125,15 @@ class LinuxUniversalLifecycleTest(unittest.TestCase):
         self.assertEqual(self.files(), self.before, 'review never writes')
         detail = review['rows'][0]['detail']
         self.assertIn(proton_mfg.LABEL, detail)
-        self.assertIn('Universal MFG 1.6.1', detail)
+        self.assertIn('Universal MFG 1.7.0', detail)
         self.assertTrue(review['plans'][0]['proton_stack']['prerequisites_met'])
         self.assertFalse(review['plans'][0]['proton_stack']['runtime_verified'])
         engine_bridge.execute(review)
 
         self.assertEqual((self.target / universal.PLUGIN).read_bytes(), PLUGIN)
+        startup = json.loads((self.target / universal.CONTROL).read_bytes())
+        self.assertEqual(startup['optiScalerUi'], 'optiscaler')
+        self.assertIs(startup['dlss5'], False)
         self.assertEqual((self.target / 'save.dat').read_bytes(), b'untouched')
         ini = (self.target / 'OptiScaler.ini').read_text()
         for value in ('LoadAsiPlugins=true', 'AdaMfgUnlock=false', 'AdaBlackwellKernels=false', 'FGOutput=nofg',

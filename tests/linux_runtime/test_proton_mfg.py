@@ -86,13 +86,13 @@ class ProtonMfgTest(unittest.TestCase):
         report = proton_mfg.gate({'skynizz_proton': True}, 'nr-mfg', 'universal', self.prefix, True)
         review = proton_mfg.review(self.target, True, 'dxgi.dll', 'nr-mfg', report)
         self.assertEqual(review['lines'][0], proton_mfg.LABEL)
-        self.assertIn('Universal MFG 1.6.1', review['lines'][1])
+        self.assertIn('Universal MFG 1.7.0', review['lines'][1])
         self.assertIn("this game's prefix", review['lines'][2])
         self.assertFalse(any('sha' in line.casefold() for line in review['lines']))
         details = review['details']
         self.assertEqual(details['override'], {'dxgi': 'n,b'})
-        self.assertEqual(details['plugin_sha256'], '24e3e6a8c07639fd9cbd79274e4eb21cc65a13f0453e1157720620c3d6286b33')
-        self.assertEqual(details['files'][0], 'OptiScaler/plugins/MFGUnlocker.asi')
+        self.assertEqual(details['plugin_sha256'], 'e6b6e6b70a6ed3af839c9647a32fc22660ae6b2d655062c5c072246c91fc10c7')
+        self.assertEqual(details['files'][:2], [universal.PLUGIN, universal.CONTROL])
         self.assertEqual(details['ini']['Plugins'], {'LoadAsiPlugins': 'true'})
 
     def test_rtx_50_keeps_its_own_mfg_with_no_plugin_and_says_unverified(self):
@@ -127,12 +127,16 @@ class ProtonMfgTest(unittest.TestCase):
         plugin.write_bytes(dll)
         (self.target / 'OptiScaler.ini').write_text(ini)
         component = dict(universal.pinned(), dll={'sha256': hashlib.sha256(dll).hexdigest(), 'size': len(dll)})
-        return {'managed_paths': [universal.PLUGIN, 'OptiScaler.ini', 'OptiScaler'],
+        (self.target / universal.CONTROL).write_bytes(universal.startup_payload(component)[universal.CONTROL])
+        return {'managed_paths': [universal.PLUGIN, universal.CONTROL, 'OptiScaler.ini', 'OptiScaler'],
                 'current': {'archive': {'release': {'mfg_component': component}}}}
 
     def test_verify_checks_exact_plugin_loading_and_single_owner(self):
         baseline = self.installed()
         self.assertEqual(proton_mfg.verify(self.target, baseline), [])
+        (self.target / universal.CONTROL).write_text('{"dlss5":true}')
+        self.assertEqual(proton_mfg.verify(self.target, baseline), ['plugin-settings-changed'])
+        baseline = self.installed()
         (self.target / universal.PLUGIN).write_bytes(b'changed')
         self.assertEqual(proton_mfg.verify(self.target, baseline), ['plugin-changed'])
         baseline = self.installed(ini='[Plugins]\nLoadAsiPlugins=false\n[DLSSG]\nAdaMfgUnlock=true\n')

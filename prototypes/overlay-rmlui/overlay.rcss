@@ -953,7 +953,7 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .preview-fullscreen.is-fullscreen .preview-arrow.second { transform: none; }
 .preview-arrow .tip {
     display: block; position: absolute; top: 0; right: 0; width: 5dp; height: 5dp;
-    border-top: 1.5dp solid #f5f1ea; border-right: 1.5dp solid #f5f1ea;
+    border-top: 1.5dp #f5f1ea; border-right: 1.5dp #f5f1ea;
 }
 .preview-arrow .shaft {
     display: block; position: absolute; width: 10dp; height: 1.5dp; top: 3.5dp; left: 0;

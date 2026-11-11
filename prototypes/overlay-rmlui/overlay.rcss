@@ -795,7 +795,7 @@ body { --page-size: 30dp; --group-size: 20dp; --meta-size: 16dp; --micro-size: 1
 /* Session cards share their compact and expanded hierarchy. */
 body { --utility-size: 19dp; --segment-size: 20dp; }
 #header-status { display: none; }
-#feature-status { position: relative; left: auto; top: auto; display: flex; align-items: center; width: 350dp; max-width: 100%; box-sizing: border-box; height: auto; min-height: 32dp; padding: 5dp 12dp; margin: 14dp 0; border-radius: 22dp; background: var(--nested-fill); gap: 12dp; }
+#feature-status { position: relative; left: auto; top: auto; display: flex; align-items: center; width: 350dp; max-width: 100%; box-sizing: border-box; height: auto; min-height: 32dp; padding: 5dp 12dp; margin: 14dp 0; border-radius: 10dp; background: var(--nested-fill); gap: 12dp; }
 .metadata-compact #feature-status { margin: 12dp 0; background: var(--nested-fill); }
 .layout-centered #feature-status { margin: 0 0 26dp; }
 .layout-bar .metadata-compact { flex: 0 1 330dp; width: 330dp; min-height: 78dp; padding: 10dp 14dp; background: var(--section-fill); border: 1dp var(--section-rim); border-radius: 16dp; box-shadow: var(--section-shadow); }
@@ -942,7 +942,14 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .preview-chrome .close { width: 38dp; height: 38dp; border-radius: 19dp; background: #27262466; }
 .side-panel-position { margin-top: 20dp; }
 .side-panel-position .segments { margin-top: 12dp; }
-.desktop-preview .prototype-toolbar select { width: 250dp; }
+.desktop-preview .prototype-toolbar { transform: none; }
+.desktop-preview #scene-select { width: 352dp; }
+.desktop-preview .prototype-toolbar .preview-label { min-width: 62dp; }
+.desktop-preview #scene-select selectbox { max-height: 360dp; margin-top: 6dp; margin-bottom: 6dp; }
+.desktop-preview #scene-select option, .select-menu.game-picker-menu .menu-option {
+    box-sizing: border-box; min-height: 36dp; padding: 8dp 12dp; line-height: 20dp; white-space: normal;
+}
+.select-menu.game-picker-menu { border-radius: 10dp; }
 .desktop-preview.preview-picker-left .prototype-toolbar { left: 24dp; right: auto; transform: none; }
 .desktop-preview.preview-picker-right .prototype-toolbar { left: auto; right: 76dp; transform: none; }
 .desktop-preview.preview-picker-bottom .prototype-toolbar { top: auto; bottom: 24dp; }

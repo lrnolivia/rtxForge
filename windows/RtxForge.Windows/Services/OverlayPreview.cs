@@ -1,9 +1,11 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Win32;
 using RtxForge.Windows.Models;
+using Windows.Graphics.Imaging;
 
 namespace RtxForge.Windows.Services;
 
@@ -18,7 +20,7 @@ static class OverlayPreview
 
     public static async Task<IReadOnlyList<Screenshot>> ScreenshotsAsync(Game game, bool online, CancellationToken cancel)
     {
-        var result = new List<Screenshot>();
+        var local = new List<Screenshot>();
         var id = AppId(game);
         if (id is not null)
         {
@@ -27,32 +29,82 @@ static class OverlayPreview
                 foreach (var user in Directory.EnumerateDirectories(Path.Combine(steam, "userdata")).Take(32))
                 {
                     var folder = Path.Combine(user, "760", "remote", id, "screenshots");
-                    if (Directory.Exists(folder)) result.AddRange(Directory.EnumerateFiles(folder).Where(IsImage).Take(100).Select(path => new Screenshot(path, "Your Steam screenshot")));
+                    if (Directory.Exists(folder)) local.AddRange(Directory.EnumerateFiles(folder).Where(IsImage).Take(24).Select(path => new Screenshot(path, "Your Steam screenshot")));
                 }
         }
         var target = Path.Combine(Cache, Key(game));
-        if (Directory.Exists(target)) result.AddRange(Directory.EnumerateFiles(target, "gameplay-*.jpg").Where(IsImage).Take(8).Select(path => new Screenshot(path, "Steam store screenshot · " + game.Name)));
-        if (result.Count != 0 || !online || id is null) return result;
-        // Identity comes from the scanned Steam app or its enclosing manifest. No title search.
+        if (Directory.Exists(target))
+            local.AddRange(Directory.EnumerateFiles(target, "gameplay-*.jpg").Where(IsImage).Take(16).Select(path => new Screenshot(path, "Steam store screenshot · " + game.Name)));
+        var qualifying = new List<(Screenshot Shot, ulong Pixels)>();
+        foreach (var shot in local.Take(96))
+        {
+            cancel.ThrowIfCancellationRequested();
+            var pixels = await ScenePixelsAsync(shot.Path);
+            if (pixels > 0) qualifying.Add((shot, pixels));
+        }
+        if (qualifying.Count > 0 || !online || id is null)
+            return qualifying.OrderByDescending(item => item.Pixels).Select(item => item.Shot).ToArray();
+
+        // Use the original store image. Thumbnail dimensions are never enough
+        // to qualify a scene, even when the filename looks like a full image.
         var json = await BytesAsync(new Uri($"https://store.steampowered.com/api/appdetails?appids={id}&l=english"), 2 * 1024 * 1024, cancel);
         using var doc = JsonDocument.Parse(json);
         if (!doc.RootElement.TryGetProperty(id, out var app) || !app.TryGetProperty("success", out var ok) || !ok.GetBoolean()
-            || !app.TryGetProperty("data", out var data) || !data.TryGetProperty("screenshots", out var shots)) return result;
-        Directory.CreateDirectory(target);
-        // Store entry zero can be a promotional card. Prefer the next gameplay frame.
-        var candidates=shots.EnumerateArray().ToArray();
-        foreach (var shot in candidates.Skip(candidates.Length>1?1:0).Take(1))
+            || !app.TryGetProperty("data", out var data) || !data.TryGetProperty("screenshots", out var shots)) return [];
+        var candidates = shots.EnumerateArray().ToArray();
+        // Prefer gameplay frames but let the first image qualify when it is the only one.
+        foreach (var shot in candidates.Skip(1).Concat(candidates.Take(1)).Take(8))
         {
             cancel.ThrowIfCancellationRequested();
-            if (!shot.TryGetProperty("path_thumbnail", out var source) || !Uri.TryCreate(source.GetString(), UriKind.Absolute, out var uri) || !Allowed(uri)) continue;
-            var bytes = await BytesAsync(uri, 20 * 1024 * 1024, cancel);
+            if (!shot.TryGetProperty("path_full", out var source) || !Uri.TryCreate(source.GetString(), UriKind.Absolute, out var uri) || !Allowed(uri)) continue;
+            byte[] bytes;
+            try { bytes = await BytesAsync(uri, 20 * 1024 * 1024, cancel); }
+            catch (Exception error) when (error is IOException or HttpRequestException) { continue; }
             if (bytes.Length < 4 || bytes[0] != 0xff || bytes[1] != 0xd8) continue;
-            var path = Path.Combine(target, $"gameplay-{result.Count:D2}.jpg");
-            await File.WriteAllBytesAsync(path, bytes, cancel);
-            result.Add(new(path, "Steam store screenshot · " + game.Name));
+            using var image = new MemoryStream(bytes, writable: false);
+            if (await ScenePixelsAsync(image) == 0) continue;
+            Directory.CreateDirectory(target);
+            var name = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()[..16];
+            var path = Path.Combine(target, $"gameplay-full-{name}.jpg");
+            if (!File.Exists(path))
+            {
+                var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    await File.WriteAllBytesAsync(temporary, bytes, cancel);
+                    File.Move(temporary, path, overwrite: true);
+                }
+                finally { File.Delete(temporary); }
+            }
+            return [new(path, "Steam store screenshot · " + game.Name)];
         }
-        return result;
+        return [];
     }
+
+    public static async Task<ulong> ScenePixelsAsync(string path)
+    {
+        if (OverlayArtwork.Local(path) is null) return 0;
+        try
+        {
+            await using var stream = File.OpenRead(path);
+            return await ScenePixelsAsync(stream);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return 0; }
+    }
+
+    static async Task<ulong> ScenePixelsAsync(Stream stream)
+    {
+        try
+        {
+            using var random = stream.AsRandomAccessStream();
+            var image = await BitmapDecoder.CreateAsync(random);
+            var width = image.OrientedPixelWidth;
+            var height = image.OrientedPixelHeight;
+            return width >= 2560 && height >= 1440 && width <= 8192 && height <= 8192 ? (ulong)width * height : 0;
+        }
+        catch (Exception error) when (error is ArgumentException or System.Runtime.InteropServices.COMException) { return 0; }
+    }
+
     static bool IsImage(string path) => new[] { ".png", ".jpg", ".jpeg" }.Contains(Path.GetExtension(path).ToLowerInvariant()) && OverlayArtwork.Local(path) is not null;
     static bool Allowed(Uri uri) => uri.Scheme == "https" && string.IsNullOrEmpty(uri.UserInfo) && new[] { "store.steampowered.com", "shared.akamai.steamstatic.com", "shared.fastly.steamstatic.com", "cdn.akamai.steamstatic.com", "cdn.cloudflare.steamstatic.com" }.Contains(uri.Host);
     static async Task<byte[]> BytesAsync(Uri uri, int limit, CancellationToken cancel, int redirects = 0)
@@ -82,8 +134,11 @@ static class OverlayPreview
             ?? throw new IOException("The native overlay preview is missing from this build.");
         var assets = Path.Combine(Path.GetDirectoryName(executable)!, "assets");
         if (!File.Exists(Path.Combine(assets, "overlay.rml"))) throw new IOException("The overlay preview assets are missing from this build.");
+        if (await ScenePixelsAsync(shot.Path) == 0)
+            throw new IOException("Choose a game with a 1440p or 4K screenshot to open the preview.");
         var color = initialAccent ?? (await OverlayAccent.ForGameAsync(game)).Color;
-        var choices=new[]{game}.Concat(library??[]).DistinctBy(g=>g.Id).Take(1000).ToArray();
+        var choices=new[]{game}.Concat((library??[]).Where(item=>game.AppId is null || item.AppId!=game.AppId))
+            .DistinctBy(g=>g.Id).Take(1000).ToArray();
         Directory.CreateDirectory(Cache);
         var catalog=Path.Combine(Cache,"session-"+Guid.NewGuid().ToString("N")+".json");
         await File.WriteAllTextAsync(catalog,JsonSerializer.Serialize(choices.Select(g=>g.Name)));
@@ -112,9 +167,8 @@ static class OverlayPreview
             try {
                 var game=games[index];var palette=await OverlayAccent.ForGameAsync(game);var c=palette.Color;
                 var accent=$"#{c.R:X2}{c.G:X2}{c.B:X2}";
-                await SendAsync(new{request,index,accent});
                 var shot=game.Id==initial.Id?initialShot:(await ScreenshotsAsync(game,ForgeSettings.Load().OnlineArt,cancel.Token)).FirstOrDefault();
-                if(shot is null){await SendAsync(new{request,index,error="No screenshot available for this game."});return;}
+                if(shot is null){await SendAsync(new{request,index,error="No 1440p or 4K screenshot is available for this game."});return;}
                 await SendAsync(new{request,index,accent,title=game.Name,path=shot.Path,crop=shot.Crop,poster=Poster(game)??""});
             }catch(OperationCanceledException){}
             catch(Exception error)when(error is IOException or HttpRequestException or JsonException or UnauthorizedAccessException or InvalidOperationException or ObjectDisposedException){

@@ -167,6 +167,7 @@ struct Controller : Rml::EventListener
         auto* mirror=Element("select-menu");Rml::Element* popup=nullptr;auto* select=document->GetContext()->GetFocusElement();while(select&&select->GetTagName()!="select")select=select->GetParentNode();
         if(select&&select->IsVisible(true))for(int i=0;i<select->GetNumChildren(true);++i){auto* child=select->GetChild(i);if(child->GetTagName()=="selectbox"&&child->IsVisible(true)){popup=child;break;}}
         if(!popup){const bool was=mirror->IsVisible();if(was)mirror->SetProperty("display","none");return was;}
+        mirror->SetClass("game-picker-menu",select->GetId()=="scene-select"&&document->IsClassSet("desktop-preview"));
         selectMenuOwner="main-panel";for(auto* e=popup;e;e=e->GetParentNode())if(e->GetId()=="main-panel"||e->GetId()=="inspector"||e->GetId()=="type-panel"){selectMenuOwner=e->GetId();break;}
         const auto at=popup->GetAbsoluteOffset(Rml::BoxArea::Border),size=popup->GetBox().GetSize(Rml::BoxArea::Border);
         mirror->SetProperty("display","block");mirror->SetProperty("left",std::to_string(at.x)+"px");mirror->SetProperty("top",std::to_string(at.y)+"px");mirror->SetProperty("width",std::to_string(size.x)+"px");mirror->SetProperty("height",std::to_string(size.y)+"px");

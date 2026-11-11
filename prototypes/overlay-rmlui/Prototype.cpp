@@ -238,10 +238,50 @@ static void PlacePreviewPicker(Controller& c)
     c.document->SetClass("preview-picker-right",sidePanel&&c.sidePanelSide!="right");
     c.document->SetClass("preview-picker-bottom",desktop&&c.layout=="bar"&&c.barPosition=="top");
     auto* picker=c.Element("game-picker");picker->SetClass("glass",desktop);
-    if(!desktop){picker->RemoveProperty("top");return;}
-    if(sidePanel)picker->SetProperty("top",std::to_string(c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y)+"px");else picker->RemoveProperty("top");
+    if(!desktop){picker->RemoveProperty("top");picker->RemoveProperty("left");return;}
+    if(sidePanel){
+        picker->RemoveProperty("left");
+        picker->SetProperty("top",std::to_string(c.Element("main-panel")->GetAbsoluteOffset(Rml::BoxArea::Border).y)+"px");
+    }else{
+        picker->RemoveProperty("top");
+        const auto viewport=c.document->GetContext()->GetDimensions();
+        const float width=picker->GetBox().GetSize(Rml::BoxArea::Border).x;
+        picker->SetProperty("left",std::to_string(std::max(0.f,(viewport.x-width)*.5f))+"px");
+    }
     auto* main=c.Element("main-panel");for(const auto* state:{"dark","clear","accent-theme"})picker->SetClass(state,main->IsClassSet(state));
     for(const auto* name:{"--accent","--accent-ink","--accent-soft","--menu-fill","--menu-ink","--menu-hover"})if(const auto* value=main->GetProperty(name))picker->SetProperty(name,value->Get<Rml::String>());
+}
+static void TestPreviewGameMenu(Rml::Context* context, Rml::ElementFormControlSelect* select)
+{
+    Rml::Element* popup=nullptr;
+    for(int i=0;i<select->GetNumChildren(true);++i){
+        auto* child=select->GetChild(i);
+        if(child->GetTagName()=="selectbox"){popup=child;break;}
+    }
+    Require(popup&&popup->IsVisible(true),"Preview game menu did not open");
+    const float dp=context->GetDensityIndependentPixelRatio();
+    Require(popup->GetBox().GetSize(Rml::BoxArea::Border).y<=380*dp,"Preview game menu is too tall");
+    popup->SetScrollTop(popup->GetScrollHeight());
+    context->Update();
+    const auto at=popup->GetAbsoluteOffset(Rml::BoxArea::Border);
+    const auto bounds=popup->GetBox().GetSize(Rml::BoxArea::Border);
+    const int before=select->GetSelection();
+    for(int i=popup->GetNumChildren()-1;i>=0;--i){
+        auto* option=popup->GetChild(i);
+        const auto position=option->GetAbsoluteOffset(Rml::BoxArea::Border);
+        const auto size=option->GetBox().GetSize(Rml::BoxArea::Border);
+        const Rml::Vector2f point{position.x+size.x*.5f,position.y+size.y*.5f};
+        if(i==before||point.y<=at.y||point.y>=at.y+bounds.y)continue;
+        Require(!PreviewBackgroundAt(point),"Preview game row was treated as window drag space");
+        context->ProcessMouseMove(int(point.x),int(point.y),0);
+        context->ProcessMouseButtonDown(0,0);
+        context->ProcessMouseButtonUp(0,0);
+        context->Update();
+        Require(select->GetSelection()==i&&!select->IsSelectBoxVisible(),"Preview game row did not accept mouse selection");
+        std::cout<<"native_preview_game_menu_mouse_and_scroll=passed\n";
+        return;
+    }
+    throw std::runtime_error("No scrolled preview game row was visible");
 }
 static void TestPreviewPicker(Controller& c,Rml::Context* context)
 {
@@ -260,8 +300,7 @@ static void TestPreviewPicker(Controller& c,Rml::Context* context)
                 if(c.sidePanelSide=="right")Require(std::fabs(at.x-24*dp)<1,"Right Side Panel must put game selection at the far left");
                 else Require(std::fabs(size.x-at.x-bounds.x-76*dp)<1,"Left Side Panel must put game selection at the far right, clear of Close");
             }else{
-                Rml::Vector2f center{size.x*.5f,at.y+bounds.y*.5f};
-                Require(picker->Project(center)&&std::fabs(center.x-at.x-bounds.x*.5f)<1,"Advanced and Bar must restore centered game selection");
+                Require(std::fabs(size.x*.5f-at.x-bounds.x*.5f)<1,"Advanced and Bar must restore centered game selection");
             }
         }
         c.Layout("bar");
@@ -724,8 +763,6 @@ int wmain(int argc,wchar_t** argv)
         auto* context=Rml::CreateContext("overlay",{width,height});Require(context!=nullptr,"RmlUi context could not be created");inputContext=context;
         auto* document=context->LoadDocument(Utf8(assets/L"overlay.rml"));Require(document!=nullptr,"Overlay document could not load");
         Controller controller;controller.document=document;controller.preview=!productionUI;controller.appearance=appearance;controller.accent=accent;controller.accentMode=requestedAccentMode;controller.UseTheme(appearance);if(appearance==4){controller.accentCharacter=requestedCharacter;controller.accentOpacity=100*MaterialColor::AccentOpacity(requestedCharacter);controller.accentSaturation=requestedSaturation;}if((window||desktopPreview)&&!feederSplitPreview&&!shortFusePreview)controller.LoadPreferences(false,preferencesPath);
-        // Start from the scene's supplied palette until the first GPU sample is ready.
-        controller.adaptiveAccent=controller.adaptiveTarget=MaterialColor::SceneAccent(accent);
         if(desktopPreview){controller.preferences.clear();controller.setupComplete=true;controller.closePreview=[]{closed=true;};controller.Element("main-panel")->QuerySelector("h1")->SetInnerRML(Rml::StringUtilities::EncodeRml(gameTitle));document->SetClass("desktop-preview",true);if(library.names.empty())document->QuerySelector(".prototype-toolbar")->SetProperty("display","none");else document->QuerySelector(".preview-label")->SetInnerRML("Game");if(window){SetWindowTextW(window,L"rtxForge · Overlay preview");controller.Element("preview-chrome")->SetProperty("display","block");}}
         Image posterImage{};
         const auto changePoster=[&](const fs::path& path){posterImage={};controller.Poster("");if(!path.empty())try{posterImage=LoadImage(path);controller.Poster(Utf8(path));}catch(const std::exception&){};};
@@ -810,6 +847,8 @@ int wmain(int argc,wchar_t** argv)
         if(onboarding){controller.nativeShortcuts.clear();if(onboardingMenus>0)controller.nativeShortcuts.push_back({"OptiScaler","Insert",true});if(onboardingMenus>1)controller.nativeShortcuts.push_back({"ReShade","Ctrl+Shift+Home",true});controller.BeginSetup();if(onboardingNative){controller.setupStep=2;controller.UpdateSetup();}}
         if(thumbnail&&controller.layout=="centered")controller.Page("nav-neural");
         auto image=LoadImage(background);
+        if (desktopPreview && !library.names.empty())
+            Require(image.width>=2560 && image.height>=1440,"Choose a 1440p or 4K screenshot for the game preview.");
         float activeCrop=crop;const auto cropUv=CropImage(image,width,height,activeCrop);
         auto backdrop=std::make_unique<Backdrop>(device.Get(),width,height,image.rgba.data(),image.width,image.height,cropUv.data());
         const int initialWidth=width,initialHeight=height;
@@ -873,7 +912,9 @@ int wmain(int argc,wchar_t** argv)
                 const std::array<float,3> selectedAccent{float((packed>>16)&255)/255,float((packed>>8)&255)/255,float(packed&255)/255};
                 if(value.contains("path")){
                     const auto selectedCrop=value.value("crop",0.f);Require(selectedCrop>=0&&selectedCrop<.8f,"Invalid preview crop");
-                    auto next=LoadImage(fs::u8path(value.at("path").get<std::string>()));const auto uv=CropImage(next,width,height,selectedCrop);
+                    auto next=LoadImage(fs::u8path(value.at("path").get<std::string>()));
+                    Require(next.width>=2560 && next.height>=1440,"No 1440p or 4K screenshot is available for this game.");
+                    const auto uv=CropImage(next,width,height,selectedCrop);
                     backdrop->SetPhoto(next.rgba.data(),next.width,next.height,uv.data());image=std::move(next);activeCrop=selectedCrop;stableAccent=selectedAccent;
                     if(value.contains("poster"))changePoster(fs::u8path(value["poster"].get<std::string>()));
                     library.selected=value.at("index").get<int>();controller.PositionScene(value.at("title").get<std::string>());
@@ -959,8 +1000,12 @@ int wmain(int argc,wchar_t** argv)
             if(selfTest&&frames==60&&controller.appearance==3){Rml::ElementList ink;document->QuerySelectorAll(ink,"label,.glyph");for(auto* e:ink)if(e->IsVisible()){bool glass=false;for(auto* parent=e;parent;parent=parent->GetParentNode())glass|=parent->IsClassSet("glass");if(glass){bool heading=false;for(auto* p=e;p;p=p->GetParentNode())heading|=p->GetTagName()=="h1"||p->GetTagName()=="h2"||p->GetTagName()=="h3";if(heading)continue;const auto color=e->GetProperty(e->IsClassSet("glyph")?"image-color":"color")->Get<Rml::Colourb>();Require(color.red>=230&&color.green>=225&&color.blue>=220,"Clear must never invert a label or glyph to dark ink");}}std::cout<<"clear_white_foreground_checks=passed\n";}
 
             if(onboardingScroll&&frames==68){auto* panel=controller.Element("type-panel");panel->SetScrollTop(panel->GetScrollHeight());context->Update();const auto top=panel->GetAbsoluteOffset(Rml::BoxArea::Border),size=panel->GetBox().GetSize(Rml::BoxArea::Border),button=controller.Element("setup-next")->GetAbsoluteOffset(Rml::BoxArea::Border),buttonSize=controller.Element("setup-next")->GetBox().GetSize(Rml::BoxArea::Border);Require(button.y>=top.y&&button.y+buttonSize.y<=top.y+size.y,"Short onboarding clipped its primary footer");std::cout<<"onboarding_short_viewport_footer_checks=passed\n";}
-            if(dropdownOpen&&frames==68){auto* select=controller.Element("processing-stage");if(longDropdown){auto* field=dynamic_cast<Rml::ElementFormControlSelect*>(select);for(int i=0;i<30;++i)field->Add("Processing option "+std::to_string(i),std::to_string(i%2));}select->ScrollIntoView();context->Update();const auto at=select->GetAbsoluteOffset(Rml::BoxArea::Border),size=select->GetBox().GetSize(Rml::BoxArea::Border);context->ProcessMouseMove(int(at.x+size.x*.5f),int(at.y+size.y*.5f),0);context->ProcessMouseButtonDown(0,0);context->ProcessMouseButtonUp(0,0);context->Update();}
-            if(longDropdown&&frames==70){Require(controller.Element("select-menu")->IsVisible()&&controller.Element("select-menu")->QuerySelector(".menu-scroll"),"Long native menu must retain a visible scroll rail");auto* field=dynamic_cast<Rml::ElementFormControlSelect*>(controller.Element("processing-stage"));const int before=field->GetSelection();context->ProcessKeyDown(Rml::Input::KI_DOWN,0);context->ProcessKeyUp(Rml::Input::KI_DOWN,0);context->ProcessKeyDown(Rml::Input::KI_RETURN,0);context->ProcessKeyUp(Rml::Input::KI_RETURN,0);context->Update();Require(field->GetSelection()!=before&&!field->IsSelectBoxVisible(),"Glass menu lost native keyboard selection");std::cout<<"native_glass_menu_keyboard_scroll_checks=passed\n";field->ShowSelectBox();}
+            if(dropdownOpen&&frames==68){auto* select=desktopPreview&&!library.names.empty()?sceneSelect:controller.Element("processing-stage");if(longDropdown&&select!=sceneSelect){auto* field=dynamic_cast<Rml::ElementFormControlSelect*>(select);for(int i=0;i<30;++i)field->Add("Processing option "+std::to_string(i),std::to_string(i%2));}select->ScrollIntoView();context->Update();const auto at=select->GetAbsoluteOffset(Rml::BoxArea::Border),size=select->GetBox().GetSize(Rml::BoxArea::Border);context->ProcessMouseMove(int(at.x+size.x*.5f),int(at.y+size.y*.5f),0);context->ProcessMouseButtonDown(0,0);context->ProcessMouseButtonUp(0,0);context->Update();}
+            if(longDropdown&&frames==70&&desktopPreview&&!library.names.empty()){
+                TestPreviewGameMenu(context,sceneSelect);
+                sceneSelect->SetSelection(0);controller.sceneRequest=-1;sceneSelect->ShowSelectBox();
+            }
+            else if(longDropdown&&frames==70){Require(controller.Element("select-menu")->IsVisible()&&controller.Element("select-menu")->QuerySelector(".menu-scroll"),"Long native menu must retain a visible scroll rail");auto* field=dynamic_cast<Rml::ElementFormControlSelect*>(controller.Element("processing-stage"));const int before=field->GetSelection();context->ProcessKeyDown(Rml::Input::KI_DOWN,0);context->ProcessKeyUp(Rml::Input::KI_DOWN,0);context->ProcessKeyDown(Rml::Input::KI_RETURN,0);context->ProcessKeyUp(Rml::Input::KI_RETURN,0);context->Update();Require(field->GetSelection()!=before&&!field->IsSelectBoxVisible(),"Glass menu lost native keyboard selection");std::cout<<"native_glass_menu_keyboard_scroll_checks=passed\n";field->ShowSelectBox();}
 
             if(pickerPreview&&frames==68)controller.QuickLayouts(true);
             std::vector<Backdrop::Panel> panels;
@@ -995,9 +1040,7 @@ int wmain(int argc,wchar_t** argv)
             if(!gameCapture){
                 if(desktopPreview&&!library.names.empty()&&byId.contains("main-panel")){
                     auto* picker=controller.Element("game-picker");const auto at=picker->GetAbsoluteOffset(Rml::BoxArea::Border),size=picker->GetBox().GetSize(Rml::BoxArea::Border);auto panel=byId.at("main-panel");
-                    // The toolbar's centered CSS transform is applied to its ink;
-                    // its glass rectangle must use the same visual coordinates.
-                    panel.x=controller.layout=="floating"?at.x:at.x-size.x*.5f;panel.y=at.y;panel.width=size.x;panel.height=size.y;panel.radius=14*panel.scale;panel.opacity=1;panel.shadowOpacity*=.55f;
+                    panel.x=at.x;panel.y=at.y;panel.width=size.x;panel.height=size.y;panel.radius=14*panel.scale;panel.opacity=1;panel.shadowOpacity*=.55f;
                     const float clear[4]={};immediate->ClearRenderTargetView(windowView.Get(),clear);backdrop->Draw(target.Get(),windowView.Get(),{panel},blur,false);immediate->ClearRenderTargetView(inkView.Get(),clear);renderUi(picker,inkView.Get());backdrop->DrawInk(windowView.Get(),inkSource.Get(),panel,blur);backdrop->ComposeLayer(view.Get(),windowSource.Get(),0,0,true);
                 }else if(!desktopPreview)renderUi(controller.Element("game-picker"));
             }

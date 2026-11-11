@@ -23,6 +23,7 @@ internal sealed class GameModeAppearanceView : UserControl
     JsonObject appearance = GameModeAppearance.Defaults;
     bool ready;
     Border? tintRow;
+    Border? customAccentRow;
     string backgroundKey = "";
     Task<BitmapImage?>? backgroundImage;
     string? sampledBackground;
@@ -35,15 +36,25 @@ internal sealed class GameModeAppearanceView : UserControl
         Children.Add(Prefs.Label("Loading Game Mode appearance…"));
         Loaded += async (_, _) =>
         {
-            if (App.Main is { } shell) shell.GamesChanged += RepaintWhenReady;
+            if (App.Main is { } shell)
+            {
+                shell.GamesChanged += RepaintWhenReady;
+                shell.SystemAccentChanged += RepaintSystemAccent;
+            }
             if (ready) { Paint(); return; }
             ready=true;
             await LoadAsync();
         };
-        Unloaded += (_, _) => { if (App.Main is { } shell) shell.GamesChanged -= RepaintWhenReady; };
+        Unloaded += (_, _) =>
+        {
+            if (App.Main is not { } shell) return;
+            shell.GamesChanged -= RepaintWhenReady;
+            shell.SystemAccentChanged -= RepaintSystemAccent;
+        };
     }
 
     void RepaintWhenReady() { if (ready) Paint(); }
+    void RepaintSystemAccent() { if (ready && Text("accentSource") == "system") Paint(); }
 
     async Task LoadAsync()
     {
@@ -70,6 +81,7 @@ internal sealed class GameModeAppearanceView : UserControl
             appearance=await store.WriteAsync(latest);
             await ReadLibraryAccentAsync();
             Paint();
+            if(customAccentRow is not null)customAccentRow.Visibility=Text("accentSource")=="custom"?Visibility.Visible:Visibility.Collapsed;
             if(tintRow is not null)tintRow.Visibility=Text("accentMode")=="theme"?Visibility.Collapsed:Visibility.Visible;
             ShowFeedback("Saved");
         }
@@ -93,20 +105,25 @@ internal sealed class GameModeAppearanceView : UserControl
         };
         material.Children.Add(themes);
         var previewOptions = new PreferencesGroup(null);
-        surface.Add(PreviewPanel(material, sample, "Library preview", previewOptions.Root));
+        surface.Add(PreviewPanel(material, sample, "Library preview", "library", previewOptions.Root));
         Groups.Add(surface);
 
         var main = new PreferencesGroup(null);
         material.Children.Add(main.Root);
+        Choice(main,"Accent",null,"accentSource",AccentResources.Captions,AccentResources.Sources);
         var swatch = new Microsoft.UI.Xaml.Shapes.Ellipse { Width=24,Height=24,
             Fill=new SolidColorBrush(ArtAccent.TryParse(Text("accent"),out var color)?color:ArtAccent.NoArtwork) };
         var colorButton = new Button { Content=swatch, Width=40,Height=40,Padding=new Thickness(6),CornerRadius=new CornerRadius(20) };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(colorButton,"Game Mode accent color");
-        colorButton.Click += async (_, _) => { var picker=new ColorPicker { IsAlphaEnabled=false,Color=((SolidColorBrush)swatch.Fill).Color,
-            IsMoreButtonVisible=false,IsColorChannelTextInputVisible=true,IsHexInputVisible=true,MaxWidth=340 };
-            var dialog=App.Main!.NewDialog(); dialog.Title="Game Mode accent color";dialog.Content=picker;dialog.PrimaryButtonText="Use color";dialog.CloseButtonText="Cancel";
-            if(await dialog.ShowAsync()==ContentDialogResult.Primary){await ChangeAsync("accent",JsonValue.Create(ArtAccent.Hex(picker.Color)));swatch.Fill=new SolidColorBrush(picker.Color);} };
-        main.Add(Prefs.Row("Accent color", null, colorButton,"\uE790"));
+        colorButton.Click += async (_, _) =>
+        {
+            if (await AccentResources.PickAsync(App.Main!, "Game Mode accent color", ((SolidColorBrush)swatch.Fill).Color) is not { } picked) return;
+            await ChangeAsync("accent", JsonValue.Create(ArtAccent.Hex(picked)));
+            swatch.Fill = new SolidColorBrush(AccentResources.Resolve("custom", Text("accent")));
+        };
+        customAccentRow = Prefs.Row("Custom accent color", null, colorButton,"\uE790");
+        customAccentRow.Visibility = Text("accentSource") == "custom" ? Visibility.Visible : Visibility.Collapsed;
+        main.Add(customAccentRow);
         var backgroundButtons=new StackPanel { Orientation=Orientation.Horizontal,Spacing=8 };
         backgroundButtons.Children.Add(Prefs.ActionButton("Choose image",async (_, _) => await ChooseBackgroundAsync()));
         backgroundButtons.Children.Add(Prefs.ActionButton("Use default",async (_, _) => await ChangeAsync("background",null)));
@@ -125,7 +142,7 @@ internal sealed class GameModeAppearanceView : UserControl
         tint.ValueChanged += async (_, args) => { if(ready)await ChangeAsync("tintStrength",JsonValue.Create((int)args.NewValue)); };
         detailsOptions.Add(strength);
         Choice(detailsOptions,"Game Details navigation",null,"detailsNavigation",["Sidebar","Tabs"],["sidebar","tabs"]);
-        details.Add(PreviewPanel(detailsOptions.Root, detailsSample, "Game Details preview", null));
+        details.Add(PreviewPanel(detailsOptions.Root, detailsSample, "Game Details preview", "details", null));
         Groups.Add(details);
         var reading = new PreferencesGroup("Motion and reset");
         var (row,motion)=Prefs.SwitchRow("Motion","Follows your system's reduced-motion preference.",On("motion"),"\uE768");
@@ -137,7 +154,7 @@ internal sealed class GameModeAppearanceView : UserControl
         IsEnabled=engine is { IsPreview:false }; Paint();
     }
 
-    static Border PreviewPanel(FrameworkElement options, Canvas scene, string caption, FrameworkElement? previewOptions)
+    static Border PreviewPanel(FrameworkElement options, Canvas scene, string caption, string route, FrameworkElement? previewOptions)
     {
         var layout = new Grid { ColumnSpacing=20, RowSpacing=16 };
         layout.ColumnDefinitions.Add(new());
@@ -146,16 +163,19 @@ internal sealed class GameModeAppearanceView : UserControl
         layout.RowDefinitions.Add(new() { Height=GridLength.Auto });
         layout.Children.Add(options);
         // Centred beside the options column when the two sit side by side.
-        var preview = new StackPanel { Spacing=10, MaxWidth=480, HorizontalAlignment=HorizontalAlignment.Stretch, VerticalAlignment=VerticalAlignment.Center };
+        var preview = new StackPanel { Spacing=10, MaxWidth=560, HorizontalAlignment=HorizontalAlignment.Stretch, VerticalAlignment=VerticalAlignment.Center };
         preview.Children.Add(Prefs.Label(caption, "ForgeCaptionDimTextStyle"));
         preview.Children.Add(new Viewbox { Child=scene, Stretch=Stretch.Uniform });
+        var open = Prefs.ActionButton("Open full preview", async (_, _) => await App.Main!.OpenGameModePreview(route));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(open, "Open " + caption);
+        preview.Children.Add(open);
         if(previewOptions is not null) preview.Children.Add(previewOptions);
         Grid.SetRow(preview,1);
         layout.Children.Add(preview);
         layout.SizeChanged += (_, args) =>
         {
             var wide=args.NewSize.Width>=780;
-            layout.ColumnDefinitions[1].Width=wide ? new GridLength(Math.Min(480,args.NewSize.Width*.44)) : new GridLength(0);
+            layout.ColumnDefinitions[1].Width=wide ? new GridLength(Math.Min(560,args.NewSize.Width*.46)) : new GridLength(0);
             Grid.SetColumn(preview,wide?1:0); Grid.SetRow(preview,wide?0:1);
         };
         return new Border { Style=Prefs.GetStyle("ForgeSettingsCardStyle"), Padding=new Thickness(16), Child=layout };
@@ -201,15 +221,15 @@ internal sealed class GameModeAppearanceView : UserControl
         sample.Children.Clear();
         var light = Text("theme") == "light";
         var clear = Text("theme") == "clear";
-        var accent = ArtAccent.TryParse(Text("accent"), out var value) ? value : ArtAccent.NoArtwork;
-        if (Text("accentMode") == "adaptive" && libraryAccent is { } sampled) accent = sampled;
+        var accent = AccentResources.Resolve(Text("accentSource"), Text("accent"));
+        var surfaceAccent = Text("accentMode") == "adaptive" && libraryAccent is { } sampled ? sampled : accent;
         var ink = new SolidColorBrush(light ? global::Windows.UI.Color.FromArgb(255,35,35,33) : global::Windows.UI.Color.FromArgb(255,245,243,238));
         var shellInk = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255,245,243,238));
         var neutral = light ? global::Windows.UI.Color.FromArgb(222,246,244,239) :
             global::Windows.UI.Color.FromArgb(clear ? (byte)128 : (byte)231,42,42,43);
         var strength = TintStrength();
-        var glass = new SolidColorBrush(Mix(neutral, accent, .09 * strength));
-        var navigationGlass = new SolidColorBrush(Mix(neutral, accent, .07 * strength));
+        var glass = new SolidColorBrush(Mix(neutral, surfaceAccent, .09 * strength));
+        var navigationGlass = new SolidColorBrush(Mix(neutral, surfaceAccent, .07 * strength));
         void Place(UIElement element, double x, double y)
         {
             Canvas.SetLeft(element,x); Canvas.SetTop(element,y); sample.Children.Add(element);

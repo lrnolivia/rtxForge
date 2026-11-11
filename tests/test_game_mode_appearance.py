@@ -38,6 +38,17 @@ class SharedAppearanceTests(unittest.TestCase):
                     appearance.save(appearance.DEFAULTS | change, path=path)
                 self.assertEqual(path.read_bytes(), before)
 
+    def test_accent_source_preserves_custom_color_and_details_tint(self):
+        saved = {'accent': '#3266A1', 'accentMode': 'adaptive'}
+        self.assertEqual(appearance.normalize(saved)['accentSource'], 'custom')
+        for source, _ in appearance.ACCENT_CHOICES:
+            current = appearance.normalize(saved | {'accentSource': source})
+            self.assertEqual(current['accentSource'], source)
+            self.assertEqual(current['accent'], '#3266a1')
+            self.assertEqual(current['accentMode'], 'adaptive')
+        with self.assertRaises(ValueError):
+            appearance.normalize(saved | {'accentSource': 'artwork'})
+
     def test_none_or_zero_tint_is_normalized(self):
         self.assertFalse(appearance.normalize(dict(appearance.DEFAULTS, accentMode='theme'))['tint'])
         self.assertFalse(appearance.normalize(dict(appearance.DEFAULTS, tintStrength=0))['tint'])

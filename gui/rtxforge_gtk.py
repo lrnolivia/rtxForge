@@ -127,23 +127,25 @@ def neutral_palette():
 
 
 ACCENT_PROVIDER=None
-def apply_brand_accent():
-    """rtxForge green, as Windows overrides SystemAccentColor in App.xaml.
+DESKTOP_ACCENT_SOURCE='green'
+DESKTOP_CUSTOM_ACCENT='#76b900'
 
-    Desktop accent tools write ~/.config/gtk-4.0/gtk.css at USER priority, so
-    this app-only provider sits just above it. Other apps keep the desktop accent.
-    """
+def apply_brand_accent():
+    """Set the Desktop accent for native GTK controls and rtxForge's CSS."""
     global ACCENT_PROVIDER
     if ACCENT_PROVIDER is None:
         ACCENT_PROVIDER=Gtk.CssProvider()
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(),ACCENT_PROVIDER,Gtk.STYLE_PROVIDER_PRIORITY_USER+1)
-    text='#95cf38' if Adw.StyleManager.get_default().get_dark() else '#437500'
-    ACCENT_PROVIDER.load_from_data((f':root {{ --accent-bg-color: #76b900; --accent-color: {text}; --accent-fg-color: #102000; }}'
-                                    f'@define-color accent_bg_color #76b900; @define-color accent_color {text}; @define-color accent_fg_color #102000;'
+    from native_game_mode_appearance import system_accent
+    color=system_accent() if DESKTOP_ACCENT_SOURCE=='system' else DESKTOP_CUSTOM_ACCENT if DESKTOP_ACCENT_SOURCE=='custom' else '#76b900'
+    text=ui_colors.readable(color,neutral_palette()['window'])
+    ink=ui_colors.readable('#102000',color)
+    ACCENT_PROVIDER.load_from_data((f':root {{ --accent-bg-color: {color}; --accent-color: {text}; --accent-fg-color: {ink}; }}'
+                                    f'@define-color accent_bg_color {color}; @define-color accent_color {text}; @define-color accent_fg_color {ink};'
                                     # Windows segmented control: the checked segment carries a 16x3 accent pill.
                                     '.library-filter-group button:checked, button.view-action:checked,'
                                     '.sticky-mode-selector toggle:checked, .mode-selector toggle:checked, .mfg-control toggle:checked {'
-                                    ' background-image: linear-gradient(#76b900, #76b900); background-size: 16px 3px;'
+                                    ' background-image: linear-gradient(@accent_bg_color, @accent_bg_color); background-size: 16px 3px;'
                                     ' background-position: 50% 100%; background-repeat: no-repeat; }').encode())
 
 
@@ -223,7 +225,7 @@ def apply_neutral_palette():
         .bulk-remove { color: #9b3028; }
         .library-list-chip.active, .library-list-status-dot.installed { color: #437500; }
         .operation-complete, .operation-bubble .operation-complete { color: #376b18; }
-        .operation-done .icon { color: #437500; }
+        .operation-done .icon { color: @accent_color; }
         .operation-bubble .operation-error { color: #a02d25; }
         .eyebrow { color: #437500; }
         .game-banner-title { text-shadow: none; }
@@ -239,7 +241,7 @@ def apply_neutral_palette():
     .library-status-primary { background: alpha(black,0.16); padding: 0; border-radius: 99px; }
     '''
     if not Adw.StyleManager.get_default().get_dark():
-        theme_css+='button.forge-primary, button.suggested-action { background: #deebc9; color: #345b00; } button.forge-primary label, button.suggested-action label, button.forge-primary image, button.suggested-action image { color: #345b00; }'
+        theme_css+='button.forge-primary, button.suggested-action { background: mix(@window_bg_color,@accent_bg_color,0.24); color: @accent_color; } button.forge-primary label, button.suggested-action label, button.forge-primary image, button.suggested-action image { color: @accent_color; }'
         theme_css+='button.forge-primary:disabled, button.suggested-action:disabled { background: alpha(@window_fg_color,0.08); } button.forge-primary:disabled label, button.forge-primary:disabled image, button.suggested-action:disabled label, button.suggested-action:disabled image { color: alpha(@window_fg_color,0.45); }'
     NEUTRAL_PROVIDER.load_from_data(theme_css.encode())
     sources=list(ACCENT_SOURCES.values())
@@ -769,9 +771,9 @@ def artwork_accent(path,color=None,muted=False):
             f'color: {accent_fg}; '
             f'}} '
 
-            f'.operation-flow.{name} .operation-current .operation-step-number {{ '
-            f'border-color: {color}; '
-            f'box-shadow: inset 0 0 0 1px {color}; '
+            f'.operation-flow.operation-single-game.{name} .operation-current .operation-step-number {{ '
+            f'background: {color}; '
+            f'color: {accent_fg}; '
             f'}} '
 
             f'.{name} button:focus-visible {{ '
@@ -2532,23 +2534,25 @@ columnview.library-column-view listview row:nth-child(even):hover {
     font-size: 20px;
 }
 .operation-steps {
-    font-size: 0.875em;
-    padding: 7px 16px;
-    border-radius: 19px;
+    font-size: 0.82em;
+    padding: 5px 16px;
+    border-radius: 17px;
     background: alpha(@window_fg_color, 0.09);
 }
 .operation-step-number {
-    min-width: 22px;
-    min-height: 22px;
-    border: 1px solid alpha(@window_fg_color, 0.35);
+    min-width: 20px;
+    min-height: 20px;
+    background: alpha(@window_fg_color, 0.10);
     border-radius: 999px;
 }
-.operation-current { font-weight: 600; }
 .operation-current .operation-step-number {
-    box-shadow: inset 0 0 0 1px @accent_color;
-    border-color: @accent_color;
+    background: @accent_bg_color;
+    color: @accent_fg_color;
+    font-weight: 600;
 }
-.operation-done .icon { color: #76b900; }
+.operation-done .icon { color: @accent_color; }
+.operation-flow button.operation-done-button { min-width: 0; padding: 6px 18px; background: @accent_bg_color; color: @accent_fg_color; }
+.operation-flow button.operation-done-button:hover { background: mix(@accent_bg_color,@accent_fg_color,0.08); }
 .operation-failed .icon { color: @warning_color; }
 
 .result-success {
@@ -3904,6 +3908,7 @@ class OperationFlow:
         self.dialog=PresentationDialog(owner,title=self.review_title,content_width=self.content_width)
         self.dialog.add_css_class('modal-panel')
         self.dialog.add_css_class('operation-flow')
+        if len(self.games)==1:self.dialog.add_css_class('operation-single-game')
         self.dialog.connect('closed',self._closed)
         self.dialog.connect('close-attempt',lambda *_:self.cancel())
         toolbar=Adw.ToolbarView()
@@ -3915,7 +3920,7 @@ class OperationFlow:
         self.primary=Gtk.Button(label=self.verb,sensitive=False)
         self.primary.add_css_class('suggested-action')
         self.primary.connect('clicked',lambda *_:self._primary_clicked())
-        self.steps=Gtk.Box(spacing=16,margin_start=12,margin_end=12,margin_top=4,margin_bottom=4)
+        self.steps=Gtk.Box(spacing=12,margin_start=12,margin_end=12,margin_top=4,margin_bottom=4)
         self.steps.add_css_class('operation-steps')
         self.steps.update_property([Gtk.AccessibleProperty.LABEL],['Operation steps'])
         self.header.pack_end(self.steps)
@@ -4236,6 +4241,7 @@ class OperationFlow:
         self.cancel_button.set_visible(False)
         self.primary.set_visible(True)
         self.primary.set_label('Done')
+        self.primary.add_css_class('operation-done-button')
         self.primary.set_sensitive(True)
         self._page('done',page)
 
@@ -4393,7 +4399,13 @@ class Window(Adw.ApplicationWindow):
         self.busy=False;self.task_kind='';self.pending=None;self.cancel_art=threading.Event();self.log=[];self.dialog=None;self.review=None;self.action_buttons=[]
         self.connect('close-request',self.close_request)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
-        global THEME_MODE
+        global THEME_MODE, DESKTOP_ACCENT_SOURCE, DESKTOP_CUSTOM_ACCENT
+        DESKTOP_ACCENT_SOURCE=self.settings['desktop_accent_source']
+        DESKTOP_CUSTOM_ACCENT=self.settings['desktop_accent_color']
+        style=Adw.StyleManager.get_default()
+        if style.find_property('accent-color-rgba'):
+            handler=style.connect('notify::accent-color-rgba',lambda *_:apply_brand_accent() if DESKTOP_ACCENT_SOURCE=='system' else None)
+            self.connect('destroy',lambda *_:style.disconnect(handler))
         THEME_MODE=(self.settings.get('theme') or ('dark' if self.settings['dark'] else 'light'))
         self.settings['dark']=THEME_MODE!='light'
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK if self.settings['dark'] else Adw.ColorScheme.FORCE_LIGHT)
@@ -6037,6 +6049,18 @@ class Window(Adw.ApplicationWindow):
             def invoke(*_,fn=fn):
                 d.close();GLib.idle_add(lambda:(fn(),False)[1])
             b.append(icon_button(title,icon,invoke))
+
+    def open_game_mode_preview(self, route):
+        import game_mode_launcher
+        try:
+            child=game_mode_launcher.activate(ROOT,preview=route)
+        except (OSError, ValueError, RuntimeError) as error:
+            self.toast(str(error))
+            return
+        def wait():
+            if code:=child.wait():
+                GLib.idle_add(self.toast,f'Game Mode preview stopped with exit {code}.')
+        threading.Thread(target=wait,daemon=True,name='game-mode-preview').start()
 
     def _open_native_game_mode(self,wait_for_idle=False):
         if not getattr(self,'_native_game_mode_requested',False):
@@ -16111,6 +16135,30 @@ class Window(Adw.ApplicationWindow):
                                   change_theme, modes=('light','dark','night'))
         appearance.add(Adw.PreferencesRow(child=theme_selector))
         import native_game_mode_appearance
+        from game_mode_appearance import ACCENT_CHOICES
+        sources, captions=zip(*ACCENT_CHOICES)
+        accent_source=Adw.ComboRow(title='Accent',model=Gtk.StringList.new(captions),
+                                   selected=sources.index(self.settings['desktop_accent_source']))
+        appearance.add(accent_source)
+        rgba=Gdk.RGBA(); rgba.parse(self.settings['desktop_accent_color'])
+        chooser=Gtk.ColorDialogButton(dialog=Gtk.ColorDialog(title='Custom accent color',with_alpha=False),
+                                      rgba=rgba,valign=Gtk.Align.CENTER)
+        custom_accent=Adw.ActionRow(title='Custom accent color',visible=self.settings['desktop_accent_source']=='custom')
+        custom_accent.add_suffix(chooser)
+        appearance.add(custom_accent)
+        def change_accent(key,value):
+            global DESKTOP_ACCENT_SOURCE, DESKTOP_CUSTOM_ACCENT
+            self.settings[key]=value
+            DESKTOP_ACCENT_SOURCE=self.settings['desktop_accent_source']
+            DESKTOP_CUSTOM_ACCENT=self.settings['desktop_accent_color']
+            custom_accent.set_visible(DESKTOP_ACCENT_SOURCE=='custom')
+            apply_brand_accent()
+            if not self.options.demo:
+                saved=library_media.load_settings(self.service.config)
+                saved[key]=value
+                library_media.save_settings(self.service.config,saved)
+        accent_source.connect('notify::selected',lambda control,*_:change_accent('desktop_accent_source',sources[control.get_selected()]))
+        chooser.connect('notify::rgba',lambda control,*_:change_accent('desktop_accent_color',native_game_mode_appearance.color_hex(control.get_rgba())))
         game_mode_appearance_groups=native_game_mode_appearance.build(self)
 
         glyphs=Adw.SwitchRow(title='Button Icons',subtitle='Show action icons beside button labels.',active=self.settings.get('button_glyphs',True))

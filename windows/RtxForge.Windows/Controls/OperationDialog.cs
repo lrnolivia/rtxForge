@@ -30,7 +30,6 @@ public sealed class OperationDialog
     OperationReview? review;
     EngineReview? preparedReview;
     readonly ContentDialog dialog;
-    readonly SolidColorBrush stepAccent = new();
     Stage stage = Stage.Review;
     CancellationTokenSource? cancel;
     bool closed, completed;
@@ -52,10 +51,6 @@ public sealed class OperationDialog
         dialog = shell.NewDialog();
         var width = SetWidth(dialog, 560, 640);
         checkingPanel.Root.MaxWidth = progressPanel.Root.MaxWidth = width - 2 * DialogInset;
-        checkingPanel.AccentChanged += palette =>
-        {
-            if (ReferenceEquals(checkingPanel.Root.Parent, dialog.Content)) stepAccent.Color = palette.Color;
-        };
         dialog.PrimaryButtonClick += OnPrimary;
         dialog.CloseButtonClick += OnClose;
         dialog.Closing += (_, e) => { if (stage == Stage.Progress) e.Cancel = true; };
@@ -151,7 +146,6 @@ public sealed class OperationDialog
         dialog.IsPrimaryButtonEnabled = false;
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
-        stepAccent.Color = DialogAccent(dialog).Color;
         dialog.Content = WithSteps(checkingPanel.Root, FlowStep.Review);
         checkingPanel.Show("Preparing", targets.FirstOrDefault(), 0, listGames && targets.Count > 0 ? targets.Count : null, "Downloading packages/files…");
     }
@@ -197,7 +191,6 @@ public sealed class OperationDialog
     {
         SetWidth(dialog, 640, 760);
         dialog.Title = Title();
-        stepAccent.Color = DialogAccent(dialog).Color;
         var body = new StackPanel { Spacing = 16 };
         // One list for every package: games that get only part of the selection show what they get.
         var games = review.AllGames;
@@ -354,7 +347,7 @@ public sealed class OperationDialog
             "update-dlss" => "Update DLSS",
             "uninstall" => "Restore files",
             _ => ActionVerb(),
-        }, includesPresets, accent: stepAccent);
+        }, includesPresets);
 
     static SolidColorBrush DialogAccent(ContentDialog dialog) =>
         dialog.Resources.ContainsKey("AccentButtonBackground") && dialog.Resources["AccentButtonBackground"] is SolidColorBrush accent
@@ -373,14 +366,17 @@ public sealed class OperationDialog
         WithSteps(dialog, content, applying ? FlowStep.Apply : FlowStep.Review, action, includesPresets: false, reviewLabel: "Review changes");
 
     static StackPanel WithSteps(ContentDialog dialog, UIElement content, FlowStep current, string action,
-        bool includesPresets, string reviewLabel = "Review games", Brush? accent = null, string? description = null)
+        bool includesPresets, string reviewLabel = "Review games", string? description = null)
     {
         const double inset = DialogInset;
         dialog.Resources["ContentDialogPadding"] = new Thickness(inset);
         var body = new StackPanel { Spacing = 12 };
-        var steps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16,
+        var steps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14,
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetName(steps, "Operation steps");
+        var activeAccent = DialogAccent(dialog);
+        var activeInk = new SolidColorBrush(ArtAccent.Palette(activeAccent.Color).AccentFg);
+        var neutralCircle = (Brush)Application.Current.Resources["ControlFillColorSecondaryBrush"];
         var phases = new List<(FlowStep Step, string Label)>();
         if (includesPresets) phases.Add((FlowStep.Presets, "Presets"));
         phases.Add((FlowStep.Review, reviewLabel));
@@ -392,17 +388,18 @@ public sealed class OperationDialog
             var number = (index + 1).ToString();
             var item = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
             var numeral = Prefs.Label(number, active ? "ForgeHeadingTextStyle" : "ForgeCaptionDimTextStyle");
-            numeral.FontSize = 12;
+            numeral.FontSize = 10;
+            if (active) numeral.Foreground = activeInk;
             numeral.HorizontalAlignment = HorizontalAlignment.Center;
             numeral.VerticalAlignment = VerticalAlignment.Center;
+            numeral.RenderTransform = new TranslateTransform { Y = -1 };
             item.Children.Add(new Border
             {
-                Child = numeral, Width = 24, Height = 24, CornerRadius = new CornerRadius(12),
-                BorderThickness = new Thickness(active ? 2 : 1),
-                BorderBrush = active ? accent ?? DialogAccent(dialog) : (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
+                Child = numeral, Width = 20, Height = 20, CornerRadius = new CornerRadius(10),
+                Background = active ? activeAccent : neutralCircle,
             });
-            var caption = Prefs.Label(label, active ? "ForgeHeadingTextStyle" : "ForgeCaptionDimTextStyle");
-            caption.FontSize = 12;
+            var caption = active ? new TextBlock { Text = label } : Prefs.Label(label, "ForgeCaptionDimTextStyle");
+            caption.FontSize = 11;
             caption.VerticalAlignment = VerticalAlignment.Center;
             if (active) AutomationProperties.SetItemStatus(caption, "Current step");
             item.Children.Add(caption);
@@ -425,7 +422,7 @@ public sealed class OperationDialog
         }
         var pill = new Border
         {
-            Child = steps, Padding = new Thickness(18, 8, 18, 8), MinHeight = 40, CornerRadius = new CornerRadius(20),
+            Child = steps, Padding = new Thickness(18, 6, 18, 6), MinHeight = 34, CornerRadius = new CornerRadius(17),
             Background = (Brush)Application.Current.Resources["ControlFillColorDefaultBrush"],
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
         };
@@ -624,7 +621,7 @@ public sealed class OperationDialog
     /// <summary>The current game's accent on the dialog's suggested button (Linux button.suggested-action).</summary>
     void TintButtons(Services.AccentPalette palette)
     {
-        stepAccent.Color = palette.Color;
+        if (stage != Stage.Progress) return;
         dialog.Resources["AccentButtonBackground"] = palette.AccentBrush;
         dialog.Resources["AccentButtonBackgroundPointerOver"] = palette.Brush(palette.Color, 0.9);
         dialog.Resources["AccentButtonBackgroundPressed"] = palette.Brush(palette.Color, 0.8);
@@ -633,6 +630,22 @@ public sealed class OperationDialog
         dialog.Resources["AccentButtonForegroundPressed"] = palette.Brush(palette.AccentFg);
     }
     // ---------- Done (finish_progress) ----------
+
+    internal static void UseDoneButton(ContentDialog dialog)
+    {
+        var settings = App.Main!.Settings;
+        var color = AccentResources.Resolve(settings.DesktopAccentSource, settings.DesktopAccentColor);
+        AccentResources.Apply(dialog.Resources, ArtAccent.Palette(color));
+        var button = new Style(typeof(Button)) { BasedOn = Prefs.GetStyle("AccentButtonStyle") };
+        button.Setters.Add(new Setter(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Right));
+        button.Setters.Add(new Setter(FrameworkElement.MinWidthProperty, 0.0));
+        button.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(18, 6, 18, 6)));
+        dialog.PrimaryButtonStyle = button;
+        dialog.PrimaryButtonText = "Done";
+        dialog.IsPrimaryButtonEnabled = true;
+        dialog.DefaultButton = ContentDialogButton.None;
+        dialog.DefaultButton = ContentDialogButton.Primary;
+    }
 
     void ShowDone(bool success, string message, string? title = null)
     {
@@ -657,8 +670,6 @@ public sealed class OperationDialog
 
         dialog.Content = line;
         dialog.CloseButtonText = "";
-        dialog.PrimaryButtonText = "Done";
-        dialog.IsPrimaryButtonEnabled = true;
-        AccentPrimary();
+        UseDoneButton(dialog);
     }
 }

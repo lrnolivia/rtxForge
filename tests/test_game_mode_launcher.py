@@ -41,6 +41,15 @@ class NativeHandoffTests(unittest.TestCase):
             self.assertEqual(env['RTXFORGE_APP_EXE'],os.path.abspath('/portable/rtxForge.AppImage'))
             self.assertEqual(env['RTXFORGE_PREVIEW_READ_ONLY'],'1')
 
+    def test_preview_uses_the_requested_read_only_route(self):
+        with patch.object(launcher.subprocess,'Popen') as start:
+            for route in ('library', 'details'):
+                launcher.activate(self.root, preview=route)
+                self.assertIn('--preview-'+route, start.call_args.args[0])
+                self.assertEqual(start.call_args.kwargs['env']['RTXFORGE_PREVIEW_READ_ONLY'], '1')
+        with self.assertRaises(ValueError):
+            launcher.activate(self.root, preview='settings')
+
     def test_standalone_install_cannot_escape_versions(self):
         self.folder.rename(self.root/'not-bundled')
         data=self.root/'data';installed=data/'rtxforge-game-mode';installed.mkdir(parents=True)
@@ -82,6 +91,11 @@ class NativeHandoffTests(unittest.TestCase):
         (native/'exe').symlink_to(self.root/'rtxforge-game-mode')
         def identity(start):return '42 (rtxforge-game-mode) '+' '.join(['S']+['0']*18+[start])
         (native/'stat').write_text(identity('1234'))
+        (native/'cmdline').write_bytes(b'rtxforge-game-mode\0')
+        preview=proc/'44';preview.mkdir()
+        (preview/'exe').symlink_to(self.root/'rtxforge-game-mode')
+        (preview/'stat').write_text(identity('5678'))
+        (preview/'cmdline').write_bytes(b'rtxforge-game-mode\0--preview-details\0')
         unrelated=proc/'43';unrelated.mkdir()
         (unrelated/'exe').symlink_to(self.root/'game-executable')
         (unrelated/'stat').write_text(identity('9999'))

@@ -66,7 +66,7 @@ const finishExecution=async()=>{
  executeRelease=undefined;
  release();
 };
-const screenshot=name=>process.env.RTXFORGE_CAPTURE_REVIEW?page.screenshot({path:process.env.RTXFORGE_CAPTURE_REVIEW+'/install-'+name+'.png'}):Promise.resolve();
+const screenshot=name=>process.env.RTXFORGE_CAPTURE_REVIEW&&(!process.env.RTXFORGE_CAPTURE_STAGES||process.env.RTXFORGE_CAPTURE_STAGES.split(',').includes(name))?page.screenshot({path:process.env.RTXFORGE_CAPTURE_REVIEW+'/install-'+name+'.png'}):Promise.resolve();
 const start=async()=>{await page.locator('.game-card').first().click();await click('Install Features');await expect(page.getByRole('button',{name:'Review games',exact:true})).toBeVisible();};
 const overflow=async()=>expect(await page.evaluate(()=>[...document.querySelectorAll('.flow-body,.flow-panel,.startup-group,.flow-review-row,.main-nav')].filter(n=>n.scrollWidth>n.clientWidth+2).map(n=>n.className))).toEqual([]);
 const activeStep=()=>page.getByRole('dialog').locator('.flow-steps [aria-current=step]');
@@ -130,10 +130,10 @@ try{
  const prepare=calls.find(c=>c.method==='prepare_routes');expect(prepare.params.settings.mfg_multiplier).toBe(4);expect(prepare.params.settings.nr_strength).toBe(1.75);expect(prepare.params.settings.feature_controls.intensity).toBe(1.75);expect(prepare.params.rows[0].game).toBe(source.games[0].path);
  await expect(page.locator('.flow-review-row')).toHaveCount(2);await expect(page.getByRole('button',{name:'Install Features',exact:true})).toBeDisabled();await screenshot('review');await page.getByRole('checkbox',{name:'I understand the offline-use requirement.'}).check();
  await click('Install Features');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();await waitForExecution();await page.evaluate(({id,name})=>window.fixtureEvents.forEach(events=>events.onmessage?.({data:JSON.stringify({id,game:name,index:1,total:1,fraction:.42,label:'Verifying package files…'})})),{id:progressId,name:source.games[0].name});await expect(page.getByText('42%',{exact:true})).toBeVisible();await screenshot('progress');
- await page.getByRole('button',{name:'Request cancellation',exact:true}).focus();await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeFocused();await finishExecution();await expect(page.getByText('Reviewed installation completed.',{exact:true})).toBeVisible();await screenshot('done');await click('Back to game');
+ await page.getByRole('button',{name:'Request cancellation',exact:true}).focus();await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeFocused();await finishExecution();await expect(page.getByText('Reviewed installation completed.',{exact:true})).toBeVisible();const done=page.getByRole('dialog').getByRole('button',{name:'Done',exact:true});expect((await done.boundingBox()).width).toBeLessThan(125);await screenshot('done');await done.click();
  // Empty primary review can only proceed with an explicit supported subset and trust.
- mode='empty';await click('Install Features');await click('Review games');await expect(page.getByRole('heading',{name:'Nothing ready yet',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Install Features',exact:true})).toBeDisabled();await page.locator('[data-supported-token]').check();await expect(page.getByRole('heading',{name:'1 game ready',exact:true})).toBeVisible();await page.locator('#review-trust').check();await click('Install Features');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();mode='cancelled';await waitForExecution();await click('Request cancellation');await expect.poll(()=>calls.some(c=>c.method==='cancel_routes'&&c.params.token==='exact-install-review')).toBe(true);await finishExecution();await expect(page.getByText('Cancelled safely. No files were changed.',{exact:true})).toBeVisible();await screenshot('cancelled');expect(calls.filter(c=>c.method==='execute_routes').at(-1).params.supported).toEqual(['exact-nr-subset']);await click('Back to game');
- mode='ready';await click('Install Features');await click('Review games');await page.locator('#review-trust').check();await click('Install Features');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();mode='failure';await finishExecution();await expect(page.getByText('The package could not be verified. Original files were kept.',{exact:true})).toBeVisible();await screenshot('error');await click('Back to game');
+ mode='empty';await click('Install Features');await click('Review games');await expect(page.getByRole('heading',{name:'Nothing ready yet',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Install Features',exact:true})).toBeDisabled();await page.locator('[data-supported-token]').check();await expect(page.getByRole('heading',{name:'1 game ready',exact:true})).toBeVisible();await page.locator('#review-trust').check();await click('Install Features');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();mode='cancelled';await waitForExecution();await click('Request cancellation');await expect.poll(()=>calls.some(c=>c.method==='cancel_routes'&&c.params.token==='exact-install-review')).toBe(true);await finishExecution();await expect(page.getByText('Cancelled safely. No files were changed.',{exact:true})).toBeVisible();await screenshot('cancelled');expect(calls.filter(c=>c.method==='execute_routes').at(-1).params.supported).toEqual(['exact-nr-subset']);await click('Done');
+ mode='ready';await click('Install Features');await click('Review games');await page.locator('#review-trust').check();await click('Install Features');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();mode='failure';await finishExecution();await expect(page.getByText('The package could not be verified. Original files were kept.',{exact:true})).toBeVisible();await screenshot('error');await click('Done');
  mode='ready';await click('Install Features');await click('Review games');
  await page.locator('#review-trust').check();
  await page.locator('#split-install-options summary').click();
@@ -149,7 +149,7 @@ try{
  await finishExecution();
  await expect(page.getByText('Reviewed installation completed.',{exact:true})).toBeVisible();
  expect(calls.some(c=>c.method==='nr_review')).toBe(false);
- await click('Back to game');
+ await click('Done');
  await click('Packages');
  await page.locator('#split-packages summary').click();
  await page.locator('#split-packages-preset').selectOption('auto');
@@ -242,10 +242,18 @@ try{
  await expect(activeStep()).toHaveText('2Update DLSS');
  const progressWidth=(await page.getByRole('dialog').boundingBox()).width;
  expect(progressWidth).toBeLessThan(reviewWidth);
+ await waitForExecution();
+ const indicator=activeStep().locator('span');
+ const batchColor=await indicator.evaluate(node=>getComputedStyle(node).backgroundColor);
+ for(const [index,game] of source.games.slice(0,2).entries()){
+  await page.evaluate(({id,name,index})=>window.fixtureEvents.forEach(events=>events.onmessage?.({data:JSON.stringify({id,game:name,index,total:2,fraction:.5})})),{id:progressId,name:game.name,index:index+1});
+  await expect(page.locator('.operation-step h2')).toHaveText(game.name);
+  await expect(indicator).toHaveCSS('background-color',batchColor);
+ }
  await finishExecution();await expect(page.getByText('Reviewed installation completed.',{exact:true})).toBeVisible();
  await expect(page.getByRole('dialog',{name:'Done',exact:true}).locator('.flow-heading')).toHaveCount(0);
  expect((await page.getByRole('dialog').boundingBox()).width).toBeLessThan(progressWidth);
- await click('Back to game');
+ await click('Done');
  splitEnabled=false;await click('Packages');
  await expect(page.getByText('New setups are paused while performance and image quality are improved.')).toBeVisible();
  await expect(page.getByText('Choose games',{exact:true})).toHaveCount(0);

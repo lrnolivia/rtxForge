@@ -126,6 +126,33 @@ public sealed partial class SettingsPage : Page
         {
             Settings.Theme = ThemeController.Keys[theme.SelectedIndex]; Save();
         };
+        var (accentRow, accentSource) = Prefs.ComboRow("Accent", null, AccentResources.Captions,
+            Math.Max(0, Array.IndexOf(AccentResources.Sources, Settings.DesktopAccentSource)), "\uE790");
+        appearance.Add(accentRow);
+        var swatch = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 20, Height = 20 };
+        void PaintSwatch() => swatch.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+            AccentResources.Resolve("custom", Settings.DesktopAccentColor));
+        PaintSwatch();
+        var accentButton = new Button { Content = swatch };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(accentButton, "Choose custom accent color");
+        var customAccent = Prefs.Row("Custom accent color", null, accentButton, "\uE790");
+        customAccent.Visibility = accentSource.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+        appearance.Add(customAccent);
+        accentSource.SelectionChanged += (_, _) =>
+        {
+            if (accentSource.SelectedIndex < 0) return;
+            Settings.DesktopAccentSource = AccentResources.Sources[accentSource.SelectedIndex];
+            customAccent.Visibility = Settings.DesktopAccentSource == "custom" ? Visibility.Visible : Visibility.Collapsed;
+            Save();
+        };
+        accentButton.Click += async (_, _) =>
+        {
+            if (await AccentResources.PickAsync(shell, "Custom accent color",
+                AccentResources.Resolve("custom", Settings.DesktopAccentColor)) is not { } color) return;
+            Settings.DesktopAccentColor = ArtAccent.Hex(color);
+            PaintSwatch();
+            Save();
+        };
         gameModeAppearance.Add(new GameModeAppearanceView(shell.Service as EngineForgeService));
         (row, var layout) = Prefs.ComboRow("Library layout", "Choose how your game collection is displayed.",
             ["Poster", "Wide Capsule", "List"], Math.Max(0, Array.IndexOf(Views, Settings.LibraryView)), "");

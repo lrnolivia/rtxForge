@@ -57,10 +57,12 @@ internal static class GameModeLauncher
         return executable;
     }
 
-    public static Process Start(string executable, bool readOnly, bool appearance = false)
+    public static Process Start(string executable, bool readOnly, bool appearance = false, string? preview = null)
     {
+        if (preview is not null and not ("library" or "details")) throw new ArgumentException("Invalid Game Mode preview.", nameof(preview));
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(executable)! };
         if (appearance) start.ArgumentList.Add("--appearance");
+        if (preview is not null) start.ArgumentList.Add("--preview-" + preview);
         start.ArgumentList.Add("--desktop-parent"); start.ArgumentList.Add(Environment.ProcessId.ToString());
         start.Environment["RTXFORGE_APP_EXE"] = Environment.ProcessPath!;
         start.Environment["RTXFORGE_DESKTOP_COMMAND"] = JsonSerializer.Serialize(new[] { Environment.ProcessPath!, "--desktop-mode" });
@@ -68,14 +70,23 @@ internal static class GameModeLauncher
         // Use the Desktop distribution's engine and native provider packages.
         // The standalone UI payload remains a self-contained fallback.
         if (EngineRoot(AppContext.BaseDirectory) is { } root) start.Environment["RTXFORGE_ROOT"] = root;
-        if (readOnly) start.Environment["RTXFORGE_PREVIEW_READ_ONLY"] = "1";
+        if (readOnly || preview is not null) start.Environment["RTXFORGE_PREVIEW_READ_ONLY"] = "1";
         var child = Process.Start(start) ?? throw new InvalidOperationException("Game Mode could not be opened.");
         // A second activation is redirected by the native single-instance plugin.
         try { child.WaitForInputIdle(15000); } catch (InvalidOperationException) { }
         if (!child.HasExited) return child;
         foreach (var existing in Process.GetProcessesByName("rtxforge-game-mode"))
         {
-            try { if (string.Equals(existing.MainModule?.FileName, executable, StringComparison.OrdinalIgnoreCase)) { child.Dispose(); return existing; } }
+            try
+            {
+                var previewWindow = existing.MainWindowTitle == "rtxForge · Game Mode Preview";
+                if (existing.MainWindowHandle != 0 && previewWindow == (preview is not null)
+                    && string.Equals(existing.MainModule?.FileName, executable, StringComparison.OrdinalIgnoreCase))
+                {
+                    child.Dispose();
+                    return existing;
+                }
+            }
             catch (System.ComponentModel.Win32Exception) { }
             existing.Dispose();
         }

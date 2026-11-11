@@ -218,9 +218,8 @@ public sealed class ReviewDialog
         Grid.SetColumn(text, 1);
         line.Children.Add(text);
         dialog.Content = line;
-        dialog.PrimaryButtonText = "";
-        dialog.CloseButtonText = "Close";
-        dialog.DefaultButton = ContentDialogButton.Close;
+        dialog.CloseButtonText = "";
+        OperationDialog.UseDoneButton(dialog);
     }
 
     StackPanel WithSteps(UIElement content, bool applying) =>

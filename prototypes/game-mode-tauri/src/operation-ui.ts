@@ -54,7 +54,7 @@ const stepActions:Record<string,string> = {
  'update-dlss':'Update DLSS', uninstall:'Restore', adopt:'Adopt', 'adopt-clean':'Install',
 };
 export function flowSteps(kind:string,phase:'start'|'review'|'apply',chooseGames=false) {
- const steps = ['Review games',stepActions[kind] || 'Apply changes'];
+ const steps = [kind==='review'?'Review changes':'Review games',stepActions[kind] || 'Apply changes'];
  if(kind==='install')steps.unshift('Presets');
  if(chooseGames)steps.unshift('Choose games');
  const current=phase==='start'?0:phase==='review'?steps.length-2:steps.length-1;
@@ -83,7 +83,7 @@ export function operationFlow(state:FlowState,games:Game[],icon:Icon,startup='',
   const message=state.error||String(result?.message||(typeof result?.report==='string'?result.report:'')||(typeof state.result==='string'?state.result:cancelled?'The engine stopped this operation. Review the completed steps below.':failed?'Some changes need attention.':'The engine finished the reviewed operation.'));
   const reports=Array.isArray(result?.reports)?result.reports:[];
   body=`<div class="flow-result ${failed?'flow-result-error':''}">${icon(failed||cancelled?'warning':'check')}<div><h2 id="page-title" tabindex="-1">${failed?'Needs attention':cancelled?'Operation cancelled':'Done'}</h2><p role="status">${e(message)}</p>${typeof result?.completed_batches==='number'?`<p class="subtle">${result.completed_batches} reviewed batch${result.completed_batches===1?'':'es'} completed.</p>`:''}${errors.length?`<ul>${errors.map(error=>`<li>${e(error)}</li>`).join('')}</ul>`:''}</div>${reports.length ? reviewInfo('Operation result',reports.map(report=>typeof report==='string'?report:JSON.stringify(report,null,2)).join('\n\n'),icon) : ''}</div>`;
-  footer='<button class="primary" data-action="operation-back">Back to game</button>';
+  footer='<button class="primary flow-done" data-action="operation-back">Done</button>';
  }
  const heading=resultStage?'':`<header class="flow-heading"><h1 id="page-title" tabindex="-1">${e(title)}</h1>${flowSteps(state.kind || '',phase,state.kind==='remove-nr-addons'&&state.origin==='packages')}</header>`;
  return `<div class="operation-flow" data-stage="${state.stage}">${heading}<section class="glass-section flow-panel">${['checking','running'].includes(state.stage)?'<div class="flow-artwork" aria-hidden="true"></div>':''}<div class="flow-body">${body}</div><footer class="operation-actions flow-actions">${footer}</footer></section></div>`;

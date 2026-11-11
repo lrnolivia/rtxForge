@@ -500,6 +500,8 @@ public sealed class ForgeSettings
     [JsonPropertyName("library_view")] public string LibraryView { get; set; } = "posters";
     [JsonPropertyName("library_filter")] public string LibraryFilter { get; set; } = "all";
     [JsonPropertyName("theme")] public string Theme { get; set; } = "system";
+    [JsonPropertyName("desktop_accent_source")] public string DesktopAccentSource { get; set; } = "green";
+    [JsonPropertyName("desktop_accent_color")] public string DesktopAccentColor { get; set; } = "#76b900";
     [JsonPropertyName("game_mode_theme_linked")] public bool GameModeThemeLinked { get; set; } = true;
     [JsonPropertyName("game_mode_theme")] public string GameModeTheme { get; set; } = "night";
     [JsonIgnore] public string ResolvedGameModeTheme => GameModeThemeLinked ? Theme : GameModeTheme;

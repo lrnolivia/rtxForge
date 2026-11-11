@@ -1,5 +1,12 @@
 # Split Render
 
+New Split Render setups are paused while we improve performance and image
+quality. To remove existing setups, open **Packages → Remove Split Render**,
+select one or more games, and review the files and settings to restore.
+For one game, the same action is available under **Tools → Split Render**.
+
+The sections below describe the options available when Split Render is enabled.
+
 Split Render uses DLSS 5 NR for the environment and characters, with a
 separate character pass where supported. Open **Packages → Split Render →
 Choose games** to review a setup for one or more games. Changing the setup

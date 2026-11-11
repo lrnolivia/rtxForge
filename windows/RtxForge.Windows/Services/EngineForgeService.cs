@@ -34,6 +34,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     public string Activity { get; private set; } = "";
     public event Action<string>? ActivityChanged;
     public string EngineRoot { get; }
+    public bool SplitRenderEnabled { get; private set; }
     static string SnapshotPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "library-snapshot.json");
     // Each build keys its own snapshot, so an update never shows the previous build's verdicts.
     static readonly string Build = typeof(EngineForgeService).Assembly.ManifestModule.ModuleVersionId.ToString("N");
@@ -99,6 +100,8 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
             service.Dispose();
             return (null, "The rtxForge engine did not start in time.");
         }
+        if (ready.Task.IsCompletedSuccessfully)
+            service.SplitRenderEnabled = ready.Task.Result["split_render_enabled"]?.GetValue<bool>() == true;
         return (service, null);
     }
 

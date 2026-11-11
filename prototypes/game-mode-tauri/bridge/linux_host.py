@@ -297,13 +297,17 @@ def bind(root, send):
     def nr_review(params):
         gpu = service.hardware().get('family') or 'ada'
         if 'rows' in params:
-            plan = nr_install.prepare_batch(service.config, params['rows'], params['choice'], gpu)
-            rows = [{'name': item['name'], 'game': item['game'], 'summary': item['selection'],
+            remove = params.get('remove', False)
+            plan = nr_install.prepare_batch(service.config, params['rows'], params.get('choice'), gpu, remove=remove)
+            rows = [{'name': item['name'], 'game': item['game'],
+                     'summary': item.get('selection') or 'Remove the recorded setup.',
                      'details': nr_install.describe_changes(item)} for item in plan['plans']]
+            activity = 'Removing Split Render' if remove else 'Installing Split Render'
             def apply_batch(review):
                 return nr_install.apply_batch(service.config, review, lambda name, index, total:
-                                              ui.progress('Installing Split Render', game=name, checked=index, total=total))
-            return reviewed('Review Split Render', rows, plan, apply_batch, blocked=plan['blocked'], action='Install Split Render')
+                                              ui.progress(activity, game=name, checked=index, total=total))
+            return reviewed('Review Split Render removal' if remove else 'Review Split Render', rows, plan,
+                            apply_batch, blocked=plan['blocked'], action='Remove Split Render' if remove else 'Install Split Render')
 
         remove = params.get('remove', False)
         if type(remove) is not bool:
@@ -330,7 +334,8 @@ def bind(root, send):
                    feeder_character_apply=lambda p: feeder_character.apply(
                        service.config, p['row'], p.get('stamp'), p.get('skin'),
                        p.get('pass_number', 2), p.get('character', True)),
-                   nr_match=lambda p: nr_install.match_batch(service.config, p['rows'], p['choice'], service.hardware().get('family') or 'ada'),
+                   nr_match=lambda p: nr_install.match_batch(service.config, p['rows'], p.get('choice'),
+                        service.hardware().get('family') or 'ada', remove=p.get('remove', False)),
                    nr_check=lambda p: nr_addons.preset_check(p['package'], p['setup']) if 'package' in p
                    else nr_addons.check(p['row'], p['setup']), nr_status=lambda p: nr_install.status(p['row']),
                    nr_combo_save=nr_combo_save,

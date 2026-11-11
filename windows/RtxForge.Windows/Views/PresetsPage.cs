@@ -37,7 +37,8 @@ public sealed partial class PresetsPage : Page
         heading.Children.Add(Prefs.Label("Your defaults for new installs. Review games to apply them to existing packages."));
         page.Children.Add(heading);
         var sections = new StackPanel { Spacing = 24 };
-        sections.Children.Add(splitPresets.Root);
+        if (shell.Service is EngineForgeService { SplitRenderEnabled: true })
+            sections.Children.Add(splitPresets.Root);
         sections.Children.Add(tuning);
         var scroll = new ScrollViewer { Content = sections, HorizontalScrollMode = ScrollMode.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(0, 0, 4, 4) };
@@ -71,7 +72,8 @@ public sealed partial class PresetsPage : Page
         shell.EndPresetSelection();
         tuning.SetMode(shell.Mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.DynamicMfgSupported);
         Refresh();
-        _ = LoadSplitPresetsAsync();
+        if (shell.Service is EngineForgeService { SplitRenderEnabled: true })
+            _ = LoadSplitPresetsAsync();
     }
 
     async Task LoadSplitPresetsAsync()

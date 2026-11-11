@@ -170,6 +170,7 @@ public sealed class OperationDialog
     {
         "install" => "Review Installation",
         "install-nr-addons" => "Review Split Render",
+        "remove-nr-addons" => "Review Split Render removal",
         "uninstall" => "Review Restoration",
         "update-dlss" => "Review DLSS Update",
         "update-overlays" => "Update Overlays",
@@ -218,7 +219,7 @@ public sealed class OperationDialog
                     block.Summary is null ? null : block.Reason));
         }
         body.Children.Add(new ScrollViewer { Content = list, MaxHeight = 380, HorizontalScrollMode = ScrollMode.Disabled });
-        if (operation == "install" && count > 0 && shell.Service is EngineForgeService engine)
+        if (operation == "install" && count > 0 && shell.Service is EngineForgeService { SplitRenderEnabled: true } engine)
             _ = AddNrChoicesAsync(body, engine, review, UpdatePrimary);
         body.Children.Add(Prefs.Label("Your files will only change after you review and confirm.", "ForgeCaptionDimTextStyle"));
 
@@ -325,6 +326,7 @@ public sealed class OperationDialog
     {
         "install" => "Install",
         "install-nr-addons" => "Install Split Render",
+        "remove-nr-addons" => "Remove Split Render",
         "uninstall" => "Restore",
         "update-dlss" => "Update",
         "update-overlays" => "Update Overlays",
@@ -503,6 +505,7 @@ public sealed class OperationDialog
     {
         "install" => "Installing",
         "install-nr-addons" => "Installing Split Render",
+        "remove-nr-addons" => "Removing Split Render",
         "uninstall" => "Restoring",
         "update-dlss" => "Updating",
         "update-overlays" => "Updating",

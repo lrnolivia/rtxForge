@@ -108,21 +108,25 @@ public sealed partial class GamePage
     {
         var group = new PreferencesGroup("Split Render",
             "Render the environment and characters with DLSS 5 NR, with a separate character pass where supported.");
+        var enabled = shell.Service is EngineForgeService { SplitRenderEnabled: true };
+        if (!enabled) group.Root.Visibility = Visibility.Collapsed;
         var status = group.Add(Prefs.Row("Split Render", "Checking…", null, ""));
-        _ = FillNrAddonsAsync(g, group, status);
+        _ = FillNrAddonsAsync(g, group, status, enabled);
         return group;
     }
 
-    async Task FillNrAddonsAsync(Game g, PreferencesGroup group, Border status)
+    async Task FillNrAddonsAsync(Game g, PreferencesGroup group, Border status, bool enabled)
     {
         JsonObject catalog, current;
         try
         {
-            catalog = await shell.Service.NrCatalogAsync(g);
             current = await shell.Service.NrStatusAsync(g);
+            if (!enabled && current["installed"]?.GetValue<bool>() != true) return;
+            catalog = await shell.Service.NrCatalogAsync(g);
         }
         catch (InvalidOperationException error) { SetSubtitle(status, error.Message); return; }
         if (g != game || section != "Tools") return;
+        group.Root.Visibility = Visibility.Visible;
 
         var addons = (catalog["addons"] as JsonArray ?? []).OfType<JsonObject>().ToList();
         // Where Skynizz runs NR, it is the world: the Environment slot's only choice.

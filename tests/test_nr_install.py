@@ -50,6 +50,7 @@ class NrInstallTests(unittest.TestCase):
             (hdr, '_eligible', lambda config, row: (self.game, self.game / 'Game.exe', None, self.engine)),
             (hdr.state_storage, 'storage', lambda config, required=0: self.state),
             (hdr, 'WINDOWS', True),
+            (nr_install.nr_addons, 'enabled', lambda: True),
             (nr_install, '_fetch', lambda config, archive, name: b'verified archive'),
             (nr_install, '_members', lambda data, pins: {m: self.addons[Path(m).name] for m in pins}),
             (nr_install, '_model', lambda data, pin: self.model),
@@ -59,6 +60,40 @@ class NrInstallTests(unittest.TestCase):
 
     def files(self):
         return {p.relative_to(self.game).as_posix(): p.read_bytes() for p in self.game.rglob('*') if p.is_file()}
+
+    def test_disabled_split_render_rejects_new_and_staged_installs_but_allows_removal(self):
+        staged = nr_install.prepare({}, self.row, COMBO)
+        with patch.object(nr_install.nr_addons, 'enabled', return_value=False):
+            with self.assertRaisesRegex(t.Refusal, 'Split Render setups are paused'):
+                nr_install.prepare({}, self.row, COMBO)
+            with self.assertRaisesRegex(t.Refusal, 'Split Render setups are paused'):
+                nr_install.apply({}, staged)
+        nr_install.apply({}, staged)
+        second = self.game.parent / 'second'
+        uninstalled = self.game.parent / 'uninstalled'
+        for directory in (second, uninstalled):
+            directory.mkdir()
+            (directory / 'Game.exe').write_bytes(pe())
+            (directory / 'save.dat').write_bytes(b'save')
+        second_row = dict(self.row, game=str(second), name='Second Game')
+        no_setup = dict(self.row, game=str(uninstalled), name='Uninstalled Game')
+
+        def eligible(config, row):
+            root = Path(row['game'])
+            return root, root / 'Game.exe', None, self.engine
+
+        with patch.object(hdr, '_eligible', eligible):
+            nr_install.apply({}, nr_install.prepare({}, second_row, COMBO))
+            with patch.object(nr_install.nr_addons, 'enabled', return_value=False):
+                rows = [self.row, no_setup, second_row]
+                self.assertEqual([match['index'] for match in nr_install.match_batch({}, rows, remove=True)], [0, 2])
+                review = nr_install.prepare_batch({}, rows, remove=True)
+                self.assertEqual([row['name'] for row in review['blocked']], ['Uninstalled Game'])
+                result = nr_install.apply_batch({}, review)
+        self.assertEqual(result, {'message': 'Split Render removed from 2 games.', 'errors': []})
+        for row in (self.row, second_row):
+            self.assertFalse(nr_install.status(row)['installed'])
+            self.assertEqual((Path(row['game']) / 'save.dat').read_bytes(), b'save')
 
     def test_install_then_restore_returns_the_original_folder(self):
         before = self.files()

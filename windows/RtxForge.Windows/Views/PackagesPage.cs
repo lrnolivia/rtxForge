@@ -125,12 +125,18 @@ public sealed partial class PackagesPage : Page
         columns.Children.Add(mfg);
         body.Children.Add(columns);
 
-        var addons = Section("Split Render",
-            "Render the environment and characters with DLSS 5 NR, with a separate character pass where supported.");
-        var reviewAddons = Prefs.ActionButton("Choose games", async (_, _) => await ChooseNrGamesAsync());
-        reviewAddons.IsEnabled = !shell.Service.IsPreview;
-        addons.Children.Add(reviewAddons);
-        body.Children.Add(Card(addons));
+        if (shell.Service is EngineForgeService engine)
+        {
+            var addons = Section("Split Render", engine.SplitRenderEnabled
+                ? "Set up or remove Split Render for multiple games."
+                : "New setups are paused while performance and image quality are improved.");
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            if (engine.SplitRenderEnabled)
+                actions.Children.Add(Prefs.ActionButton("Choose games", async (_, _) => await ChooseNrGamesAsync(remove: false)));
+            actions.Children.Add(Prefs.ActionButton("Remove Split Render", async (_, _) => await ChooseNrGamesAsync(remove: true)));
+            addons.Children.Add(actions);
+            body.Children.Add(Card(addons));
+        }
 
         // Whole packages: NR and MFG together.
         var unified = new StackPanel { Spacing = 12, Margin = new Thickness(0, 12, 0, 0) };
@@ -169,34 +175,34 @@ public sealed partial class PackagesPage : Page
         }
     }
 
-    async Task ChooseNrGamesAsync()
+    async Task ChooseNrGamesAsync(bool remove)
     {
-        if (shell.Busy || shell.Service is not EngineForgeService engine) return;
+        if (shell.Busy || shell.Service is not EngineForgeService engine || (!remove && !engine.SplitRenderEnabled)) return;
         try
         {
-            var catalog = await engine.NrCatalogAsync();
+            var catalog = remove ? null : await engine.NrCatalogAsync();
             var games = shell.Games.Where(game => game.EngineRow is not null).OrderBy(game => game.Name).ToArray();
-            if (await PickNrGamesAsync(catalog, games, engine.MatchNrGamesAsync) is { } selection)
-                await OperationDialog.ShowPreparedAsync(shell, "install-nr-addons",
-                    progress => engine.ReviewNrBatchAsync(selection.Games, selection.Setup, progress));
+            if (await PickNrGamesAsync(catalog, games, remove, engine.MatchNrGamesAsync) is { } selection)
+                await OperationDialog.ShowPreparedAsync(shell, remove ? "remove-nr-addons" : "install-nr-addons",
+                    progress => engine.ReviewNrBatchAsync(selection.Games, selection.Setup, remove, progress));
         }
         catch (InvalidOperationException error) { shell.ShowToast(error.Message); }
     }
 
-    private async Task<(Game[] Games, JsonObject Setup)?> PickNrGamesAsync(JsonObject catalog, Game[] catalogGames,
-        Func<Game[], JsonObject, Task<Dictionary<string, string>>> matchGames)
+    private async Task<(Game[] Games, JsonObject? Setup)?> PickNrGamesAsync(JsonObject? catalog, Game[] catalogGames,
+        bool remove, Func<Game[], JsonObject?, bool, Task<Dictionary<string, string>>> matchGames)
     {
         var dialog = shell.NewDialog();
-        dialog.Title = "Set up Split Render";
+        dialog.Title = remove ? "Remove Split Render" : "Set up Split Render";
         dialog.PrimaryButtonText = "Review selection";
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
         dialog.IsPrimaryButtonEnabled = false;
-        var width = Math.Clamp(dialog.XamlRoot.Size.Width - 112, 264, 880);
+        var width = Math.Clamp(dialog.XamlRoot.Size.Width - 112, 264, remove ? 620 : 880);
         dialog.Resources["ContentDialogMaxWidth"] = width + 56;
         var wide = width >= 660;
         var chosen = new HashSet<string>();
-        var picker = new NrSetupPicker(catalog);
+        var picker = catalog is null ? null : new NrSetupPicker(catalog);
         var search = new AutoSuggestBox { PlaceholderText = "Search games", QueryIcon = new SymbolIcon(Symbol.Find) };
         var games = new ListView
         {
@@ -206,7 +212,7 @@ public sealed partial class PackagesPage : Page
             IsMultiSelectCheckBoxEnabled = false,
             Height = wide ? Math.Clamp(dialog.XamlRoot.Size.Height - 370, 230, 366) : 196,
         };
-        var rows = catalogGames.Select(game => new NrPickerGame(game, games)).ToArray();
+        var rows = remove ? Array.Empty<NrPickerGame>() : catalogGames.Select(game => new NrPickerGame(game, games)).ToArray();
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(search, "Search games");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(games, "Games for Split Render");
         var selection = Prefs.Label("0 selected", "ForgeCaptionDimTextStyle");
@@ -235,7 +241,7 @@ public sealed partial class PackagesPage : Page
             selection.Text = $"{chosen.Count} selected";
             selectAll.IsEnabled = games.SelectedItems.Count < games.Items.Count;
             clear.IsEnabled = chosen.Count > 0;
-            dialog.IsPrimaryButtonEnabled = !checking && matchError is null && picker.Choice is not null && chosen.Count > 0;
+            dialog.IsPrimaryButtonEnabled = !checking && matchError is null && (remove || picker?.Choice is not null) && chosen.Count > 0;
         }
         selectAll.Click += (_, _) =>
         {
@@ -271,9 +277,9 @@ public sealed partial class PackagesPage : Page
             var selectLabel = query.Length == 0 ? "Select all" : "Select all results";
             selectAll.Content = Prefs.Content(selectLabel, "\uE8B3");
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(selectAll, selectLabel);
-            empty.Text = matchError ?? (checking ? "Checking compatible games…" :
+            empty.Text = matchError ?? (checking ? (remove ? "Finding installed setups…" : "Checking compatible games…") :
                 catalogGames.Length == 0 ? "There are no scanned games in your library." :
-                rows.Length == 0 ? "No games support this setup." : "No games match your search.");
+                rows.Length == 0 ? (remove ? "No scanned games have Split Render installed." : "No games support this setup.") : "No games match your search.");
             empty.Visibility = matches.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             filtering = false;
             Update();
@@ -281,18 +287,18 @@ public sealed partial class PackagesPage : Page
         async Task CheckSetupAsync()
         {
             var current = ++revision;
-            var choice = picker.Choice;
+            var choice = picker?.Choice;
             matchError = null;
             notice.Visibility = Visibility.Collapsed;
-            checking = choice is not null;
-            if (choice is null) rows = catalogGames.Select(game => new NrPickerGame(game, games)).ToArray();
+            checking = remove || choice is not null;
+            if (!checking) rows = catalogGames.Select(game => new NrPickerGame(game, games)).ToArray();
             Filter();
-            if (choice is null) return;
+            if (!checking) return;
             await Task.Delay(160);
             if (current != revision) return;
             try
             {
-                var compatible = await matchGames(catalogGames, choice);
+                var compatible = await matchGames(catalogGames, choice, remove);
                 if (current != revision) return;
                 rows = catalogGames.Where(game => compatible.ContainsKey(game.Id))
                     .Select(game => new NrPickerGame(game, games, compatible[game.Id])).ToArray();
@@ -307,7 +313,7 @@ public sealed partial class PackagesPage : Page
             catch (Exception error) when (error is IOException or InvalidOperationException)
             {
                 if (current != revision) return;
-                matchError = "Could not check compatibility. " + error.Message;
+                matchError = (remove ? "Could not find installed setups. " : "Could not check compatibility. ") + error.Message;
             }
             checking = false;
             Filter();
@@ -328,7 +334,7 @@ public sealed partial class PackagesPage : Page
             Update();
         };
         search.TextChanged += (_, _) => Filter();
-        picker.Changed += async () => await CheckSetupAsync();
+        if (picker is not null) picker.Changed += async () => await CheckSetupAsync();
         Filter();
 
         static StackPanel Heading(string title, string glyph)
@@ -354,7 +360,7 @@ public sealed partial class PackagesPage : Page
         gameColumn.Children.Add(notice);
         var setupColumn = new StackPanel { Spacing = 8 };
         setupColumn.Children.Add(Heading("Setup", "\uE713"));
-        setupColumn.Children.Add(picker.Root);
+        if (picker is not null) setupColumn.Children.Add(picker.Root);
         var columns = new Grid { ColumnSpacing = 24, RowSpacing = 20 };
         if (wide)
         {
@@ -371,18 +377,26 @@ public sealed partial class PackagesPage : Page
         columns.Children.Add(setupColumn);
         columns.Children.Add(gameColumn);
         var content = new StackPanel { Width = width, Spacing = 16, Padding = new Thickness(4) };
-        content.Children.Add(Prefs.Label("Choose a setup to see compatible games. Review confirms what each game will use."));
-        content.Children.Add(columns);
+        content.Children.Add(Prefs.Label(remove
+            ? "Choose games with Split Render installed. Close those games before removing it."
+            : "Choose a setup to see compatible games. Review confirms what each game will use."));
+        if (remove)
+        {
+            columns.Children.Remove(gameColumn);
+            content.Children.Add(gameColumn);
+        }
+        else content.Children.Add(columns);
         dialog.Content = new ScrollViewer
         {
             Content = content, HorizontalScrollMode = ScrollMode.Disabled,
             MaxHeight = Math.Max(200, dialog.XamlRoot.Size.Height - 184),
         };
+        if (remove) _ = CheckSetupAsync();
         var result = await dialog.ShowAsync();
         revision++;
-        if (result != ContentDialogResult.Primary || picker.Choice is not { } selected)
+        if (result != ContentDialogResult.Primary || (!remove && picker?.Choice is null))
             return null;
-        return (catalogGames.Where(game => chosen.Contains(game.Id)).ToArray(), selected);
+        return (catalogGames.Where(game => chosen.Contains(game.Id)).ToArray(), picker?.Choice);
     }
 
     void OnNrRowPointerEntered(object sender, PointerRoutedEventArgs _) =>

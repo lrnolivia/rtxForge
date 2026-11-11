@@ -11,6 +11,7 @@ export type FeederCharacter = { available: false; reason: string } | {
   options: { number: number; inherited: boolean; character: boolean; skin: number }[];
 };
 export type Catalog = {
+  enabled?: boolean;
   addons: { id: string; name: string; builds: { id: string; label: string; default: boolean }[] }[];
   models: { id: string; label: string }[];
   combos: Record<string, Combo>;

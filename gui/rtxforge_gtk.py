@@ -16,6 +16,7 @@ from native_shell import new_shell
 from ui_scaling import ScaledContent, content_scale, SCALES
 from operation_scope import operation_targets, ScopeError
 import mfg_choice
+import nr_addons
 from step_count import StepCount
 import action_labels
 import overview_facts
@@ -3771,6 +3772,7 @@ OPERATION_WORDS={
     'cleanup':('Review Cleanup','Remove','Removing'),
     'tool':('Review Tool Installation','Install','Installing'),
     'nr-addons':('Review Split Render','Install Split Render','Installing Split Render'),
+    'remove-nr-addons':('Review Split Render removal','Remove Split Render','Removing Split Render'),
     'tool-restore':('Review Tool Restoration','Restore','Restoring'),
     'artwork':('Review Artwork Sync','Sync','Syncing'),
     'steam-shortcut':('Review rtxForge in Steam','Apply','Applying'),
@@ -5822,7 +5824,8 @@ class Window(Adw.ApplicationWindow):
         heading.append(label('Your defaults for new installs. Review games to apply them to existing packages.','dim-label'))
         for child in (heading.get_first_child(),heading.get_last_child()):child.set_xalign(0)
         page.append(heading)
-        page.append(self.build_split_presets())
+        if nr_addons.enabled():
+            page.append(self.build_split_presets())
         group=Adw.PreferencesGroup()
         pod=Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         pod.add_css_class('presets-card')
@@ -6992,8 +6995,11 @@ class Window(Adw.ApplicationWindow):
 
     def populate_nr_addons(self,body,game):
         """Split Render roles, pinned builds and a shared DLSS 5 model."""
-        import nr_addons,nr_install
-        group=Adw.PreferencesGroup(title='Split Render',description="Render the environment and characters with DLSS 5 NR, with a separate character pass where supported.")
+        import nr_install
+        enabled=nr_addons.enabled()
+        group=Adw.PreferencesGroup(title='Split Render',visible=enabled,
+            description='Render the environment and characters with DLSS 5 NR, with a separate character pass where supported.'
+            if enabled else 'New setups are paused. You can remove the existing setup here.')
         body.append(group)
         status=row('Split Render','Checking…');group.add(status)
         if self.options.demo:status.set_subtitle('Split Render is checked in the installed app.');return
@@ -7004,6 +7010,8 @@ class Window(Adw.ApplicationWindow):
         def show(result):
             if isinstance(result,Exception):status.set_subtitle(str(result));return
             catalog,current=result
+            if not enabled and not current.get('installed'):return
+            group.set_visible(True)
             addons=catalog['addons'];models=catalog['models']
             # Where Skynizz runs NR, it is the world: the Environment slot's only choice.
             runtime=catalog.get('runtime_nr') or current.get('runtime_nr')
@@ -7139,11 +7147,13 @@ class Window(Adw.ApplicationWindow):
         for model,button in models.items():button.connect('toggled',select_model,model)
         return group
 
-    def choose_nr_games(self):
+    def choose_nr_games(self, *, remove=False):
         import nr_install
-        if self.busy or self.options.demo:return
-        dialog=Adw.AlertDialog(heading='Set up Split Render',body='Choose a setup to see compatible games. Review confirms what each game will use.')
-        wide=self.get_width()>=820
+        if self.busy or self.options.demo or (not remove and not nr_addons.enabled()):return
+        dialog=Adw.AlertDialog(heading='Remove Split Render' if remove else 'Set up Split Render',
+            body='Choose games with Split Render installed. Close those games before removing it.' if remove
+            else 'Choose a setup to see compatible games. Review confirms what each game will use.')
+        wide=not remove and self.get_width()>=820
         dialog.set_content_width(min(880,self.get_width()-64) if wide else 560)
         dialog.add_response('cancel','Cancel')
         dialog.add_response('review','Review selection')
@@ -7178,7 +7188,7 @@ class Window(Adw.ApplicationWindow):
             count.set_label(f'{len(chosen)} selected')
             select_all.set_sensitive(any(entry.get_visible() and not check.get_active() for entry,check,_ in entries))
             reset.set_sensitive(bool(chosen))
-            dialog.set_response_enabled('review',choice is not None and not checking and not failure and bool(chosen))
+            dialog.set_response_enabled('review',(remove or choice is not None) and not checking and not failure and bool(chosen))
 
         def filter_games(*_):
             query=search.get_text().strip().casefold()
@@ -7190,9 +7200,10 @@ class Window(Adw.ApplicationWindow):
             select_all.set_label('Select all results' if query else 'Select all')
             scroll.set_visible(any_visible)
             empty.set_visible(not any_visible)
-            empty.set_label(failure or ('Checking compatible games…' if checking else
+            empty.set_label(failure or (('Finding installed setups…' if remove else 'Checking compatible games…') if checking else
                 'There are no scanned games in your library.' if not catalog else
-                'No games support this setup.' if not entries else 'No games match your search.'))
+                ('No scanned games have Split Render installed.' if remove else 'No games support this setup.') if not entries
+                else 'No games match your search.'))
             update()
 
         def toggle(check,game,entry):
@@ -7236,8 +7247,8 @@ class Window(Adw.ApplicationWindow):
             current=revision
             failure=''
             notice.set_visible(False)
-            checking=value is not None
-            if value is None:
+            checking=remove or value is not None
+            if not checking:
                 set_rows([(index,'') for index in range(len(catalog))])
                 return
             filter_games()
@@ -7260,9 +7271,10 @@ class Window(Adw.ApplicationWindow):
                 return False
 
             def work():
-                try:matches=nr_install.match_batch(config,catalog,value,family)
+                try:matches=nr_install.match_batch(config,catalog,value,family,remove=remove)
                 except (OSError,ValueError,RuntimeError) as error:
-                    GLib.idle_add(finish,[],f'Could not check compatibility. {user_messages.friendly_error(str(error))}')
+                    summary='Could not find installed setups.' if remove else 'Could not check compatibility.'
+                    GLib.idle_add(finish,[],f'{summary} {user_messages.friendly_error(str(error))}')
                 else:GLib.idle_add(finish,matches,'')
 
             def check_latest():
@@ -7276,42 +7288,47 @@ class Window(Adw.ApplicationWindow):
             heading.append(label(text,'heading'))
             return heading
 
-        setup=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,valign=Gtk.Align.START)
-        if wide:setup.set_size_request(296,-1)
-        setup.append(section_heading('Setup','preferences-system-symbolic'))
-        setup.append(self.nr_install_picker(selected))
+        if not remove:
+            setup=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,valign=Gtk.Align.START)
+            if wide:setup.set_size_request(296,-1)
+            setup.append(section_heading('Setup','preferences-system-symbolic'))
+            setup.append(self.nr_install_picker(selected))
+            body.append(setup)
         game_column=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,hexpand=True)
         game_heading=section_heading('Games','input-gaming-symbolic')
         count.set_hexpand(True);count.set_halign(Gtk.Align.END)
         game_heading.append(count)
         for child in (game_heading,search,actions,scroll,empty,notice):game_column.append(child)
-        body.append(setup);body.append(game_column)
+        body.append(game_column)
         search.connect('search-changed',filter_games)
         select_all.connect('clicked',lambda *_:set_checks(True))
         reset.connect('clicked',lambda *_:set_checks(False))
         dialog.set_extra_child(body)
-        set_rows([(index,'') for index in range(len(catalog))])
+        if remove:selected(None)
+        else:set_rows([(index,'') for index in range(len(catalog))])
         def response(_,key):
             nonlocal closed
             closed=True
-            if key=='review' and choice is not None and not checking and not failure:
-                self.review_nr_batch([game for game in catalog if game['game'] in chosen],choice)
+            if key=='review' and (remove or choice is not None) and not checking and not failure:
+                self.review_nr_batch([game for game in catalog if game['game'] in chosen],choice,remove=remove)
         dialog.connect('response',response)
         dialog.present(self)
 
-    def review_nr_batch(self,games,choice,*,rescan_on_close=False):
+    def review_nr_batch(self,games,choice,*,remove=False,rescan_on_close=False):
         import nr_install
         config=self.service.config
         family=(self.hardware_info or {}).get('family') or 'ada'
         def prepare():
-            result=nr_install.prepare_batch(config,games,choice,family)
-            return dict(result, title='Review Split Render', rows=[
-                {'name':p['name'],'game':p['game'],'subtitle':p['selection'],'detail':nr_install.describe_changes(p)}
+            result=nr_install.prepare_batch(config,games,choice,family,remove=remove)
+            return dict(result, title='Review Split Render removal' if remove else 'Review Split Render', rows=[
+                {'name':p['name'],'game':p['game'],'subtitle':p.get('selection') or 'Remove the recorded setup.',
+                 'detail':nr_install.describe_changes(p)}
                 for p in result['plans']])
         def message(result):
             return '\n'.join([result['message'],*result['errors']])
-        flow=self.review_write('nr-addons',prepare=prepare,run=lambda review:nr_install.apply_batch(config,review),
-                               details=['Each game has its own compatibility and file review.'],done=message)
+        flow=self.review_write('remove-nr-addons' if remove else 'nr-addons',
+                               prepare=prepare,run=lambda review:nr_install.apply_batch(config,review),
+                               details=['Review the file changes for each selected game.'],done=message)
         if flow:flow.rescan_on_close=rescan_on_close
 
     def review_extra_restore(self,record):
@@ -15673,7 +15690,7 @@ class Window(Adw.ApplicationWindow):
         offers=review.get('supported') or []
         review['_chosen_offers']=[]
         extra=self.supported_offers(review,offers,flow) if offers else None
-        if operation=='install' and (review.get('rows') or offers) and not self.options.demo:
+        if operation=='install' and (review.get('rows') or offers) and not self.options.demo and nr_addons.enabled():
             import nr_install
             group=Adw.PreferencesGroup(title='Split Render',
                 description='Optional. Review the DLSS 5 NR setup each game will receive after its main package installs.')

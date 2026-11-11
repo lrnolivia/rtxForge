@@ -214,6 +214,7 @@ def prepare(config, row, setup, gpu='ada', *, adapt=False):
 
 
 def _prepare_choice(config, row, choice, gpu, projection=None):
+    nr_addons.require_enabled()
     root, exe, _, e = hdr._eligible(config, row)
     game, route, host, optiscaler_ini = _target(row, exe, e, projection)
     if projection:
@@ -341,6 +342,7 @@ class PackageProjection:
 def prepare_after_packages(config, reviews, choice, gpu='ada'):
     """Freeze Split Render against planned main-package files, before confirmation."""
     if choice is not None:
+        nr_addons.require_enabled()
         _validate_choice(choice)
     staged, summary, seen = [], [], set()
 
@@ -419,8 +421,13 @@ def _validate_choice(choice):
                'Choose a Split Render setup.')
 
 
-def match_batch(config, rows, choice, gpu='ada'):
-    """Preview compatible library rows without downloads. Review rechecks live safety and file ownership."""
+def match_batch(config, rows, choice=None, gpu='ada', *, remove=False):
+    """Find installed setups for removal, or check compatibility for new installs."""
+    t.need(type(remove) is bool, 'Choose a Split Render action.')
+    if remove:
+        return [{'index': index, 'summary': 'Split Render installed'}
+                for index, row in enumerate(rows) if row.get('exe') and status(row).get('installed')]
+    nr_addons.require_enabled()
     _validate_choice(choice)
     e = engine_bridge.module(config)
     matches = []
@@ -437,22 +444,25 @@ def match_batch(config, rows, choice, gpu='ada'):
     return matches
 
 
-def prepare_batch(config, rows, choice, gpu='ada'):
+def prepare_batch(config, rows, choice=None, gpu='ada', *, remove=False):
     """Freeze one reviewed transaction per game, with no implicit writes to excluded games."""
-    _validate_choice(choice)
+    t.need(type(remove) is bool, 'Choose a Split Render action.')
+    if not remove:
+        nr_addons.require_enabled()
+        _validate_choice(choice)
     plans, blocked, roots = [], [], set()
     for row in rows:
         try:
             t.need(row.get('exe'), 'The selected game executable is unavailable.')
             root = t.safe(row['game'])
             t.need(root not in roots, 'This folder already has a Split Render setup in this review.')
-            plan = _prepare_choice(config, row, choice, gpu)
+            plan = prepare_remove(config, row) if remove else _prepare_choice(config, row, choice, gpu)
         except (t.Refusal, OSError, ValueError, configparser.Error) as error:
             blocked.append({'game': row['game'], 'name': row['name'], 'reason': str(error)})
         else:
             plans.append(plan)
             roots.add(root)
-    return {'plans': plans, 'blocked': blocked}
+    return {'plans': plans, 'blocked': blocked, 'action': 'remove' if remove else 'install'}
 
 
 def describe_changes(plan):
@@ -472,7 +482,9 @@ def apply_batch(config, review, progress=None):
             errors.append(f'{plan["name"]}: {error}')
         else:
             count += 1
-    return {'message': f'Split Render installed in {count} game' + ('s.' if count != 1 else '.'), 'errors': errors}
+    result = 'removed from' if review.get('action') == 'remove' else 'installed in'
+    games = 'game' if count == 1 else 'games'
+    return {'message': f'Split Render {result} {count} {games}.', 'errors': errors}
 
 
 def _names(value):
@@ -562,6 +574,8 @@ def _restore_key(text, section, key, before):
 
 def apply(config, review):
     t.need(review.get('kind') == 'nr-addons' and review.get('action') in ('install', 'remove'), 'Invalid NR add-on operation.')
+    if review['action'] == 'install':
+        nr_addons.require_enabled()
     root, exe, _, e = hdr._eligible(config, review)
     base = state_storage.storage(config) / 'nr-transactions'; base.mkdir(parents=True, exist_ok=True)
     state = base / uuid.uuid4().hex

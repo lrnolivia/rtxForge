@@ -225,9 +225,9 @@ struct Controller : Rml::EventListener
     // The connected runtime reports its own pass ceiling (Feeder NR allows 4,
     // OptiScaler 3); the preview keeps OptiScaler's.
     int pass=2,passesMax=3,feederResumePasses=2;
-    bool feederSplitSupported{};
-    bool SplitRenderAvailable() const {return feederSplitSupported||addons.available;}
-    bool FeederSplitActive() const {return feederSplitSupported&&inspectorPanel=="addons";}
+    bool feederSplitSupported{},splitRenderEnabled{true};
+    bool SplitRenderAvailable() const {return splitRenderEnabled&&(feederSplitSupported||addons.available);}
+    bool FeederSplitActive() const {return splitRenderEnabled&&feederSplitSupported&&inspectorPanel=="addons";}
     std::string PassPrefix() const {return "pass"+std::to_string(pass)+"_";}
 
     void RefreshSplitRenderEntry() {

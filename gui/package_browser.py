@@ -3,6 +3,7 @@ from pathlib import Path
 import threading
 from gi.repository import Adw, Gtk, Gio, GLib
 import package_catalog as packages
+import nr_addons
 import user_messages
 
 
@@ -162,14 +163,21 @@ def build_packages(owner, fixture=None, on_selected=None, alive=None, header=Fal
         cards._resize_handler=scroll.get_hadjustment().connect('notify::page-size',resize_columns)
         resize_columns(scroll.get_hadjustment())
         cards.append(columns)
-        addons=Adw.PreferencesGroup(title='Split Render',
-            description='Render the environment and characters with DLSS 5 NR, with a separate character pass where supported.')
-        choose_games=owner.make_action_button('Choose games',lambda *_:owner.choose_nr_games())
-        choose_games.set_sensitive(not owner.options.demo)
-        choose_games.set_valign(Gtk.Align.CENTER)
-        addons_row=Adw.ActionRow(title='Set up Split Render',subtitle='Review a setup for one or more games.')
-        addons_row.add_suffix(choose_games);addons_row.set_activatable_widget(choose_games);addons.add(addons_row)
-        cards.append(addons)
+        if not owner.options.demo:
+            enabled=nr_addons.enabled()
+            addons=Adw.PreferencesGroup(title='Split Render',
+                description='Set up or remove Split Render for multiple games.' if enabled
+                else 'New setups are paused while performance and image quality are improved.')
+            if enabled:
+                choose_games=owner.make_action_button('Choose games',lambda *_:owner.choose_nr_games())
+                choose_games.set_valign(Gtk.Align.CENTER)
+                install_row=Adw.ActionRow(title='Set up Split Render',subtitle='Review a setup for one or more games.')
+                install_row.add_suffix(choose_games);install_row.set_activatable_widget(choose_games);addons.add(install_row)
+            remove=owner.make_action_button('Remove Split Render',lambda *_:owner.choose_nr_games(remove=True))
+            remove.set_valign(Gtk.Align.CENTER)
+            remove_row=Adw.ActionRow(title='Remove from games',subtitle='Review the files to restore in each game.')
+            remove_row.add_suffix(remove);remove_row.set_activatable_widget(remove);addons.add(remove_row)
+            cards.append(addons)
         unified=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
         unified.append(heading('Unified packages','NR and frame generation in one package, for games with DLSS.'))
         for item in catalog:

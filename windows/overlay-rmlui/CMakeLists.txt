@@ -15,6 +15,10 @@ set(RMLUI_SHELL OFF CACHE BOOL "" FORCE)
 add_subdirectory("${RMLUI_SOURCE}" "${CMAKE_CURRENT_BINARY_DIR}/rmlui")
 find_program(GLASS_POWERSHELL NAMES pwsh powershell REQUIRED)
 set(REPO "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+set(SPLIT_RENDER_CATALOG "${REPO}/providers/nr-addons.json")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SPLIT_RENDER_CATALOG}")
+file(READ "${SPLIT_RENDER_CATALOG}" SPLIT_RENDER_CONFIG)
+string(JSON SPLIT_RENDER_ENABLED GET "${SPLIT_RENDER_CONFIG}" enabled)
 file(GLOB GLASS_ICONS "${REPO}/prototypes/overlay-rmlui/icons/*-light.png")
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/GlassAssets.rc" "${CMAKE_CURRENT_BINARY_DIR}/GlassAssets.generated.h"
   COMMAND "${GLASS_POWERSHELL}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/Embed-Assets.ps1" -Output "${CMAKE_CURRENT_BINARY_DIR}"
@@ -25,7 +29,8 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/PrototypeControls.generat
 add_library(rtxforge-glass SHARED GlassRuntime.cpp GlassDx12.cpp "${RMLUI_SOURCE}/Backends/RmlUi_Renderer_DX11.cpp" "${CMAKE_CURRENT_BINARY_DIR}/GlassAssets.rc" "${CMAKE_CURRENT_BINARY_DIR}/GlassAssets.generated.h" "${CMAKE_CURRENT_BINARY_DIR}/PrototypeControls.generated.h")
 target_compile_features(rtxforge-glass PRIVATE cxx_std_20)
 target_compile_options(rtxforge-glass PRIVATE /utf-8)
-target_compile_definitions(rtxforge-glass PRIVATE NOMINMAX UNICODE _UNICODE NUM_MSAA_SAMPLES=4)
+target_compile_definitions(rtxforge-glass PRIVATE NOMINMAX UNICODE _UNICODE NUM_MSAA_SAMPLES=4
+  FORGE_SPLIT_RENDER_ENABLED=$<BOOL:${SPLIT_RENDER_ENABLED}>)
 target_include_directories(rtxforge-glass PRIVATE "${RMLUI_SOURCE}/Backends" "${REPO}/providers/skynizz-bridge" "${REPO}/providers/glass-overlay" "${CMAKE_CURRENT_BINARY_DIR}" "${FREETYPE_ROOT}/../nlohmann")
 target_link_libraries(rtxforge-glass PRIVATE RmlUi::Core d3d11 d3d12 dxgi d3dcompiler windowscodecs ole32 user32 gdi32 bcrypt)
 add_executable(GlassSmokeTest SmokeTest.cpp)

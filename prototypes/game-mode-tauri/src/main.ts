@@ -86,7 +86,7 @@ let disposeViewportArtwork=()=>{};
 let pendingInstall:{params:Record<string,unknown>;settings:Record<string,unknown>;rows:EngineRow[]}|null=null;
 let splitCatalog: Catalog | undefined;
 const packagePicker = newPicker();
-let splitPackageOpen = false, splitQuery = '', splitMatchRevision = 0, splitMatching = false, splitMatchError = '', splitMatchNotice = '';
+let splitPackageOpen = false, splitRemove = false, splitQuery = '', splitMatchRevision = 0, splitMatching = false, splitMatchError = '', splitMatchNotice = '';
 const splitSelected = new Set<string>();
 let splitMatches = new Map<string, { row: EngineRow; summary: string }>();
 let splitTool: { game: string; row: EngineRow; catalog: Catalog; picker: Picker; installed: boolean; installedText: string;
@@ -307,6 +307,7 @@ function presets() {
 }
 function splitPresetsCard() {
   const editor = splitPresetEditor;
+  if (editor?.catalog.enabled !== true) return '';
   return `<section class="glass-section split-section split-presets"><h2>${icon('sliders')} Split Render Presets</h2>
     <p>Set the environment, character and DLSS 5 model for a package. Use saved presets in installation reviews.</p>
     ${!backend.enabled ? '<p>Available in the installed app.</p>' : !editor ? `<p role="status">${e(splitPresetError || 'Loading Split Render presets…')}</p>` :
@@ -325,6 +326,7 @@ async function loadSplitPresets(packageId = splitPresetPackage || (snapshot?.def
   try {
     const catalog = await engineRequest<Catalog>('nr_catalog', { package: packageId });
     if (request !== splitPresetRequest || view !== 'presets') return;
+    if (catalog.enabled !== true) { splitPresetEditor = undefined; render(); return; }
     if (!catalog.preset_packages?.length || !catalog.combos) throw new Error('Split Render presets are unavailable.');
     splitPresetPackage = packageId;
     splitPresetEditor = { catalog, picker: newPicker(), name: '', checked: false, reason: '', revision: 0, busy: false };
@@ -752,7 +754,7 @@ function operationView() {
   const state = operation, review = state.review;
   if(state.method==='overlay_status'&&state.stage==='done')return heading('Overlay Status','Installed versions and recorded update times.')+overlayStatusView(state.result as OverlayStatus);
   if(state.kind)return operationFlow(state,snapshot?.games||[],icon,startupSettingsView(),supportedReviews(review),
-    state.kind === 'install' && review && state.split && splitCatalog && (review.rows?.length || review.supported?.length)
+    state.kind === 'install' && review && state.split && splitCatalog?.enabled === true && (review.rows?.length || review.supported?.length)
       ? splitInstallOptions(state.split) : '');
   const entries = review?.rows || review?.items || [];
   return heading(e(state.title), state.stage === 'checking' ? 'Checking the exact selection with the shared engine…' : state.stage === 'running' ? 'The existing engine is applying the reviewed changes.' : state.stage === 'review' ? 'Your files change only after you confirm this exact review.' : '') +
@@ -783,7 +785,7 @@ function reportForm(result: unknown) {
 }
 async function withOperation(title: string, method: string, params: Record<string, unknown>, execute = 'run') {
   const origin = view === 'operation' ? operation?.origin || 'details' : view;
-  const kind=method==='prepare_routes'?String(params.operation||'apply'):method==='prepare_dlss'?'update-dlss':method==='nr_review'?'install-nr-addons':undefined;
+  const kind=method==='prepare_routes'?String(params.operation||'apply'):method==='prepare_dlss'?'update-dlss':method==='nr_review'?(params.remove?'remove-nr-addons':'install-nr-addons'):undefined;
   const targets=kind?(snapshot?.games||[]).filter(game=>((params.rows||(params.row ? [params.row] : [])) as EngineRow[]).some(row=>pathKey(row.game)===pathKey(game.path))):undefined;
   const state = { stage: 'checking' as const, title, execute, origin, method,kind,targets, changedKeys: Object.keys((params.changes || {}) as object) };
   operation = state; setView('operation');
@@ -795,7 +797,7 @@ async function withOperation(title: string, method: string, params: Record<strin
       return;
     }
     if (result?.token && execute !== 'inspect-package') { operation.review = result; operation.stage = 'review'; operation.title = result.title || title;
-      if (kind === 'install') operation.split = { picker: newPicker(), revision: 0, pending: false, error: '', rows: [], open: false }; }
+      if (kind === 'install' && splitCatalog?.enabled === true) operation.split = { picker: newPicker(), revision: 0, pending: false, error: '', rows: [], open: false }; }
     else { operation.stage = 'done'; operation.result = result; }
   } catch (problem) { if (operation === state && !operation.dismissed) { operation.stage = 'error'; operation.error = problem instanceof Error ? problem.message : 'The engine could not complete the request.'; } else return; }
   render(); document.querySelector<HTMLElement>('#page-title')?.focus();
@@ -841,39 +843,54 @@ async function reviewSplitChoices() {
 }
 function visibleSplitGames() {
   const choice = splitCatalog && splitChoice(splitCatalog, packagePicker);
-  return (snapshot?.games || []).filter(game => (!choice || splitMatches.has(game.id)) && game.name.toLowerCase().includes(splitQuery.trim().toLowerCase()))
+  return (snapshot?.games || []).filter(game => ((!splitRemove && !choice) || splitMatches.has(game.id)) && game.name.toLowerCase().includes(splitQuery.trim().toLowerCase()))
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 function nrPackageCard() {
+  if (!backend.enabled) return '';
   const games = visibleSplitGames();
-  const choice = splitCatalog && splitChoice(splitCatalog, packagePicker);
-  return `<section class="glass-section"><h2>Split Render</h2><p>${e(splitRenderDescription)}</p>${backend.enabled ? `<details id="split-packages" ${splitPackageOpen ? 'open' : ''}><summary>Choose games</summary>
-    ${splitCatalog ? `<div class="split-layout"><section><h3>${icon('gear')} Setup</h3>${splitPicker(splitCatalog, packagePicker, 'packages')}</section>
+  const catalog = splitCatalog;
+  const enabled = catalog?.enabled === true;
+  const choice = enabled && splitChoice(catalog, packagePicker);
+  return `<section class="glass-section"><h2>Split Render</h2>
+    <p>${enabled ? e(splitRenderDescription) : 'New setups are paused while performance and image quality are improved.'}</p>
+    <div class="operation-actions">
+      ${enabled && splitRemove ? '<button class="quiet" data-action="open-split-install">Set up Split Render</button>' : ''}
+      <button class="quiet" data-action="open-split-removal">Remove Split Render</button>
+    </div>
+    ${enabled || splitRemove ? `<details id="split-packages" ${splitPackageOpen ? 'open' : ''}>
+      <summary>${splitRemove ? 'Choose games to remove' : 'Choose games'}</summary>
+    <div class="${splitRemove ? '' : 'split-layout'}">
+    ${!splitRemove && enabled ? `<section><h3>${icon('gear')} Setup</h3>${splitPicker(catalog, packagePicker, 'packages')}</section>` : ''}
     <section><h3>${icon('controller')} Games <span class="subtle">${splitSelected.size} selected</span></h3>
     <label class="split-search">${icon('search')}<input id="split-game-search" type="search" aria-label="Search games" placeholder="Search games" value="${e(splitQuery)}"></label>
     <div class="operation-actions"><button class="quiet" data-action="split-select-all" ${splitMatching || !games.some(game => !splitSelected.has(game.id)) ? 'disabled' : ''}>${icon('check')}${splitQuery.trim() ? 'Select all results' : 'Select all'}</button>
     <button class="quiet" data-action="split-clear" ${splitSelected.size ? '' : 'disabled'}>${icon('minus')}Clear selection</button></div>
     ${splitMatchNotice ? `<p class="subtle" role="status">${e(splitMatchNotice)}</p>` : ''}
-    <div class="split-game-list">${splitMatching || splitMatchError || !games.length ? `<p role="status">${e(splitMatchError || (splitMatching ? 'Checking compatibility…' :
-      !snapshot?.games.length ? 'There are no scanned games in your library.' : !choice || splitMatches.size ? 'No games match your search.' : 'No games can use this setup.'))}</p>`
+    <div class="split-game-list">${splitMatching || splitMatchError || !games.length ? `<p role="status">${e(splitMatchError || (splitMatching ? (splitRemove ? 'Finding installed setups…' : 'Checking compatibility…') :
+      !snapshot?.games.length ? 'There are no scanned games in your library.' :
+      splitRemove && !splitMatches.size ? 'No scanned games have Split Render installed.' :
+      !choice || splitMatches.size ? 'No games match your search.' : 'No games can use this setup.'))}</p>`
       : games.map(game => {
         const accent = detailsAccent(game) || '#b4b4b4', art = game.capsule || game.art;
         return `<label class="nr-target-choice" style="--game-accent:${e(accent)};--game-selected-ink:${selectionInk(accent)}"><input type="checkbox" data-nr-target="${e(game.id)}" ${splitSelected.has(game.id) ? 'checked' : ''} /><span class="selection-check" aria-hidden="true">${icon('check')}</span>
         <span class="flow-thumbnail">${art ? `<img src="${e(art)}" alt=""/>` : icon('controller')}</span><span><strong>${e(game.name)}</strong><small>${e(splitMatches.get(game.id)?.summary || game.source)}</small></span></label>`;
       }).join('')}</div>
     </section></div>
-    <button class="primary" data-action="review-nr-addons" ${splitMatching || !choice || !splitSelected.size ? 'disabled' : ''}>Review selection</button>`
-    : '<p role="status">Loading Split Render setups…</p>'}</details>` : ''}</section>`;
+    <button class="primary" data-action="review-nr-addons" ${splitMatching || (!splitRemove && !choice) || !splitSelected.size ? 'disabled' : ''}>Review selection</button>
+    </details>` : ''}</section>`;
 }
 async function matchSplitGames() {
-  if (!splitCatalog) return;
-  const choice = splitChoice(splitCatalog, packagePicker), revision = ++splitMatchRevision;
-  splitMatching = !!choice;
+  const remove = splitRemove;
+  if (!remove && splitCatalog?.enabled !== true) return;
+  const choice = remove ? null : splitChoice(splitCatalog!, packagePicker);
+  const revision = ++splitMatchRevision;
+  splitMatching = remove || !!choice;
   splitMatchError = '';
   splitMatchNotice = '';
-  if (!choice) splitMatches.clear();
+  if (!splitMatching) splitMatches.clear();
   if (view === 'packages') render();
-  if (!choice) return;
+  if (!splitMatching) return;
   await new Promise(resolve => setTimeout(resolve, 160));
   if (revision !== splitMatchRevision) return;
   try {
@@ -885,7 +902,7 @@ async function matchSplitGames() {
       if (row) candidates.push({ game, row });
     }
     if (revision !== splitMatchRevision) return;
-    const results = await engineRequest<{index: number; summary: string}[]>('nr_match', { rows: candidates.map(item => item.row), choice });
+    const results = await engineRequest<{index: number; summary: string}[]>('nr_match', { rows: candidates.map(item => item.row), choice, remove });
     if (revision !== splitMatchRevision) return;
     splitMatches = new Map(results.map(({index, summary}) => [candidates[index].game.id, { row: candidates[index].row, summary }]));
     const previousCount = splitSelected.size;
@@ -906,10 +923,11 @@ async function matchSplitGames() {
   }
 }
 async function reviewNrPackage() {
-  const choice = splitCatalog && splitChoice(splitCatalog, packagePicker);
+  const choice = !splitRemove && splitCatalog?.enabled === true ? splitChoice(splitCatalog, packagePicker) : null;
   const rows = [...splitSelected].flatMap(id => splitMatches.get(id)?.row || []);
-  if (!splitMatching && choice && rows.length && view === 'packages')
-    await withOperation('Review Split Render', 'nr_review', { rows, choice });
+  if (!splitMatching && (splitRemove || choice) && rows.length && view === 'packages')
+    await withOperation(splitRemove ? 'Review Split Render removal' : 'Review Split Render', 'nr_review',
+      { rows, choice, remove: splitRemove });
 }
 function feederSelection(tool: NonNullable<typeof splitTool>) {
   const settings = tool.catalog.feeder_character;
@@ -984,7 +1002,8 @@ async function applyFeederCharacter() {
 }
 function splitToolCard(game: Game) {
   const tool = splitTool?.game === game.id ? splitTool : undefined;
-  if (tool?.catalog.feeder_character && !tool.installed) return feederCharacterCard(tool);
+  if (!tool || (!tool.installed && tool.catalog.enabled !== true)) return '';
+  if (tool.catalog.feeder_character && !tool.installed) return feederCharacterCard(tool);
   return `<section class="glass-section split-section"><h2>${icon('sliders')} Split Render</h2><p>${e(splitRenderDescription)}</p>
     ${!backend.enabled ? '' : !tool ? `<p role="status">${e(splitToolError || 'Checking this game…')}</p>` :
       tool.installed ? `<p role="status">${e(tool.installedText)}</p>
@@ -1020,7 +1039,7 @@ async function loadSplitTool(game: Game) {
     if (status.changed?.length) parts.push(`${status.changed.length} file(s) changed since install`);
     splitTool = { game: game.id, row, catalog, picker, installed: status.installed, installedText: 'Installed · ' + parts.join(' · '),
       checked: false, reason: '', verdict: '', revision: 0, busy: false };
-    if (status.installed || catalog.blocked) render();
+    if (status.installed || catalog.blocked || catalog.enabled !== true) render();
     else await checkSplitTool();
   } catch (problem) {
     if (view === 'details' && selectedId === game.id && detailsSection === 'tools') {
@@ -1600,6 +1619,14 @@ function action(name: string) {
   if (name === 'reset-appearance') { appearance = { ...appearanceDefaults }; applyAppearance(); render(); app.querySelector<HTMLElement>('[data-action="reset-appearance"]')?.focus(); announce('Appearance reset to Clear.'); }
   if (name === 'scan-engine') void getEngineRows().then(() => { render(); announce('Compatibility check completed.'); }).catch(problem => announce(problem.message));
   if(name==='startup-review'&&pendingInstall){void withOperation('Review Installation','prepare_routes',pendingInstall.params,'execute_routes');return;}
+  if (name === 'open-split-removal' || name === 'open-split-install') {
+    splitRemove = name === 'open-split-removal';
+    splitPackageOpen = true;
+    splitQuery = '';
+    splitSelected.clear();
+    splitMatches.clear();
+    void matchSplitGames();
+  }
   if (name === 'review-nr-addons') void reviewNrPackage().catch(problem => announce(problem.message));
   if (name === 'split-select-all') { for (const game of visibleSplitGames()) splitSelected.add(game.id); render(); }
   if (name === 'split-clear') { splitSelected.clear(); render(); }

@@ -337,7 +337,9 @@ reviews: dict[str, dict] = {}
 
 
 def hello(_params):
-    return {"root": str(ROOT), "state": str(STATE), "python": sys.version.split()[0]}
+    import nr_addons
+    return {"root": str(ROOT), "state": str(STATE), "python": sys.version.split()[0],
+            "split_render_enabled": nr_addons.enabled()}
 
 
 def scan(params):

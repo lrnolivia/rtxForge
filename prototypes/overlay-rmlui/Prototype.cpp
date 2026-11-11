@@ -488,6 +488,12 @@ static void TestSplitRender(Controller& c,Rml::Context* context)
         c.values["mfg_enabled"]==feederSettings.at("mfg_enabled"),"Turning off extra Feeder passes changed base NR or frame generation");
     activate("feeder-extra-passes");
     Require(c.values==feederSettings,"Re-enabling extra Feeder passes did not restore their count and tuning");
+    c.splitRenderEnabled=false;
+    c.RefreshSplitRenderEntry();
+    context->Update();
+    Require(!c.Element("addons-section")->IsVisible(true)&&!c.Element("nav-addons")->IsVisible(true),
+        "Disabled Split Render stayed visible in the overlay");
+    c.splitRenderEnabled=true;
     c.SetFeederSplitRender(false);
     c.values=savedValues;
     c.edits=savedEdits;

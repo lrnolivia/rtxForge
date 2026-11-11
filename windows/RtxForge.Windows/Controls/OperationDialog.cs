@@ -19,6 +19,9 @@ public sealed class OperationDialog
 {
     enum Stage { Review, Progress, Done }
     enum FlowStep { Presets, Review, Apply }
+    const double InstallWidth = 808;
+    const double ReviewWidth = 688;
+    const double DialogInset = 24;
 
     readonly MainWindow shell;
     readonly string operation;
@@ -48,7 +51,8 @@ public sealed class OperationDialog
         this.targets = targets;
         this.includesPresets = includesPresets;
         dialog = shell.NewDialog();
-        dialog.Resources["ContentDialogMaxWidth"] = 760.0;
+        var width = SetWidth(dialog, includesPresets ? InstallWidth : ReviewWidth);
+        checkingPanel.Root.MaxWidth = progressPanel.Root.MaxWidth = width - 2 * DialogInset;
         checkingPanel.AccentChanged += palette =>
         {
             if (ReferenceEquals(checkingPanel.Root.Parent, dialog.Content)) stepAccent.Color = palette.Color;
@@ -119,8 +123,7 @@ public sealed class OperationDialog
         var dialog = shell.NewDialog();
         await AccentResources.ApplyAsync(dialog.Resources, game);
         dialog.Title = "Install Features";
-        var editorWidth = Math.Max(280, Math.Min(760, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Width ?? 1120) - 120));
-        dialog.Resources["ContentDialogMaxWidth"] = 840.0;
+        var editorWidth = SetWidth(dialog, InstallWidth) - 2 * DialogInset;
         var tuning = new PresetControlsView(initial, shell.Settings.OverlayControls == "classic", embedded: true, installation: true) { Width = editorWidth };
         tuning.SetMode(mode, legacy: shell.Settings.RuntimeProvider != "skynizz", dynamicSupported: shell.Settings.DynamicMfgSupported);
         var body = new StackPanel { Spacing = 16 };
@@ -191,13 +194,11 @@ public sealed class OperationDialog
 
     // ---------- Review (action_ready) ----------
 
-    const double ReviewWidth = 640;
-
     void ShowReview(OperationReview review)
     {
         dialog.Title = Title();
         stepAccent.Color = DialogAccent(dialog).Color;
-        var body = new StackPanel { Spacing = 16, MinWidth = ReviewWidth };
+        var body = new StackPanel { Spacing = 16 };
         // One list for every package: games that get only part of the selection show what they get.
         var games = review.AllGames;
         var count = games.Count;
@@ -359,16 +360,26 @@ public sealed class OperationDialog
         dialog.Resources.ContainsKey("AccentButtonBackground") && dialog.Resources["AccentButtonBackground"] is SolidColorBrush accent
             ? accent : (SolidColorBrush)Application.Current.Resources["AccentFillColorDefaultBrush"];
 
+    internal static double SetWidth(ContentDialog dialog, double preferred)
+    {
+        var available = dialog.XamlRoot?.Size.Width ?? 0;
+        var width = available > 0 ? Math.Min(preferred, Math.Max(280, available - 2 * DialogInset)) : preferred;
+        dialog.Resources["ContentDialogMinWidth"] = width;
+        dialog.Resources["ContentDialogMaxWidth"] = width;
+        return width;
+    }
+
     internal static StackPanel WithReviewSteps(ContentDialog dialog, UIElement content, bool applying, string action) =>
         WithSteps(dialog, content, applying ? FlowStep.Apply : FlowStep.Review, action, includesPresets: false, reviewLabel: "Review changes");
 
     static StackPanel WithSteps(ContentDialog dialog, UIElement content, FlowStep current, string action,
         bool includesPresets, string reviewLabel = "Review games", Brush? accent = null, string? description = null)
     {
-        const double inset = 24;
+        const double inset = DialogInset;
         dialog.Resources["ContentDialogPadding"] = new Thickness(inset);
         var body = new StackPanel { Spacing = 12 };
-        var steps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, HorizontalAlignment = HorizontalAlignment.Right };
+        var steps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetName(steps, "Operation steps");
         var phases = new List<(FlowStep Step, string Label)>();
         if (includesPresets) phases.Add((FlowStep.Presets, "Presets"));
@@ -414,7 +425,7 @@ public sealed class OperationDialog
         }
         var pill = new Border
         {
-            Child = steps, Padding = new Thickness(14, 6, 14, 6), CornerRadius = new CornerRadius(999),
+            Child = steps, Padding = new Thickness(18, 8, 18, 8), MinHeight = 40, CornerRadius = new CornerRadius(20),
             Background = (Brush)Application.Current.Resources["ControlFillColorDefaultBrush"],
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
         };
@@ -624,14 +635,11 @@ public sealed class OperationDialog
 
     void ShowDone(bool success, string message, string? title = null)
     {
-        var current = stage == Stage.Progress ? FlowStep.Apply : FlowStep.Review;
         stage = Stage.Done;
         dialog.SecondaryButtonText = "";
         dialog.Title = null;
         AutomationProperties.SetName(dialog, title ?? (success ? "Done" : "Could not finish"));
-        dialog.Resources["ContentDialogMaxWidth"] = 520.0;
-
-        var line = new Grid { ColumnSpacing = 24, MinWidth = 440 };
+        var line = new Grid { ColumnSpacing = 24 };
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         line.Children.Add(new FontIcon
@@ -645,7 +653,7 @@ public sealed class OperationDialog
         Grid.SetColumn(text, 1);
         line.Children.Add(text);
 
-        dialog.Content = WithSteps(line, current);
+        dialog.Content = line;
         dialog.CloseButtonText = "";
         dialog.PrimaryButtonText = "Done";
         dialog.IsPrimaryButtonEnabled = true;

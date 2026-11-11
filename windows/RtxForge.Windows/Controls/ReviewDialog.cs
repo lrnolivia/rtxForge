@@ -32,7 +32,7 @@ public sealed class ReviewDialog
         this.emptyMessage = emptyMessage;
         initialTitle = title;
         dialog = shell.NewDialog();
-        dialog.Resources["ContentDialogMaxWidth"] = 760.0;
+        OperationDialog.SetWidth(dialog, 568);
         dialog.PrimaryButtonClick += OnPrimary;
         dialog.Closing += (_, e) => { if (stage == Stage.Working) e.Cancel = true; };
     }
@@ -60,7 +60,7 @@ public sealed class ReviewDialog
     void ShowWorking(string text)
     {
         dialog.Title = review?.Title ?? initialTitle;
-        var body = new StackPanel { Spacing = 16, MinWidth = 440, Padding = new Thickness(0, 12, 0, 12) };
+        var body = new StackPanel { Spacing = 16, Padding = new Thickness(0, 12, 0, 12) };
         body.Children.Add(new ProgressBar { IsIndeterminate = true });
         var phase = Prefs.Label(text);
         body.Children.Add(phase);
@@ -76,7 +76,7 @@ public sealed class ReviewDialog
     {
         stage = Stage.Review;
         dialog.Title = review.Title;
-        var body = new StackPanel { Spacing = 14, MinWidth = 520 };
+        var body = new StackPanel { Spacing = 14 };
         if (!review.Ready)
         {
             body.Children.Add(new TextBlock { Text = emptyMessage ?? (review.Summary.Length > 0 ? review.Summary : "Nothing to change."), FontSize = 18, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
@@ -200,10 +200,9 @@ public sealed class ReviewDialog
 
     void ShowDone(bool success, string message)
     {
-        var applying = stage == Stage.Working;
         stage = Stage.Done;
         AutomationProperties.SetName(dialog, success ? "Done" : "Could not finish");
-        var line = new Grid { ColumnSpacing = 24, MinWidth = 440 };
+        var line = new Grid { ColumnSpacing = 24 };
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         line.Children.Add(new FontIcon
@@ -216,7 +215,7 @@ public sealed class ReviewDialog
         text.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, Style = Prefs.GetStyle("ForgeDimTextStyle") });
         Grid.SetColumn(text, 1);
         line.Children.Add(text);
-        dialog.Content = WithSteps(line, applying);
+        dialog.Content = line;
         dialog.PrimaryButtonText = "";
         dialog.CloseButtonText = "Close";
         dialog.DefaultButton = ContentDialogButton.Close;

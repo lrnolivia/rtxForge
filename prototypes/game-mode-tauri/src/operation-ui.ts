@@ -65,7 +65,8 @@ export function operationFlow(state:FlowState,games:Game[],icon:Icon,startup='',
  const preparing = state.stage==='checking' || (state.stage==='error' && !review);
  const starting = state.stage==='startup' || (preparing && state.kind==='install' && !state.method);
  const phase = starting ? 'start' : preparing || state.stage==='review' ? 'review' : 'apply';
- const title=state.stage==='startup'?'Install Features':state.stage==='review'?state.title:state.stage==='checking'?'Preparing':state.stage==='running'?verb(state.kind):state.stage==='error'?'Operation did not complete':(state.result as Record<string,unknown>)?.cancelled?'Cancelled':'Finished';
+ const title=state.stage==='startup'?'Install Features':state.stage==='review'?state.title:state.stage==='checking'?'Preparing':verb(state.kind);
+ const resultStage=state.stage==='done'||state.stage==='error';
  let body='',footer='';
  if(state.stage==='startup') {
   body=`<p class="flow-intro">Choose startup settings. You can adjust them later.</p>${startup}`;
@@ -81,8 +82,9 @@ export function operationFlow(state:FlowState,games:Game[],icon:Icon,startup='',
   const cancelled=result?.cancelled===true,failed=state.stage==='error'||errors.length>0;
   const message=state.error||String(result?.message||(typeof result?.report==='string'?result.report:'')||(typeof state.result==='string'?state.result:cancelled?'The engine stopped this operation. Review the completed steps below.':failed?'Some changes need attention.':'The engine finished the reviewed operation.'));
   const reports=Array.isArray(result?.reports)?result.reports:[];
-  body=`<div class="flow-result ${failed?'flow-result-error':''}">${icon(failed||cancelled?'warning':'check')}<div><h2>${failed?'Needs attention':cancelled?'Operation cancelled':'All done'}</h2><p role="status">${e(message)}</p>${typeof result?.completed_batches==='number'?`<p class="subtle">${result.completed_batches} reviewed batch${result.completed_batches===1?'':'es'} completed.</p>`:''}${errors.length?`<ul>${errors.map(error=>`<li>${e(error)}</li>`).join('')}</ul>`:''}</div>${reports.length ? reviewInfo('Operation result',reports.map(report=>typeof report==='string'?report:JSON.stringify(report,null,2)).join('\n\n'),icon) : ''}</div>`;
+  body=`<div class="flow-result ${failed?'flow-result-error':''}">${icon(failed||cancelled?'warning':'check')}<div><h2 id="page-title" tabindex="-1">${failed?'Needs attention':cancelled?'Operation cancelled':'Done'}</h2><p role="status">${e(message)}</p>${typeof result?.completed_batches==='number'?`<p class="subtle">${result.completed_batches} reviewed batch${result.completed_batches===1?'':'es'} completed.</p>`:''}${errors.length?`<ul>${errors.map(error=>`<li>${e(error)}</li>`).join('')}</ul>`:''}</div>${reports.length ? reviewInfo('Operation result',reports.map(report=>typeof report==='string'?report:JSON.stringify(report,null,2)).join('\n\n'),icon) : ''}</div>`;
   footer='<button class="primary" data-action="operation-back">Back to game</button>';
  }
- return `<div class="operation-flow" data-stage="${state.stage}"><header class="flow-heading"><h1 id="page-title" tabindex="-1">${e(title)}</h1>${flowSteps(state.kind || '',phase,state.kind==='remove-nr-addons'&&state.origin==='packages')}</header><section class="glass-section flow-panel">${['checking','running'].includes(state.stage)?'<div class="flow-artwork" aria-hidden="true"></div>':''}<div class="flow-body">${body}</div><footer class="operation-actions flow-actions">${footer}</footer></section></div>`;
+ const heading=resultStage?'':`<header class="flow-heading"><h1 id="page-title" tabindex="-1">${e(title)}</h1>${flowSteps(state.kind || '',phase,state.kind==='remove-nr-addons'&&state.origin==='packages')}</header>`;
+ return `<div class="operation-flow" data-stage="${state.stage}">${heading}<section class="glass-section flow-panel">${['checking','running'].includes(state.stage)?'<div class="flow-artwork" aria-hidden="true"></div>':''}<div class="flow-body">${body}</div><footer class="operation-actions flow-actions">${footer}</footer></section></div>`;
 }

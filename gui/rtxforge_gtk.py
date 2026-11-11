@@ -2533,8 +2533,8 @@ columnview.library-column-view listview row:nth-child(even):hover {
 }
 .operation-steps {
     font-size: 0.875em;
-    padding: 6px 12px;
-    border-radius: 999px;
+    padding: 7px 16px;
+    border-radius: 19px;
     background: alpha(@window_fg_color, 0.09);
 }
 .operation-step-number {
@@ -3897,10 +3897,11 @@ class OperationFlow:
         self.stage=None
         self.step_phase='review'
         self.includes_presets=False
+        self.content_width=760 if operation=='report' else 640
         self.review=None
         self.on_confirm=None
         self.accent=None
-        self.dialog=PresentationDialog(owner,title=self.review_title,content_width=640)
+        self.dialog=PresentationDialog(owner,title=self.review_title,content_width=self.content_width)
         self.dialog.add_css_class('modal-panel')
         self.dialog.add_css_class('operation-flow')
         self.dialog.connect('closed',self._closed)
@@ -3914,7 +3915,7 @@ class OperationFlow:
         self.primary=Gtk.Button(label=self.verb,sensitive=False)
         self.primary.add_css_class('suggested-action')
         self.primary.connect('clicked',lambda *_:self._primary_clicked())
-        self.steps=Gtk.Box(spacing=12,margin_start=12,margin_end=12,margin_top=4,margin_bottom=4)
+        self.steps=Gtk.Box(spacing=16,margin_start=12,margin_end=12,margin_top=4,margin_bottom=4)
         self.steps.add_css_class('operation-steps')
         self.steps.update_property([Gtk.AccessibleProperty.LABEL],['Operation steps'])
         self.header.pack_end(self.steps)
@@ -3939,7 +3940,7 @@ class OperationFlow:
 
     # ---------- helpers ----------
 
-    def _page(self,name,child,width=640):
+    def _page(self,name,child):
         if name=='presets':
             self.includes_presets=True
             self.step_phase='presets'
@@ -3947,13 +3948,14 @@ class OperationFlow:
             self.step_phase='review'
         elif name=='progress' or (name=='working' and self.stage=='review'):
             self.step_phase='apply'
-        self._show_steps()
+        if name!='done':self._show_steps()
+        self.toolbar.set_reveal_top_bars(name!='done')
         self.content=child
         self.toolbar.set_content(child)
-        self.dialog.set_content_width(width)
+        self.dialog.set_content_width(self.content_width)
         self.stage=name
-        self._fit(child,width)
-        GLib.idle_add(self._fit,child,width)
+        self._fit(child,self.content_width)
+        GLib.idle_add(self._fit,child,self.content_width)
 
     def _show_steps(self):
         action={'update-dlss':'Update DLSS','uninstall':'Restore files'}.get(self.operation,self.verb)
@@ -3978,12 +3980,13 @@ class OperationFlow:
     def _fit(self,child,width):
         """Size the dialog to the current stage, within the window."""
         if self.closed or self.content is not child:return False
-        header=self.header.measure(Gtk.Orientation.VERTICAL,width)[1]+self.actions.measure(Gtk.Orientation.VERTICAL,width)[1]
+        bars=self.actions.measure(Gtk.Orientation.VERTICAL,width)[1]
+        if self.stage!='done':bars+=self.header.measure(Gtk.Orientation.VERTICAL,width)[1]
         content=child.measure(Gtk.Orientation.VERTICAL,width)[1]
         if isinstance(child,Gtk.ScrolledWindow) and child.get_child() is not None:
             content=child.get_child().measure(Gtk.Orientation.VERTICAL,width)[1]
         limit=max(320,self.owner.get_height()-96)
-        self.dialog.set_content_height(min(limit,header+content))
+        self.dialog.set_content_height(min(limit,bars+content))
         return False
 
     def _rows_scroll(self,listing,visible=5):
@@ -4077,12 +4080,13 @@ class OperationFlow:
         self.primary.set_sensitive(True)
         scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True)
         scroll.set_child(body)
-        self._page('presets',scroll,width=820)
+        self.content_width=820
+        self._page('presets',scroll)
         def refit():
             if self.closed or self.stage!='presets':return False
             # Re-measure after responsive columns and expanders have laid out.
             # The initial vertical measurement must not leave a tall blank dialog.
-            self._fit(scroll,min(820,max(320,self.owner.get_width()-48)))
+            self._fit(scroll,min(self.content_width,max(320,self.owner.get_width()-48)))
             return True
         GLib.timeout_add(100,refit)
 
@@ -4215,8 +4219,7 @@ class OperationFlow:
         self.dialog.set_can_close(True)
         self._set_accent(None)
         heading=title or ('Done' if success else 'Could not finish')
-        # The status page carries the heading; the header bar stays plain.
-        self._title('')
+        self._title(heading)
         page=Adw.StatusPage(
             icon_name='object-select-symbolic' if success else 'dialog-warning-symbolic',
             title=heading,
@@ -4232,7 +4235,7 @@ class OperationFlow:
         self.primary.set_visible(True)
         self.primary.set_label('Done')
         self.primary.set_sensitive(True)
-        self._page('done',page,width=520)
+        self._page('done',page)
 
 
 class LibraryGameItem(GObject.Object):
@@ -14820,7 +14823,7 @@ class Window(Adw.ApplicationWindow):
         flow._title(flow.review_title)
         flow.primary.set_label('Export')
         flow.primary.set_sensitive(not self.options.demo)
-        flow._page('review',scroll,width=760)
+        flow._page('review',scroll)
 
     # ---------- beta reports (scripts/beta_report.py) ----------
 
@@ -14936,7 +14939,7 @@ class Window(Adw.ApplicationWindow):
         flow.dialog.set_can_close(True)
         flow.primary.set_visible(True);flow.primary.set_label('Send Report')
         flow.cancel_button.set_visible(True);flow.cancel_button.set_label('Cancel')
-        flow._page('review',scroll,width=640)
+        flow._page('review',scroll)
         ready()
         GLib.idle_add(view.grab_focus)
 
@@ -14999,7 +15002,7 @@ class Window(Adw.ApplicationWindow):
         flow.dialog.set_can_close(True)
         flow.primary.set_visible(True);flow.primary.set_label('Back');flow.primary.set_sensitive(True)
         flow.cancel_button.set_visible(False)
-        flow._page('review',scroll,width=760)
+        flow._page('review',scroll)
 
     def send_beta_report(self,flow,game,report,options,issue):
         """Keep a copy on this computer, then send; the service files the issue and keeps logs private."""

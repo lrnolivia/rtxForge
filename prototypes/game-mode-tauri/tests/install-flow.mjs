@@ -237,9 +237,14 @@ try{
  await expect(page.getByRole('dialog').getByRole('button',{name:'Update DLSS',exact:true})).toBeInViewport();
  await page.setViewportSize({width:1440,height:990});
  await page.locator('#review-trust').check();
+ const reviewWidth=(await page.getByRole('dialog').boundingBox()).width;
  await page.getByRole('dialog').getByRole('button',{name:'Update DLSS',exact:true}).click();
  await expect(activeStep()).toHaveText('2Update DLSS');
- await finishExecution();await expect(page.getByText('Reviewed installation completed.',{exact:true})).toBeVisible();await click('Back to game');
+ expect((await page.getByRole('dialog').boundingBox()).width).toBeCloseTo(reviewWidth,0);
+ await finishExecution();await expect(page.getByText('Reviewed installation completed.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('dialog',{name:'Done',exact:true}).locator('.flow-heading')).toHaveCount(0);
+ expect((await page.getByRole('dialog').boundingBox()).width).toBeCloseTo(reviewWidth,0);
+ await click('Back to game');
  splitEnabled=false;await click('Packages');
  await expect(page.getByText('New setups are paused while performance and image quality are improved.')).toBeVisible();
  await expect(page.getByText('Choose games',{exact:true})).toHaveCount(0);

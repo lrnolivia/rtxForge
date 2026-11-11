@@ -293,8 +293,9 @@ internal sealed class GameModeAppearanceView : UserControl
             Place(new TextBlock { Text=label,FontSize=size,Foreground=foreground,MaxWidth=width,TextTrimming=TextTrimming.CharacterEllipsis,
                 FontWeight=bold?Microsoft.UI.Text.FontWeights.SemiBold:Microsoft.UI.Text.FontWeights.Normal },x,y);
 
-        neutral.A=theme=="clear"?(byte)170:(byte)238;
-        var glassColor = Mix(neutral, accent, .25 * TintStrength());
+        var surface = neutral;
+        surface.A=theme=="clear"?(byte)170:(byte)238;
+        var glassColor = Mix(surface, accent, .25 * TintStrength());
         var glass = new SolidColorBrush(glassColor);
         var raised = new SolidColorBrush(global::Windows.UI.Color.FromArgb(60,accent.R,accent.G,accent.B));
         Panel(0,0,480,270,12,new SolidColorBrush(neutral));

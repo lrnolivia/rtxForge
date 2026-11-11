@@ -3,6 +3,7 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using RtxForge.Windows.Models;
 using Windows.Graphics.Imaging;
@@ -57,8 +58,13 @@ static class OverlayPreview
         {
             cancel.ThrowIfCancellationRequested();
             if (!shot.TryGetProperty("path_full", out var source) || !Uri.TryCreate(source.GetString(), UriKind.Absolute, out var uri) || !Allowed(uri)) continue;
+            // Steam's "full" URL can still name a 1920×1080 rendition.
+            var original = new UriBuilder(uri)
+            {
+                Path = Regex.Replace(uri.AbsolutePath, @"\.[0-9]{3,5}x[0-9]{3,5}(?=\.jpg$)", "", RegexOptions.IgnoreCase),
+            }.Uri;
             byte[] bytes;
-            try { bytes = await BytesAsync(uri, 20 * 1024 * 1024, cancel); }
+            try { bytes = await BytesAsync(original, 20 * 1024 * 1024, cancel); }
             catch (Exception error) when (error is IOException or HttpRequestException) { continue; }
             if (bytes.Length < 4 || bytes[0] != 0xff || bytes[1] != 0xd8) continue;
             using var image = new MemoryStream(bytes, writable: false);

@@ -1,18 +1,24 @@
 import type { View } from './model';
-interface Arrival { surface:string; art?:DOMRect; }
+interface Arrival { surface:string; modal:boolean; art?:DOMRect; }
 const running = new Set<Animation>();
 const reduced = () => document.documentElement.dataset.motion === 'false' || matchMedia('(prefers-reduced-motion: reduce)').matches;
 export function captureArrival(app:HTMLElement):Arrival {
   for (const animation of running) animation.cancel();
   running.clear();
   const art = app.querySelector<HTMLElement>('.game-card:focus .poster,.game-card:hover .poster,.detail-artwork');
-  return {surface:document.documentElement.dataset.surface || '',art:art?.getBoundingClientRect()};
+  return {surface:document.documentElement.dataset.surface || '',modal:!!app.querySelector('.operation-modal'),art:art?.getBoundingClientRect()};
 }
 function play(node:Element,frames:Keyframe[],duration:number,delay=0) {
   const animation=node.animate(frames,{duration,delay,easing:'cubic-bezier(.16,1,.3,1)',fill:'backwards'});
   running.add(animation);animation.finished.catch(()=>{}).finally(()=>running.delete(animation));
 }
 export function arrive(app:HTMLElement,previous:Arrival,view:View) {
+  const dialog=app.querySelector('.operation-modal');
+  if (dialog) {
+    if (!previous.modal) play(dialog,[{opacity:.82},{opacity:1}],160);
+    return;
+  }
+  if(previous.modal&&previous.surface===view)return;
   const main=app.querySelector<HTMLElement>('#content');if(!main)return;
   if(reduced()){play(main,[{opacity:.82},{opacity:1}],100);return;}
   // Pages settle quickly; opening a game carries its artwork into the hero.

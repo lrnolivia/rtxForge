@@ -208,9 +208,9 @@ button:not(:disabled):focus-visible{transform:translateY(-2px) scale(1.015);box-
 
 .settings-tabs button:hover{transform:translateY(-2px)}
 :root[data-button-glyphs=false] .operation-actions button .icon,:root[data-button-glyphs=false] .setting-action>.icon:first-child{display:none}
-.number-stepper{display:flex;align-items:center;gap:5px;width:min(190px,100%);flex-shrink:0;max-width:100%;padding:3px;border-radius:10px;background:var(--nested);box-shadow:var(--nested-shadow)}
-.number-stepper>button{padding:6px;width:38px;height:40px;min-height:40px;flex-shrink:0;background:var(--control)}.number-stepper .icon{font-size:20px}
-.number-stepper>input[type=number]{width:100%;min-width:0!important;max-width:none!important;min-height:40px;border:0;background:transparent;text-align:center;padding:6px 2px;font-variant-numeric:tabular-nums;appearance:textfield}
+.number-stepper{display:flex;align-items:center;gap:4px;width:min(190px,100%);flex-shrink:0;max-width:100%;padding:4px;border-radius:12px;background:var(--nested);box-shadow:var(--nested-shadow)}
+.number-stepper>button{padding:6px;width:40px;height:40px;min-height:40px;flex-shrink:0;border-radius:8px;background:transparent}.number-stepper .icon{font-size:20px}
+.number-stepper>input[type=number]{flex:1;width:0;min-width:0!important;max-width:none!important;min-height:40px;border:0;background:transparent;text-align:center;padding:6px 2px;font-variant-numeric:tabular-nums;appearance:textfield}
 .number-stepper>input::-webkit-inner-spin-button,.number-stepper>input::-webkit-outer-spin-button{appearance:none;margin:0}
 @media(max-width:450px){.number-stepper{margin-left:auto}}
 @media(min-width:761px){
@@ -411,10 +411,17 @@ input[type=color]::-moz-color-swatch{border:0;border-radius:50%}
    workspace: persistent actions, scrollable review rows and per-game progress. */
 .operation-flow{width:100%;max-width:1080px;margin:0 auto;height:100%;min-height:0;display:flex;flex-direction:column}
 .flow-heading{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:24px;flex-shrink:0}.flow-heading h1{font-size:1.95rem}
-.flow-steps{list-style:none;display:flex;gap:16px;padding:0;margin:0;color:var(--muted);font-size:.78rem}.flow-steps li{display:flex;align-items:center;gap:7px}.flow-steps li>span{display:grid;place-items:center;border:1px solid var(--rim);width:24px;height:24px;border-radius:50%;font-size:.73rem}.flow-steps li[aria-current]{color:var(--ink)}.flow-steps li[aria-current]>span{background:var(--highlight);box-shadow:inset 0 0 0 1px var(--accent);border-color:transparent}
+.flow-steps{list-style:none;display:flex;flex-wrap:wrap;gap:8px 16px;padding:0;margin:0;color:var(--muted);font-size:.78rem}.flow-steps li{display:flex;align-items:center;gap:7px}.flow-steps li>span{display:grid;place-items:center;flex:none;border:1px solid var(--rim);width:24px;height:24px;border-radius:50%;font-size:.73rem}.flow-steps li[aria-current]{color:var(--ink)}.flow-steps li[aria-current]>span{background:var(--highlight);box-shadow:inset 0 0 0 1px var(--accent);border-color:transparent}
 .flow-panel{flex:1;min-height:0;padding:0;display:flex;flex-direction:column;overflow:hidden}.flow-body{padding:28px;overflow:auto;min-height:0;flex:1;scrollbar-gutter:stable;scroll-padding:24px}.flow-actions{padding:18px 28px;border-top:1px solid var(--rim);justify-content:flex-end;gap:12px;background:var(--section);flex-shrink:0}.flow-actions button{min-width:140px;min-height:48px}.flow-intro{margin:0 0 24px;font-size:.95rem}
-.startup-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.startup-columns:has(>section:only-child){grid-template-columns:minmax(0,1fr)}.startup-group{padding:22px}.startup-group h2{font:550 1rem Roboto,sans-serif;text-transform:none;color:var(--ink);line-height:1.4}.startup-group>header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 18px}.startup-group>.field{min-height:72px;padding:16px 0}.startup-group .field select{min-width:100px}.startup-segments{display:flex;gap:4px;padding:4px;background:var(--nested);border-radius:12px;margin:18px 0 6px}.startup-segments button{flex:1;min-height:42px;padding:8px;font-size:.83rem;background:transparent}.startup-segments button[aria-pressed=true]{background:var(--highlight);box-shadow:inset 0 0 0 1px var(--accent);color:var(--ink)}
-.startup-more{margin:20px 0 0}.startup-more summary{font-size:.88rem;min-height:44px;align-content:center}.startup-more .inner-card{padding:0 20px}.startup-more>.inner-card{margin:12px 0}.startup-note{padding:24px}
+.startup-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.startup-columns:has(>section:only-child){grid-template-columns:minmax(0,1fr)}.startup-group{padding:14px 20px}.startup-group h2{font:550 1rem Roboto,sans-serif;text-transform:none;color:var(--ink);line-height:1.4}.startup-group>header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 18px}.startup-group .field{min-height:0;padding:8px 0}.startup-group .field:last-child{padding-bottom:0}.startup-group .field select{min-width:100px}.startup-segments{display:flex;gap:4px;padding:4px;background:var(--nested);border-radius:12px;margin:18px 0 6px}.startup-segments button{flex:1;min-height:42px;padding:8px;font-size:.83rem;background:transparent}.startup-segments button[aria-pressed=true]{background:var(--highlight);box-shadow:inset 0 0 0 1px var(--accent);color:var(--ink)}
+.startup-more{margin:16px 0 0}
+.startup-more summary{font-size:.88rem;min-height:44px;padding:8px 12px;border-radius:10px}
+#app .startup-more summary.ui-control:is(:hover,:focus){scale:1;outline-offset:-2px}
+.startup-more summary:hover{background:var(--nested)}
+.startup-more .preset-columns,.startup-more .preset-columns>div{gap:16px}
+.startup-more .preset-columns{margin-top:12px}
+.startup-more .startup-group details{margin-top:6px}
+.startup-note{padding:24px}
 .flow-summary h2{font:550 1.25rem Roboto,sans-serif;color:var(--ink);text-transform:none}.flow-summary p{margin:8px 0 20px;font-size:.9rem}.flow-review-list{display:flex;flex-direction:column;gap:8px;margin:20px 0}.flow-review-row{display:grid;grid-template-columns:112px minmax(0,1fr) auto;align-items:center;gap:18px;padding:16px}.flow-thumbnail{width:112px;height:52px;border-radius:8px;overflow:hidden;background:var(--nested);display:grid;place-items:center;box-shadow:inset 0 0 0 1px var(--row-accent,var(--rim))}.flow-thumbnail img{width:100%;height:100%;object-fit:cover}.flow-review-copy{min-width:0}.flow-review-copy h3{font:550 .98rem/1.35 Roboto,sans-serif;text-transform:none;color:var(--ink);overflow-wrap:anywhere}.flow-review-copy p{font-size:.83rem;margin:5px 0 0;line-height:1.45}
 .flow-row-actions{display:flex;align-items:center;gap:4px;justify-self:end}
 .review-info-button{
@@ -439,7 +446,7 @@ input[type=color]::-moz-color-swatch{border:0;border-radius:50%}
 .flow-badge{display:flex;align-items:center;gap:5px;font-size:.68rem;text-transform:uppercase;font-weight:600;white-space:nowrap;padding:5px 8px;border-radius:6px;background:var(--nested);color:var(--ink)}.flow-badge .icon{font-size:14px}.flow-skipped{opacity:.85}.flow-attention{font:550 .9rem Roboto,sans-serif;color:var(--ink);text-transform:none;margin:16px 0 4px}.flow-warnings>div{display:flex;gap:12px;align-items:flex-start;padding:14px;background:var(--nested);border-radius:10px;margin:10px 0}.flow-warnings p{margin:0;font-size:.84rem}.flow-warnings strong{display:block;margin-bottom:4px}.flow-warnings .icon{font-size:21px}.flow-note,.flow-assurance{font-size:.82rem;margin:16px 0 0}.flow-assurance{color:var(--muted)}.flow-body .trust-choice{align-items:flex-start;line-height:1.5;padding:16px 0 0}.flow-body .trust-choice input{margin-top:3px;flex-shrink:0}
 .operation-step{display:grid;grid-template-columns:108px minmax(0,1fr);gap:28px;align-items:center;max-width:640px;margin:50px auto;--step-accent:var(--accent)}.flow-poster{width:108px;height:162px;overflow:hidden;border-radius:12px;background:var(--nested);box-shadow:inset 0 0 0 1px var(--step-accent),var(--nested-shadow);display:grid;place-items:center}.flow-poster img{width:100%;height:100%;object-fit:cover}.flow-poster>.icon{font-size:42px}.operation-step-copy{min-width:0}.flow-counter{margin:0 0 8px;font-size:.83rem;color:var(--muted)}.operation-step h2{font-size:1.55rem;line-height:1.2;text-transform:none;color:var(--step-accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.flow-phase{font-size:.88rem;line-height:1.45;margin:10px 0 18px;min-height:2.9em}.operation-step progress{width:100%;height:7px;accent-color:var(--step-accent);border:0;border-radius:8px;overflow:hidden}.operation-step progress::-webkit-progress-bar{background:var(--nested);border-radius:8px}.operation-step progress::-webkit-progress-value{background:var(--step-accent);border-radius:8px}.flow-percentage{display:block;font-size:.75rem;color:var(--muted);text-align:right;margin-top:7px;font-variant-numeric:tabular-nums}
 .flow-result{display:flex;align-items:flex-start;gap:24px;max-width:700px;margin:40px auto}.flow-result>.icon{font-size:52px;color:var(--accent);margin-top:2px}.flow-result h2{font:550 1.35rem Roboto,sans-serif;color:var(--ink);text-transform:none}.flow-result p{margin:12px 0 0;font-size:.95rem}.flow-result .subtle{font-size:.8rem}.flow-result-error>.icon{color:var(--muted)}
-@media(max-width:1100px){.flow-heading{align-items:flex-start;flex-direction:column;gap:15px}.flow-panel{min-height:360px}.startup-group{padding:18px}.flow-body{padding:22px}.flow-actions{padding:16px 22px}}
+@media(max-width:1100px){.flow-heading{align-items:flex-start;flex-direction:column;gap:15px}.flow-panel{min-height:360px}.startup-group{padding-inline:16px}.flow-body{padding:22px}.flow-actions{padding:16px 22px}}
 @media(max-width:760px){.operation-flow{height:auto;min-height:100%}.flow-panel{overflow:visible}.flow-body{overflow:visible}.flow-steps{gap:10px;font-size:.68rem}.flow-steps li{gap:5px}.flow-steps li>span{width:20px;height:20px}.flow-heading h1{font-size:1.65rem}.startup-columns{grid-template-columns:minmax(0,1fr)}.flow-review-row{grid-template-columns:88px minmax(0,1fr);gap:12px;padding:14px}.flow-thumbnail{width:88px;height:42px}.flow-badge{grid-column:2;justify-self:start}.flow-actions{position:sticky;bottom:0;background:var(--glass);backdrop-filter:blur(24px);z-index:4;flex-wrap:wrap}.flow-actions button{flex:1;min-width:100px}.operation-step{grid-template-columns:80px minmax(0,1fr);gap:18px;margin:26px 0}.flow-poster{width:80px;height:120px}.operation-step h2{font-size:1.25rem}.flow-result{gap:18px;margin:24px 0}.flow-result>.icon{font-size:38px}}
 
 /* The navigation island leaves the brand and overflow button on the artwork. */
@@ -465,7 +472,7 @@ input[type=color]::-moz-color-swatch{border:0;border-radius:50%}
 .flow-artwork img{position:absolute;width:100%;height:100%;object-fit:cover;object-position:center 35%;opacity:0;transition:opacity .65s var(--ease);mask-image:linear-gradient(90deg,transparent 10%,rgb(0 0 0 / .18) 35%,rgb(0 0 0 / .36) 100%)}
 .flow-artwork img[data-visible=true]{opacity:1}.flow-artwork~.flow-body{background:linear-gradient(90deg,color-mix(in srgb,var(--glass) 80%,transparent),transparent 80%)}
 .startup-columns{align-items:start}.startup-group .section-heading{flex-direction:row;align-items:center;gap:14px}.startup-group .section-heading select{min-width:82px;width:auto}.startup-group .preset-segments{margin-top:18px;gap:4px;padding:4px}.startup-group .preset-segments button{min-height:42px;padding:8px;font-size:.83rem}.startup-group>.subtle{font-size:.84rem;margin:20px 0 0}
-@media(max-width:760px){.operation-flow{height:100%;min-height:0}.flow-panel{overflow:hidden;min-height:0}.flow-body{overflow:auto;padding:20px}.flow-actions{position:relative;bottom:auto;padding:12px 16px;background:var(--section);backdrop-filter:none;flex-wrap:nowrap}.flow-actions button{flex:1;min-width:0;padding:10px;font-size:.83rem}.startup-group{padding:18px}.startup-group .section-heading{flex-wrap:wrap}.operation-step{grid-template-columns:72px minmax(0,1fr);gap:16px;margin:2px 0}.flow-poster{width:72px;height:108px}}
+@media(max-width:760px){.operation-flow{height:100%;min-height:0}.flow-panel{overflow:hidden;min-height:0}.flow-body{overflow:auto;padding:20px}.flow-actions{position:relative;bottom:auto;padding:12px 16px;background:var(--section);backdrop-filter:none;flex-wrap:nowrap}.flow-actions button{flex:1;min-width:0;padding:10px;font-size:.83rem}.startup-group{padding-inline:16px}.startup-group .section-heading{flex-wrap:wrap}.operation-step{grid-template-columns:72px minmax(0,1fr);gap:16px;margin:2px 0}.flow-poster{width:72px;height:108px}}
 @media(prefers-reduced-motion:reduce){.flow-artwork img{transition:none}}
 :root[data-motion=false] .flow-artwork img{transition:none}
 
@@ -476,6 +483,7 @@ input[type=color]::-moz-color-swatch{border:0;border-radius:50%}
 button.ui-control:not(:disabled):not(.game-card):not(.primary):is(:hover,:focus-visible),select.ui-control:not(:disabled):is(:hover,:focus-visible){background-color:color-mix(in srgb,var(--accent) 16%,var(--control))}
 .ui-control:not(:disabled):not(.game-card):active{scale:.98}
 .select-menu .ui-control:is(:hover,:focus-visible){scale:1.012;outline-offset:-2px}
+.number-stepper>.ui-control:not(:disabled):is(:hover,:focus){scale:1;outline-offset:-2px}
 .game-list .game-item{transition:scale .2s var(--ease);transform-origin:center}
 .game-list .game-item:has(.game-card:is(:hover,:focus-visible)){scale:1.008;z-index:2;box-shadow:inset 0 0 0 1px var(--game-accent)}
 @media(prefers-reduced-motion:reduce){.ui-control,.game-list .game-item{scale:none!important;transition:none!important}}
@@ -633,7 +641,7 @@ button.ui-control:not(:disabled):not(.game-card):not(.primary):is(:hover,:focus-
 #scene[data-store-quality=soft]:before{content:'';position:absolute;inset:0;background-image:url('/grain.png');background-repeat:repeat;opacity:.045;mix-blend-mode:soft-light}
 
 /* Action controls use capsule geometry; navigation rows and content cards keep their shape. */
-button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choice,.artwork-asset,.screenshot-choice,.setting-action,.settings-tabs button,.detail-nav button,.extra-nav button,.select-menu button,.shell-menu button,.game-menu button)){border-radius:9999px}
+button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choice,.artwork-asset,.screenshot-choice,.number-stepper>button,.setting-action,.settings-tabs button,.detail-nav button,.extra-nav button,.select-menu button,.shell-menu button,.game-menu button)){border-radius:9999px}
 .feature-mode-segments,.feature-mode-indicator,.preset-segments,.preset-segments button{border-radius:9999px}
 .hero-artwork:after{background:linear-gradient(32deg,rgb(12 18 23 / .94),rgb(12 18 23 / .65) 38%,transparent 90%);opacity:.9}
 
@@ -827,9 +835,13 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 
 .game-item[data-art-visible=false]>.artwork-glow{display:none}
 
-.operation-backdrop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:clamp(12px,4vw,56px);background:rgb(16 18 20 / .52)}
+.operation-backdrop{position:fixed;inset:0;z-index:50;display:grid;grid-template-rows:minmax(0,1fr);place-items:center;padding:clamp(12px,4vw,56px);background:rgb(16 18 20 / .52)}
 .operation-modal{width:min(100%,1120px);height:min(100%,850px);min-height:0;overflow:auto;padding:clamp(12px,2.5vw,30px);background:color-mix(in srgb,var(--glass) 82%,var(--ink));backdrop-filter:blur(20px);box-shadow:0 24px 80px #0005,inset 0 0 0 1px var(--rim)}
 .operation-modal .operation-flow{max-width:100%}
+.operation-modal:has(>.operation-flow:is([data-stage=checking],[data-stage=running],[data-stage=done],[data-stage=error])){
+  height:auto;max-height:min(100%,850px)
+}
+.shell[inert] .content>*{animation:none}
 body:has(.operation-backdrop) #toast{z-index:49}
 
 .library-view-controls{display:flex;align-items:center;gap:8px;justify-content:flex-end}.library-view-controls>[data-action=bulk-select]{white-space:nowrap;min-height:40px;padding:8px 14px}
@@ -996,6 +1008,7 @@ body:has(.operation-backdrop) #toast{z-index:49}
 .split-removal-flow header{padding:24px 24px 16px}
 .split-removal-flow h1{font-size:clamp(1.3rem,3vw,1.7rem);margin:0}
 .split-removal-flow header p{margin:8px 0 0}
+.split-removal-flow .flow-steps{margin-top:10px}
 .split-removal-flow .split-games{min-height:0;display:flex;flex-direction:column;padding:0 24px 12px}
 .split-removal-flow .split-game-list{max-block-size:none;min-block-size:0;align-content:start;scrollbar-gutter:stable}
 .split-removal-flow .flow-actions{margin:0;padding:12px 24px}

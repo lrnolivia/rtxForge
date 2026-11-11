@@ -48,7 +48,7 @@ await page.route('**/api/engine',async route=>{
  else if(request.method==='run'&&request.params.token==='exact-nr-review')result={message:'Split Render installed in 1 game.'};
  else if(['prepare_routes','prepare_dlss'].includes(request.method)){
   if(mode==='delayed')await new Promise(resolve=>prepareRelease=resolve);
-  const game=source.games[0];result={token:'exact-install-review',title:request.method==='prepare_dlss'?'Review DLSS update':'Review Installation',action:request.params.operation==='uninstall'?'Restore files':'Install Features',summary:'NR + MFG · reviewed startup settings',rows:mode==='empty'?[]:[{game:game.path,name:game.name,summary:'NR + MFG · managed package',details:'Fixture technical details, no files changed.'}],blocked:[{name:'Unsupported fixture',reason:'No compatible runtime for this executable.'}],warnings:[{name:'Offline use',reason:'Keep this change outside online multiplayer.'}],trust:'I understand the offline-use requirement.'};
+  const game=source.games[0];result={token:'exact-install-review',title:request.method==='prepare_dlss'?'Review DLSS update':'Review Installation',action:request.method==='prepare_dlss'?'Update DLSS':request.params.operation==='uninstall'?'Restore files':'Install Features',summary:'NR + MFG · reviewed startup settings',rows:mode==='empty'?[]:[{game:game.path,name:game.name,summary:'NR + MFG · managed package',details:'Fixture technical details, no files changed.'}],blocked:[{name:'Unsupported fixture',reason:'No compatible runtime for this executable.'}],warnings:[{name:'Offline use',reason:'Keep this change outside online multiplayer.'}],trust:'I understand the offline-use requirement.'};
   if(mode==='empty')result.supported=[{token:'exact-nr-subset',nr:true,mfg:false,reason:'Only NR is supported.',rows:[{name:game.name,game:game.path}]}];
  }else if(['execute_routes','update_dlss'].includes(request.method)){
   progressId=request.id;await new Promise(resolve=>executeRelease=resolve);
@@ -69,12 +69,64 @@ const finishExecution=async()=>{
 const screenshot=name=>process.env.RTXFORGE_CAPTURE_REVIEW?page.screenshot({path:process.env.RTXFORGE_CAPTURE_REVIEW+'/install-'+name+'.png'}):Promise.resolve();
 const start=async()=>{await page.locator('.game-card').first().click();await click('Install Features');await expect(page.getByRole('button',{name:'Review games',exact:true})).toBeVisible();};
 const overflow=async()=>expect(await page.evaluate(()=>[...document.querySelectorAll('.flow-body,.flow-panel,.startup-group,.flow-review-row,.main-nav')].filter(n=>n.scrollWidth>n.clientWidth+2).map(n=>n.className))).toEqual([]);
+const activeStep=()=>page.getByRole('dialog').locator('.flow-steps [aria-current=step]');
+const dialogBounds=()=>page.getByRole('dialog').evaluate(dialog=>{
+ const rect=dialog.getBoundingClientRect(),flow=dialog.querySelector('.operation-flow').getBoundingClientRect();
+ const style=getComputedStyle(dialog);
+ return {centerX:rect.left+rect.width/2-innerWidth/2,centerY:rect.top+rect.height/2-innerHeight/2,
+  verticalSpace:rect.height-flow.height-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom),
+  inside:rect.top>=0&&rect.bottom<=innerHeight};
+});
 try{
- await page.goto((process.env.RTXFORGE_UI_URL||'http://127.0.0.1:1434'));await page.waitForSelector('.game-card');await start();
- expect(calls.filter(c=>c.method==='prepare_routes')).toHaveLength(0);await screenshot('startup');
+ await page.goto((process.env.RTXFORGE_UI_URL||'http://127.0.0.1:1434'));await page.waitForSelector('.game-card');
+ await page.emulateMedia({reducedMotion:'no-preference'});
+ const library=page.locator('#content');
+ await library.evaluate(node=>Promise.allSettled(node.getAnimations({subtree:true})
+  .filter(animation=>animation.effect.getTiming().iterations!==Infinity).map(animation=>animation.finished)));
+ const libraryBefore=await library.boundingBox();
+ const firstCard=page.locator('.game-item').first();
+ const cardBefore=await firstCard.boundingBox();
+ await click('Install Features');
+ await expect(page.getByRole('button',{name:'Review games',exact:true})).toBeVisible();
+ await expect(page.locator('.main-nav [data-route=library]')).toHaveAttribute('aria-current','page');
+ const libraryBehind=await library.boundingBox();
+ expect(libraryBehind.x).toBeCloseTo(libraryBefore.x,0);
+ expect(libraryBehind.width).toBeCloseTo(libraryBefore.width,0);
+ expect((await firstCard.boundingBox()).x).toBeCloseTo(cardBefore.x,0);
+ expect(await library.evaluate(node=>node.getAnimations().length)).toBe(0);
+ await click('Cancel');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await start();
+ expect(calls.filter(c=>c.method==='prepare_routes')).toHaveLength(0);
+ await expect(activeStep()).toHaveText('1Startup settings');
+ await expect(page.locator('.startup-group').first()).toHaveCSS('padding-top','14px');
+ await expect(page.locator('.number-stepper button').first()).toHaveCSS('border-top-left-radius','8px');
+ const more=page.locator('.startup-more > summary');
+ await expect(more).toHaveCSS('padding-left','12px');
+ await expect(more).toHaveCSS('border-top-left-radius','10px');
+ await more.press('Enter');
+ await expect(more).toHaveCSS('outline-offset','-2px');
+ await expect(page.locator('.startup-more .startup-group').first()).toHaveCSS('padding-top','14px');
+ await more.press('Enter');
+ await screenshot('startup');
  await click('Custom');await click('4×');await page.locator('[data-startup-control=intensity]').fill('1.75');await page.locator('[data-startup-control=intensity]').dispatchEvent('change');
  for(const width of [1440,960,390]){await page.setViewportSize({width,height:width===390?844:990});await overflow();if(width===390)await screenshot('startup-narrow');}
- await page.setViewportSize({width:1440,height:990});mode='delayed';await click('Review games');await expect(page.getByRole('heading',{name:'Preparing',exact:true})).toBeVisible();await screenshot('checking');await waitForPrepare();prepareRelease();prepareRelease=undefined;await expect(page.getByRole('heading',{name:'Review Installation',exact:true})).toBeVisible();
+ await page.setViewportSize({width:1440,height:990});mode='delayed';await click('Review games');
+ await expect(page.getByRole('heading',{name:'Preparing',exact:true})).toBeVisible();
+ await expect(activeStep()).toHaveText('2Review games');
+ const compact=await dialogBounds();
+ expect(compact.verticalSpace).toBeCloseTo(0,0);
+ for(const viewport of [{width:1440,height:990},{width:480,height:400}]){
+  await page.setViewportSize(viewport);
+  const bounds=await dialogBounds();
+  expect(bounds.centerX).toBeCloseTo(0,0);
+  expect(bounds.centerY).toBeCloseTo(0,0);
+  expect(bounds.inside).toBe(true);
+  await expect(page.getByRole('button',{name:'Cancel',exact:true})).toBeInViewport();
+ }
+ await page.setViewportSize({width:1440,height:990});
+ await screenshot('checking');await waitForPrepare();prepareRelease();prepareRelease=undefined;
+ await expect(page.getByRole('heading',{name:'Review Installation',exact:true})).toBeVisible();
  const prepare=calls.find(c=>c.method==='prepare_routes');expect(prepare.params.settings.mfg_multiplier).toBe(4);expect(prepare.params.settings.nr_strength).toBe(1.75);expect(prepare.params.settings.feature_controls.intensity).toBe(1.75);expect(prepare.params.rows[0].game).toBe(source.games[0].path);
  await expect(page.locator('.flow-review-row')).toHaveCount(2);await expect(page.getByRole('button',{name:'Install Features',exact:true})).toBeDisabled();await screenshot('review');await page.getByRole('checkbox',{name:'I understand the offline-use requirement.'}).check();
  await click('Install Features');await expect(page.getByRole('button',{name:'Request cancellation',exact:true})).toBeVisible();await waitForExecution();await page.evaluate(({id,name})=>window.fixtureEvents.forEach(events=>events.onmessage?.({data:JSON.stringify({id,game:name,index:1,total:1,fraction:.42,label:'Verifying package files…'})})),{id:progressId,name:source.games[0].name});await expect(page.getByText('42%',{exact:true})).toBeVisible();await screenshot('progress');
@@ -161,14 +213,34 @@ try{
    {row:{game:source.games[0].path},stamp:'fixture-ini-stamp',pass_number:4,character:true,skin:-1});
  await expect(page.getByRole('button',{name:'Save pass role',exact:true})).toBeDisabled();
  await expect(page.locator('.operation-modal')).toHaveCount(0);
- mode='ready';installed=true;await page.reload();await page.locator('.game-card').first().click();await click('Restore Original Files');await expect(page.getByRole('button',{name:'Restore files',exact:true})).toBeVisible();await screenshot('restore');await click('Back');
+ mode='ready';installed=true;await page.reload();await page.locator('.game-card').first().click();await click('Restore Original Files');
+ await expect(page.getByRole('button',{name:'Restore files',exact:true})).toBeVisible();
+ await expect(activeStep()).toHaveText('1Review games');
+ await expect(page.getByRole('dialog').locator('.flow-steps li').last()).toHaveText('2Restore');
+ await screenshot('restore');await click('Back');
  await expect.poll(()=>calls.filter(c=>c.method==='discard_routes').at(-1)?.params.tokens).toEqual(['exact-install-review']);
+ await click('Library');
+ mode='delayed';await click('Update DLSS');await waitForPrepare();
+ await expect(activeStep()).toHaveText('1Review games');
+ await expect(page.getByRole('dialog').locator('.flow-steps li')).toHaveCount(2);
+ prepareRelease();prepareRelease=undefined;mode='ready';
+ await expect(page.getByRole('heading',{name:'Review DLSS update',exact:true})).toBeVisible();
+ await expect(activeStep()).toHaveText('1Review games');
+ await page.setViewportSize({width:480,height:400});
+ expect(await page.locator('.flow-body').evaluate(node=>node.scrollHeight>node.clientHeight)).toBe(true);
+ await expect(page.getByRole('dialog').getByRole('button',{name:'Update DLSS',exact:true})).toBeInViewport();
+ await page.setViewportSize({width:1440,height:990});
+ await page.locator('#review-trust').check();
+ await page.getByRole('dialog').getByRole('button',{name:'Update DLSS',exact:true}).click();
+ await expect(activeStep()).toHaveText('2Update DLSS');
+ await finishExecution();await expect(page.getByText('Reviewed installation completed.',{exact:true})).toBeVisible();await click('Back to game');
  splitEnabled=false;await click('Packages');
  await expect(page.getByText('New setups are paused while performance and image quality are improved.')).toBeVisible();
  await expect(page.getByText('Choose games',{exact:true})).toHaveCount(0);
  await click('Remove Split Render');
  const picker=page.getByRole('dialog',{name:'Remove Split Render',exact:true});
  await expect(picker).toBeVisible();
+ await expect(activeStep()).toHaveText('1Choose games');
  await page.keyboard.press('ArrowDown');
  await expect(picker.getByRole('searchbox',{name:'Search games'})).toBeFocused();
  await expect(picker.locator('[data-nr-target]')).toHaveCount(2);
@@ -186,6 +258,7 @@ try{
  await page.setViewportSize({width:1440,height:990});
  await click('Review selection');
  await expect(page.getByRole('heading',{name:'Review Split Render removal',exact:true})).toBeVisible();
+ await expect(activeStep()).toHaveText('2Review games');
  await page.setViewportSize({width:480,height:400});
  await expect(page.getByRole('button',{name:'Remove Split Render',exact:true})).toBeInViewport();
  await page.setViewportSize({width:1440,height:990});
@@ -211,5 +284,5 @@ try{
  await expect(page.getByRole('button',{name:'Remove Split Render',exact:true})).toBeFocused();
  await click('Presets');
  await expect(page.getByRole('heading',{name:'Split Render Presets',exact:true})).toHaveCount(0);
- expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['startup before preparation','original runtime units and exact targets','responsive startup controls','checking/progress/results with artwork','real progress events preserve Cancel focus','trust gates and explicit supported subsets','exact cancel/discard tokens','honest cancellation and failure','Split Render reviewed before one install run','compatibility filtering and bulk controls in Packages','package-specific preset editor feeds install-only Tools','per-game Tools review without selection checkboxes','Feeder can assign Character to any full-frame pass','restore review','fixture-only no game mutation']}));
+ expect(errors).toEqual([]);console.log(JSON.stringify({passed:true,checks:['startup before preparation','original runtime units and exact targets','responsive startup controls','compact and centered progress with stationary library','DLSS, restore and Split Render step indicators','checking/progress/results with artwork','real progress events preserve Cancel focus','trust gates and explicit supported subsets','exact cancel/discard tokens','honest cancellation and failure','Split Render reviewed before one install run','compatibility filtering and bulk controls in Packages','package-specific preset editor feeds install-only Tools','per-game Tools review without selection checkboxes','Feeder can assign Character to any full-frame pass','restore review','fixture-only no game mutation']}));
 }finally{prepareRelease?.();executeRelease?.();splitRelease?.();await browser.close();}

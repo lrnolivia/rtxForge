@@ -373,7 +373,7 @@ def split_restore_checkpoint(e, item):
         return
     import cross_os
     import proton_prefix
-    from operation_session import Session
+    from operation_session import Session, LIVE
     plan = item['plan']
     target, state = Path(plan['target']), Path(plan['state'])
     paths = [target / t.relative(name) for name in plan['checks']]
@@ -387,13 +387,16 @@ def split_restore_checkpoint(e, item):
         nr_install.apply_package_restore(restore)
         yield
     except BaseException:
-        session.seal(checkpoint)
-        session.checkpoints[-1]['sealed'] = False
-        session.save()
-        t.need(not e._running_processes_under_root(Path(item['row']['game'])),
-               'Close this game before recovery. Backups are retained at ' + str(session.root))
-        session.undo(checkpoint)
-        session.complete()
+        try:
+            session.seal(checkpoint)
+            session.checkpoints[-1]['sealed'] = False
+            session.save()
+            t.need(not e._running_processes_under_root(Path(item['row']['game'])),
+                   'Close this game before recovery. Backups are retained at ' + str(session.root))
+            session.undo(checkpoint)
+            session.complete()
+        finally:
+            LIVE.discard(str(session.root))
         raise
     else:
         session.seal(checkpoint)

@@ -2,7 +2,7 @@
 from pathlib import Path
 import importlib.util,sys,json,hashlib,zipfile,os,contextlib,functools,time,copy
 import transactions as t,flatpak_host,packages,ui,package_catalog,proton_prefix,cross_os,skynizz_provider,ada_mfg_provider,proton_mfg,proton_cuda,proton_stack,linux_runtime
-from operation_session import Session,Cancelled
+from operation_session import Session,Cancelled,LIVE
 from storage import storage
 ROOT=Path(__file__).resolve().parents[1]
 def providers():return json.loads((ROOT/'providers/lock.json').read_text())
@@ -751,6 +751,7 @@ def execute(review):
     # Every game is checkpointed before it changes: Cancel undoes the whole run,
     # and a game that fails partway is put back as it was.
     session=Session(e.STATE_ROOT/'desktop-operations')
+    recovery_pending=False
     with e.mutation_lock():
         for index,item in enumerate(review['plans'],1):
             if cancel is not None and cancel.is_set():break
@@ -881,13 +882,21 @@ def execute(review):
                 if 'checkpoint' in locals():
                     session.seal(checkpoint)
                     results[-1]['undone']=undo_game(e,session,checkpoint,results[-1])
+                    if not results[-1]['undone']:
+                        session.checkpoints[-1]['sealed']=False
+                        session.save()
+                        recovery_pending=True
                     del checkpoint
+                else:results[-1]['undone']=True
             finally:
                 if 'checkpoint' in locals():session.seal(checkpoint);del checkpoint
                 report('Finished this game',1)
+            if recovery_pending:break
         if review.get('on_finalizing'):
             review['on_finalizing']()
-        if session:
+        if recovery_pending:
+            LIVE.discard(str(session.root))
+        elif session:
             if cancel is not None and cancel.is_set():
                 t.need(not any(e._running_processes_under_root(p['game'].root.resolve()) for p in review['plans']),'Close running games before recovery. Copies retained at '+str(session.root))
                 # Only Steam's own launch settings need Steam closed to undo safely.
@@ -898,6 +907,6 @@ def execute(review):
     path=e.STATE_ROOT/('desktop-'+e.now_stamp()+'.json');e.save_json_atomic(path,{'results':results})
     failed=[r for r in results if r['status']=='failed']
     if failed:
-        kept='' if all(r.get('undone') for r in failed) else ' Some changes could not be undone; see the report.'
-        raise t.Refusal(f'{len(failed)} game(s) need attention. Their files were put back as they were; completed games keep their changes.{kept} Report: {path}')
+        recovery=f' Recovery copies are available at {session.root}.' if recovery_pending else ' The affected files were kept or put back.'
+        raise t.Refusal(f'{len(failed)} game(s) need attention. Completed games keep their changes.{recovery} Report: {path}')
     return str(path)

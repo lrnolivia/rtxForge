@@ -75,7 +75,7 @@ const dialogBounds=()=>page.getByRole('dialog').evaluate(dialog=>{
  const style=getComputedStyle(dialog);
  return {centerX:rect.left+rect.width/2-innerWidth/2,centerY:rect.top+rect.height/2-innerHeight/2,
   verticalSpace:rect.height-flow.height-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom),
-  inside:rect.top>=0&&rect.bottom<=innerHeight};
+  height:rect.height,inside:rect.top>=0&&rect.bottom<=innerHeight};
 });
 try{
  await page.goto((process.env.RTXFORGE_UI_URL||'http://127.0.0.1:1434'));await page.waitForSelector('.game-card');
@@ -226,7 +226,13 @@ try{
  prepareRelease();prepareRelease=undefined;mode='ready';
  await expect(page.getByRole('heading',{name:'Review DLSS update',exact:true})).toBeVisible();
  await expect(activeStep()).toHaveText('1Review games');
+ const shortReview=await dialogBounds();
+ expect(shortReview.height).toBeLessThan(850);
+ expect(shortReview.centerY).toBeCloseTo(0,0);
  await page.setViewportSize({width:480,height:400});
+ const cappedReview=await dialogBounds();
+ expect(cappedReview.inside).toBe(true);
+ expect(cappedReview.centerY).toBeCloseTo(0,0);
  expect(await page.locator('.flow-body').evaluate(node=>node.scrollHeight>node.clientHeight)).toBe(true);
  await expect(page.getByRole('dialog').getByRole('button',{name:'Update DLSS',exact:true})).toBeInViewport();
  await page.setViewportSize({width:1440,height:990});

@@ -1,6 +1,6 @@
 # Universal MFG Unlocker
 
-The pinned 1.7.0 release is rtxForge's default MFG component for new NR + MFG and MFG Only installs with the Skynizz bridge. It is separate from the RenoDX **MFG Unlock 1.4.5** ReShade component, which remains a preview choice.
+The pinned 1.7.0 release is rtxForge's default MFG component for new NR + MFG and MFG Only installs with the Skynizz bridge. It is separate from the RenoDX **MFG Unlock 1.9.0** ReShade component, which remains a preview choice.
 
 It loads through OptiScaler 10 as an ASI plugin: the pinned DLL is installed as `OptiScaler/plugins/MFGUnlocker.asi` with `[Plugins] LoadAsiPlugins=true`, and the bridge's integrated Ada unlock (`AdaMfgUnlock`, `AdaBlackwellKernels`) is turned off. The game's own Streamline DLSS Frame Generation stays the frame-generation path (`FGOutput=nofg`); OptiScaler's menu and INI own the multiplier and Dynamic MFG, and rtxForge installs `RTXMFG-Universal.json` with `optiScalerUi` set to `optiscaler` and the unlocker's own DLSS 5 switched off. No second proxy or ReShade addon host is used. Repairs keep the game’s recorded component. The native Vulkan package uses its own 1.6.1 pin and menu integration.
 

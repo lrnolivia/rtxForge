@@ -45,6 +45,7 @@ class AdaMfgTest(unittest.TestCase):
 
     def test_saved_recipe_rejects_changed_binary_host_or_source(self):
         pinned = provider.pinned()
+        self.assertEqual(pinned['version'], '1.9.0')
         self.assertEqual(provider.validate(pinned), pinned)
         for key, value in [('url', 'https://example.org/other.addon64'), ('sha256', 'a' * 64),
                            ('commit', 'a' * 40), ('version', '1.4.4'), ('version', '9.9.9'), ('release_size', 1)]:

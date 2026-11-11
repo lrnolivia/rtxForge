@@ -847,8 +847,14 @@ def stack_files(e, settings):
         try:
             owned = import_stack(e, source)
         except (t.Refusal, OSError, ValueError, configparser.Error):
-            if owned_stack(e) is None:
-                raise
+            owned = owned_stack(e)
+            if owned is None:
+                spec = stack(source, cached=True, installed=True)
+                # A verified older import can stay in Settings while the new
+                # package is fetched. Unknown local files still refuse.
+                if all(digest(Path(source) / name, cached=True) == spec['assets'][name]['sha256']
+                       for name in spec.get('previous_assets', {})):
+                    raise
     owned = owned or owned_stack(e)
     if owned is None:
         owned = download_stack(e)

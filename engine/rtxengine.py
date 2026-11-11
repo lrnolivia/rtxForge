@@ -5004,9 +5004,11 @@ def install_target(
         )
 
     payload_paths = set(payload)
-    # RTXMFG creates this at runtime. Track its pre-install existence so
-    # uninstall can remove/restore it even though rtxEngine does not create it.
+    # The MFG components can create these settings at runtime. Track their
+    # original bytes even though the install itself does not write them.
     extra_runtime_paths = {"RTXMFG-Universal.json"} if mfg_proxy else set()
+    if mfg_component and mfg_component.get("id") == "mfg-unlock" and mfg_component.get("version") == "1.9.0":
+        extra_runtime_paths.add(ada_mfg_provider.RUNTIME_CONFIG)
     baseline_paths = payload_paths | extra_runtime_paths
     installed_hashes = {rel: sha256_bytes(data) for rel, data in payload.items()}
 

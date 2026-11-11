@@ -6,12 +6,12 @@
   "sources": [
     {
       "name": "DLSS5-Feeder",
-      "version": "1.19.0",
-      "url": "https://github.com/jlrouzies-fr/DLSS5-Feeder/releases/tag/v1.19.0",
-      "archive_sha256": "9cc19e28f8fb4e216ea61621fdf6443e207e338ec639979ab335503c75f48f36",
-      "archive_name": "DLSS5-Feeder-1.19.0.zip",
-      "archive_size": 503554,
-      "download_url": "https://github.com/jlrouzies-fr/DLSS5-Feeder/releases/download/v1.19.0/DLSS5-Feeder-1.19.0.zip",
+      "version": "1.19.1-beta.1",
+      "url": "https://github.com/jlrouzies-fr/DLSS5-Feeder/releases/tag/v1.19.1-beta.1",
+      "archive_sha256": "8cec629b5fe2fad245675f68ee53241aa67ca31c28b34798f2f48bc7a9345838",
+      "archive_name": "DLSS5-Feeder-1.19.1-beta.1.zip",
+      "archive_size": 507912,
+      "download_url": "https://github.com/jlrouzies-fr/DLSS5-Feeder/releases/download/v1.19.1-beta.1/DLSS5-Feeder-1.19.1-beta.1.zip",
       "members": {
         "dlss5-feed.addon32": "dlss5-feed.addon32",
         "dlss5-feed-helper.addon64": "dlss5-feed-helper.addon64",
@@ -36,7 +36,7 @@
       "version": "2.87.6",
       "url": "https://github.com/dege-diosg/dgVoodoo2/releases/tag/2.87.6",
       "archive_sha256": "9afa493396feec7108f42a2d97661eef96bbaac5addf0dfb5cfbc3001cd76a0a",
-      "instructions": "https://github.com/jlrouzies-fr/DLSS5-Feeder/blob/3c09eabcd138a68d144b6cc396a23e6b493eea4d/README.md#install-for-a-directx-9-game-beta",
+      "instructions": "https://github.com/jlrouzies-fr/DLSS5-Feeder/blob/08967d6564a2037f5ece62b818150ac7f4cf1eef/README.md#install-for-a-directx-9-game-beta",
       "archive_name": "dgVoodoo2_87_6.zip",
       "archive_size": 9244362,
       "download_url": "https://github.com/dege-diosg/dgVoodoo2/releases/download/2.87.6/dgVoodoo2_87_6.zip",
@@ -59,17 +59,17 @@
       "machine": 34404
     },
     "dlss5-feed.addon32": {
-      "sha256": "34c767bd53a99f51a6cb5d87b267734e04314d16bf495a6c69ab98acd62d0874",
-      "size": 195584,
+      "sha256": "bd1e4c988961d4b4e53f1b987b53f70e3ffe64e2fc59bc8ef2cb3e2a8d10e605",
+      "size": 200192,
       "machine": 332
     },
     "dlss5-feed-helper.addon64": {
-      "sha256": "c069aa9d8b01fcee34234bc458a798c3be6f27fc8b9f23b74b5fb1784a828886",
-      "size": 211456,
+      "sha256": "4845c8808f3caa788346c0a6ee89f82699dbd021f88bd2ab8e4ae0bc24a78641",
+      "size": 217088,
       "machine": 34404
     },
     "dlss5-feed-host64.exe": {
-      "sha256": "79e427430c5c0102f6c7a557155b706ad51b0c40933f6e245fce922bf5b1401e",
+      "sha256": "07a2965f6248c4a759c024006b3fe6f407857265d0c4d73d06ac5f1769a68ffa",
       "size": 177664,
       "machine": 34404
     },
@@ -87,5 +87,31 @@
       "sha256": "45cc0eb8e6ed4f067aca1b2e4ac1268dfbd164bbbd06d264c53e8a60642c4dbf",
       "size": 21964
     }
+  },
+  "previous_assets": {
+    "dlss5-feed.addon32": [
+      {
+        "version": "1.19.0",
+        "sha256": "34c767bd53a99f51a6cb5d87b267734e04314d16bf495a6c69ab98acd62d0874",
+        "size": 195584,
+        "machine": 332
+      }
+    ],
+    "dlss5-feed-helper.addon64": [
+      {
+        "version": "1.19.0",
+        "sha256": "c069aa9d8b01fcee34234bc458a798c3be6f27fc8b9f23b74b5fb1784a828886",
+        "size": 211456,
+        "machine": 34404
+      }
+    ],
+    "dlss5-feed-host64.exe": [
+      {
+        "version": "1.19.0",
+        "sha256": "79e427430c5c0102f6c7a557155b706ad51b0c40933f6e245fce922bf5b1401e",
+        "size": 177664,
+        "machine": 34404
+      }
+    ]
   }
 }

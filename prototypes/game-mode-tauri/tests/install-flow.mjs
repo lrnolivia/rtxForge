@@ -169,6 +169,8 @@ try{
  await click('Remove Split Render');
  const picker=page.getByRole('dialog',{name:'Remove Split Render',exact:true});
  await expect(picker).toBeVisible();
+ await page.keyboard.press('ArrowDown');
+ await expect(picker.getByRole('searchbox',{name:'Search games'})).toBeFocused();
  await expect(picker.locator('[data-nr-target]')).toHaveCount(2);
  await click('Select all');
  await expect(picker.locator('[data-nr-target]:checked')).toHaveCount(2);

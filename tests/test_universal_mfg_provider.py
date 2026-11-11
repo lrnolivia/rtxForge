@@ -39,7 +39,7 @@ class UniversalMfgTest(unittest.TestCase):
     def test_pinned_identity_matches_source_and_rejects_changes(self):
         pinned = provider.pinned()
         self.assertEqual(provider.validate(pinned), pinned)
-        self.assertEqual(pinned['commit'], '29504cdd5d209a25e3b91e809a7e0d6f9db8cbdc')
+        self.assertEqual((pinned['version'], pinned['commit']), ('1.7.0', 'b97deee1ea58d9b3d8b318041c89d6f9d27eb959'))
         for key, value in [('url', 'https://example.org/MFGUnlocker-v1.6.1.zip'), ('sha256', 'a' * 64),
                            ('commit', 'a' * 40), ('version', '1.6.2'), ('release_size', 1), ('id', 'mfg-unlock')]:
             with self.subTest(key=key), self.assertRaises(t.Refusal):
@@ -53,6 +53,23 @@ class UniversalMfgTest(unittest.TestCase):
         with self.assertRaises(t.Refusal):
             provider.validate(changed)
 
+    def test_recorded_161_is_still_valid_and_keeps_its_configuration(self):
+        version = '1.6.1'
+        commit, archive_hash, archive_size, dll_hash, dll_size = provider.KNOWN[version]
+        archive = 'MFGUnlocker-v1.6.1.zip'
+        record = dict(provider.pinned(), version=version, commit=commit, archive=archive,
+                      url=f'https://github.com/{provider.REPO}/releases/download/v{version}/{archive}',
+                      sha256=archive_hash, release_size=archive_size,
+                      dll={'sha256': dll_hash, 'size': dll_size})
+        record['notices'] = {
+            name: dict(notice, url=f'https://raw.githubusercontent.com/{provider.REPO}/{commit}/{name}')
+            for name, notice in record['notices'].items()
+        }
+        record['notices']['NOTICE.md'].update(
+            sha256='65e6472efe0eb3e499dd9cb86152544b20a15f040c0bbaf09d8602abdb7bb44b', release_size=886)
+        self.assertEqual(provider.validate(record), record)
+        self.assertEqual(provider.startup_payload(record), {})
+
     def test_component_dispatch_by_recorded_id(self):
         import ada_mfg_provider
         self.assertIs(skynizz_provider.mfg_component_module(provider.pinned()), provider)
@@ -62,24 +79,26 @@ class UniversalMfgTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory).resolve()
             dll = amd64()
-            archive = folder / 'MFGUnlocker-v1.6.1.zip'
+            record = provider.pinned()
+            archive = folder / record['archive']
             with zipfile.ZipFile(archive, 'w') as bundle:
                 bundle.writestr('MFGUnlocker.dll', dll)
                 bundle.writestr('../never-extract.dll', b'never')
             notice = folder / 'notice'
             notice.write_bytes(b'legal fixture')
-            record = provider.pinned()
             record.update(sha256=t.digest(archive), release_size=archive.stat().st_size,
                           dll={'sha256': hashlib.sha256(dll).hexdigest(), 'size': len(dll)})
             for value in record['notices'].values():
                 value.update(sha256=t.digest(notice), release_size=notice.stat().st_size)
-            known = {'1.6.1': (record['commit'], record['sha256'], record['release_size'], record['dll']['sha256'], len(dll))}
+            known = {record['version']: (record['commit'], record['sha256'], record['release_size'], record['dll']['sha256'], len(dll))}
             download = lambda url, *args, **kwargs: archive if url == record['url'] else notice
             with patch.object(provider, 'KNOWN', known), patch.object(provider, 'storage', return_value=folder), \
                  patch.object(provider.packages, 'download', side_effect=download):
                 data = provider.load_payload({}, record)
                 self.assertEqual(data[provider.PLUGIN], dll)
-                self.assertEqual(set(data), {provider.PLUGIN, 'OptiScaler/licenses/MFG-Unlocker-LICENSE.txt',
+                self.assertEqual(json.loads(data[provider.CONTROL]), {
+                    'multiplier': 2, 'followGame': True, 'optiScalerUi': 'optiscaler', 'dlss5': False})
+                self.assertEqual(set(data), {provider.PLUGIN, provider.CONTROL, 'OptiScaler/licenses/MFG-Unlocker-LICENSE.txt',
                                              'OptiScaler/licenses/MFG-Unlocker-NOTICE.md'})
                 self.assertFalse((folder.parent / 'never-extract.dll').exists())
                 with zipfile.ZipFile(archive, 'w') as bundle:
@@ -146,6 +165,7 @@ class UniversalMfgTest(unittest.TestCase):
             (target / 'RTXMFG-halocampaignevolved-B3DAE402A7B7D259.log').write_text('run')
             (target / 'RTXMFG-halocampaignevolved-B3DAE402A7B7D259-intervals.csv').write_text('ms\n8.3\n')
             (target / provider.STATUS).write_text('{}')
+            (target / 'RTXMFG-test.crash.dmp').write_bytes(b'dump')
             provider.check_target(e, SimpleNamespace(target_dir=target), None)
 
     def test_dynamic_support_follows_the_plugin_report(self):

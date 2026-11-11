@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "feeder",
   "name": "Feeder NR",
-  "version": "Feeder 1.19.0 / RenoDX 8.5.0-rc10 (rtxForge live settings 3)",
+  "version": "Feeder 1.19.1-beta.1 / RenoDX 8.5.0-rc10 (rtxForge live settings 3)",
   "platform": "windows-x64-d3d11",
   "distribution": "Pinned verified downloads managed by rtxForge; local imports are optional overrides.",
   "assets": {
@@ -11,8 +11,8 @@
       "size": 5592064
     },
     "dlss5-feed.addon64": {
-      "sha256": "2b8c905012fd464ddf0554c6b178cba55030ec10eb917acdcee0e7a2376fe4dd",
-      "size": 343552
+      "sha256": "e01d8c07a5317566518d26d08fb58b0672547080f33780e1d9be46c043dd7a88",
+      "size": 344576
     },
     "renodx-dlss5.addon64": {
       "sha256": "07d306db5f0e3f187e3e23dafd95c69517308ce35e6872dca3ff4438bc9412f8",
@@ -73,6 +73,13 @@
         "sha256": "f0ed0bf424ac29c2c83212e259e89d3de5fb995317c34d1bd2c76bea157253cb",
         "size": 3039744
       }
+    ],
+    "dlss5-feed.addon64": [
+      {
+        "version": "1.19.0",
+        "sha256": "2b8c905012fd464ddf0554c6b178cba55030ec10eb917acdcee0e7a2376fe4dd",
+        "size": 343552
+      }
     ]
   },
   "models": {
@@ -92,10 +99,10 @@
   "sources": [
     {
       "name": "DLSS5-Feeder",
-      "version": "1.19.0",
-      "commit": "3c09eabcd138a68d144b6cc396a23e6b493eea4d",
-      "url": "https://github.com/jlrouzies-fr/DLSS5-Feeder/releases/tag/v1.19.0",
-      "license": "https://github.com/jlrouzies-fr/DLSS5-Feeder/blob/3c09eabcd138a68d144b6cc396a23e6b493eea4d/LICENSE"
+      "version": "1.19.1-beta.1",
+      "commit": "08967d6564a2037f5ece62b818150ac7f4cf1eef",
+      "url": "https://github.com/jlrouzies-fr/DLSS5-Feeder/releases/tag/v1.19.1-beta.1",
+      "license": "https://github.com/jlrouzies-fr/DLSS5-Feeder/blob/08967d6564a2037f5ece62b818150ac7f4cf1eef/LICENSE"
     },
     {
       "name": "RenoDX DLSS5",

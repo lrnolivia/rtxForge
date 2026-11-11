@@ -161,6 +161,37 @@ class LegacyFeederTest(unittest.TestCase):
         self.assertEqual(self.case.files(row), before | {changed: t.sha(b'changed since install'), other: t.sha(b'another tool')})
         self.assertEqual(feeder.state(self.e, directory)['status'], 'restored')
 
+    def test_previous_helper_cache_refreshes_during_repair_and_restores(self):
+        row = self.game('x86-d3d9')
+        directory = Path(row['game'])
+        before = self.case.files(row)
+        feeder.execute(self.prepare(row))
+        name = 'dlss5-feed.addon32'
+        previous = (directory / name).read_bytes()
+        previous_record = legacy.owned_assets(self.e)
+        old = self.spec['assets'][name]
+        current = pe(0x14c, b'current feeder')
+        self.spec['previous_assets'] = {name: [{'version': 'old Feeder', **old}]}
+        self.spec['assets'][name] = old | {'sha256': t.sha(current), 'size': len(current)}
+        self.assertIsNone(legacy.owned_assets(self.e))
+        current_file = self.case.root / 'new-addon32'
+        current_file.write_bytes(current)
+
+        def download(engine):
+            record = previous_record | {'files': previous_record['files'] | {name: feeder.cache(engine, current_file)}}
+            t.atomic_file(legacy.store_path(engine), json.dumps(record).encode(), 0o600)
+            return legacy.owned_assets(engine)
+
+        with patch.object(legacy, 'download_assets', side_effect=download) as fetch:
+            review = self.prepare(row, 'repair')
+        self.assertFalse(review['blocked'], review['blocked'])
+        fetch.assert_called_once_with(self.e)
+        self.assertEqual((directory / name).read_bytes(), previous)
+        feeder.execute(review)
+        self.assertEqual((directory / name).read_bytes(), current)
+        feeder.execute(self.prepare(row, 'uninstall'))
+        self.assertEqual(self.case.files(row), before)
+
     def test_restore_preserves_helper_diagnostics_without_blocking_reinstall(self):
         row = self.game('x86-d3d9')
         directory = Path(row['game'])

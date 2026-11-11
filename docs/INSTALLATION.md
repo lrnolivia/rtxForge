@@ -40,9 +40,9 @@ changing that game's provider or profile.
 
 | Profile | Pinned package | Behavior |
 | --- | --- | --- |
-| MFG Only | DLSS-Unlocked NR-v0.9.71 | Native game DLSS-G with Ada unlock; NR components omitted |
-| NR Only | DLSS-Unlocked NR-v0.9.71 | NR available; keep in-game FG off |
-| NR + MFG | DLSS-Unlocked NR-v0.9.71 | Experimental combination; verify one game before expanding |
+| MFG Only | DLSS-Unlocked NR-v0.9.86 | Native game DLSS-G with Ada unlock; NR components omitted |
+| NR Only | DLSS-Unlocked NR-v0.9.86 | NR available; keep in-game FG off |
+| NR + MFG | DLSS-Unlocked NR-v0.9.86 | Experimental combination; verify one game before expanding |
 
 The source archives are approximately 469 MB (one verified archive shared by all three profiles). Setup
 downloads only the selected package and verifies its pinned SHA-256. The

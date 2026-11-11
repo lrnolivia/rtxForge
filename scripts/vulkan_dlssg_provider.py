@@ -116,7 +116,7 @@ def pin():
                'Standalone candidate must retain Experimental provenance')
         data['loader'] = selected['loader']
         return data
-    t.need(data.get('id') == ID and data.get('upstream', {}).get('tag') == 'v1.2.0',
+    t.need(data.get('id') == ID and data.get('upstream', {}).get('tag') == 'v1.2.1',
            'Unsupported Vulkan provider identity')
     return data
 

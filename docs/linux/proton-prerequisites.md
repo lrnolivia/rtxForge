@@ -16,7 +16,7 @@ Resonant, `providers/mfg-unlocker/source.json`) is not Linux proof.
 | NVAPI (DLSS and Reflex entry points) | dxvk-nvapi in the same build. Proton copies `nvapi64.dll` into the prefix when NVAPI is on, and deletes it when off (`PROTON_DISABLE_NVAPI`, or Proton's per-title list) | Tool DLLs, launch environment and the prefix copy from the last run | `nvapi-missing`, `nvapi-disabled`, `nvapi-not-in-prefix` |
 | Game-native Streamline DLSS-G | The game | Library scan flag `native_dlssg` | `native-dlssg-missing` |
 | Skynizz bridge, OptiScaler 10, private Streamline/NGX DLLs | rtxForge payload (same bytes as Windows) | Pinned hashes at install | — |
-| Universal MFG Unlocker 1.6.1 | `OptiScaler/plugins/MFGUnlocker.asi`, `[Plugins] LoadAsiPlugins=true` | Pinned DLL SHA-256 `24e3e6a8…6b33`; `proton_mfg.verify()` after install | `plugin-missing`, `plugin-changed`, `plugin-not-loaded`, `competing-unlock(-ini)` |
+| Universal MFG Unlocker 1.7.0 | `OptiScaler/plugins/MFGUnlocker.asi`, `[Plugins] LoadAsiPlugins=true`, `RTXMFG-Universal.json` | Pinned DLL SHA-256 `e6b6e6b7…10c7`; `proton_mfg.verify()` after install | `plugin-missing`, `plugin-changed`, `plugin-settings-changed`, `plugin-not-loaded`, `competing-unlock(-ini)` |
 | Proxy loading | `WINEDLLOVERRIDES="dxgi=n,b"` in Steam launch options when Steam is closed, or `pfx/user.reg` `[Software\\Wine\\DllOverrides]` when Steam is open | Written by the engine and restored exactly | — |
 
 rtxForge never sets `PROTON_ENABLE_NVAPI`, `DXVK_NVAPI_*` or CUDA variables. Modern

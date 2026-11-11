@@ -1,4 +1,4 @@
-"""Universal MFG Unlocker 1.6.1 under Proton: review, gate and post-install checks.
+"""Universal MFG Unlocker under Proton: review, gate and post-install checks.
 
 The Windows route (universal_mfg_provider) is reused byte for byte: the pinned
 DLL becomes OptiScaler/plugins/MFGUnlocker.asi beside the Skynizz bridge, with
@@ -37,6 +37,7 @@ REASONS = {
     'competing-unlock-ini': 'The OptiScaler settings still turn on the integrated Ada unlock. Repair the game so the plugin owns MFG.',
     'plugin-missing': 'The MFG Unlocker plugin is missing. Repair the game.',
     'plugin-changed': 'The MFG Unlocker plugin changed since install. Repair the game.',
+    'plugin-settings-changed': 'The MFG Unlocker startup settings are missing or changed. Repair the game.',
     'plugin-not-loaded': 'OptiScaler is not set to load plugins. Repair the game.',
 }
 # Files that mean another component owns MFG in this folder.
@@ -59,7 +60,7 @@ def competing(target, managed=()):
         name = path.name.casefold()
         if name in managed:
             continue
-        if name.startswith('rtxmfg-') and name.endswith(('.log', '.status.json')):
+        if name.startswith('rtxmfg-') and name.endswith(universal.RUN_REPORT_SUFFIXES):
             continue  # the plugin's own run reports outlive a restore
         if name in COMPETING_FILES or name.startswith(universal.FOREIGN_PREFIXES):
             found.append(path.name)
@@ -109,8 +110,12 @@ def review(target, prefix_route, proxy, mode, report, managed=()):
                                       else " + the GPU's own MFG" if native else ''),
              f"Loads through {override}.dll · " + ("Proton setting saved in this game's prefix" if prefix_route
                                                   else 'Proton setting saved in Steam launch options')]
+    files = []
+    if component:
+        files = [universal.PLUGIN, *universal.startup_payload(component)]
+        files.extend('OptiScaler/licenses/' + name for name in universal.NOTICES.values())
     details = {
-        'files': ([universal.PLUGIN] + ['OptiScaler/licenses/' + name for name in universal.NOTICES.values()]) if component else [],
+        'files': files,
         'ini': {'Plugins': {'LoadAsiPlugins': 'true'},
                 'DLSSG': {'AdaMfgUnlock': 'false', 'AdaBlackwellKernels': 'false', 'AmpereMfgUnlock': 'false'},
                 'FrameGen': {'FGOutput': 'nofg'}} if component else {},
@@ -144,6 +149,14 @@ def verify(target, baseline):
                 else hashlib.sha256(handle.read()).hexdigest()
         if digest != component['dll']['sha256']:
             reasons.append('plugin-changed')
+    for name, expected in universal.startup_payload(component).items():
+        controls = target / name
+        try:
+            if (controls.is_symlink() or not controls.is_file()
+                    or controls.stat().st_size != len(expected) or controls.read_bytes() != expected):
+                reasons.append('plugin-settings-changed')
+        except OSError:
+            reasons.append('plugin-settings-changed')
     ini = target / 'OptiScaler.ini'
     values = _ini(ini.read_text(encoding='utf-8-sig')) if ini.is_file() else {}
     if values.get(('plugins', 'loadasiplugins')) != 'true':

@@ -462,7 +462,7 @@ ada_mfg_provider.load_payload=lambda config,record:dict(external_payload)
 external_settings=settings | {'mfg_provider':'mfg-unlock','mfg_multiplier':4,'nr_preset':2,'reshade_ui':False,'reshade_intro':False}
 review=service.prepare([scan(external)],'nr-mfg','install',visual_settings=external_settings)
 assert files(external)==external_before
-assert 'MFG Unlock 1.4.5' in review['rows'][0]['detail']
+assert 'MFG Unlock 1.9.0' in review['rows'][0]['detail']
 # Native DLL preparation loads another engine after the provider review. It
 # must not replace the pending operation's provider/configuration context.
 later_engine=module(service.config,'y4my')
@@ -478,11 +478,12 @@ reshade=external/'ReShade.ini'
 assert 'ForceMultiplier=4' in reshade.read_text() and 'DynamicMFG=0' in reshade.read_text()
 assert 'KeyOverlay=0,0,0,0' in reshade.read_text() and 'TutorialProgress=4' in reshade.read_text()
 tuned=reshade.read_text().replace('ForceMultiplier=4','ForceMultiplier=3')+'\n; user preset\n'
+(external/ada_mfg_provider.RUNTIME_CONFIG).write_text('[Backend]\nSelected=DLSSG\n')
 reshade.write_text(tuned)
 run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated','reshade_ui':False,'reshade_intro':False}))
 assert reshade.read_text()==tuned,'repair reset the addon preset or changed MFG owner'
 assert scan(external)['mfg_multiplier']==3
-assert baseline(external)['mfg_provider']['version']=='1.4.5'
+assert baseline(external)['mfg_provider']['version']=='1.9.0'
 run(service.prepare([scan(external)],'nr-mfg','repair',visual_settings=settings | {'mfg_provider':'integrated','reshade_ui':True,'reshade_intro':True}))
 tuned=reshade.read_text()
 assert 'KeyOverlay=36,0,0,0' in tuned and 'TutorialProgress=0' in tuned
@@ -505,13 +506,15 @@ universal=game('UniversalMfg');(universal/'nvngx_dlssg.dll').write_bytes(fixture
 universal_before=files(universal)
 universal_payload={universal_mfg_provider.PLUGIN:fixtures.pe(),'OptiScaler/licenses/MFG-Unlocker-LICENSE.txt':b'fixture license',
                    'OptiScaler/licenses/MFG-Unlocker-NOTICE.md':b'fixture notice'}
-universal_mfg_provider.load_payload=lambda config,record:dict(universal_payload)
+universal_mfg_provider.load_payload=lambda config,record:universal_payload | universal_mfg_provider.startup_payload(record)
 review=service.prepare([scan(universal)],'nr-mfg','install',visual_settings=settings | {'mfg_provider':'universal','mfg_multiplier':4})
 assert files(universal)==universal_before and review['rows'],review['blocked']
 run(review);record=baseline(universal)
 assert record['mfg_provider']['ownership']=='managed-optiscaler-plugin'
 assert record['compatibility_policy']['mfg_route']=='native-dlssg-universal-plugin'
 assert (universal/universal_mfg_provider.PLUGIN).read_bytes()==universal_payload[universal_mfg_provider.PLUGIN]
+startup=json.loads((universal/universal_mfg_provider.CONTROL).read_bytes())
+assert startup['optiScalerUi']=='optiscaler' and startup['dlss5'] is False
 ini=(universal/'OptiScaler.ini').read_text()
 for value in ('AdaMfgUnlock=false','AdaBlackwellKernels=false','LoadAsiPlugins=true','FGOutput=nofg'):
     assert value in ini,value

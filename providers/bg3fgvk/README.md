@@ -1,6 +1,6 @@
 # Experimental BG3 Vulkan frame generation provider
 
-`source.json` identifies the unmodified [bg3fgvk v1.2.0 release](https://github.com/thierbig/bg3fgvk/releases/tag/v1.2.0), its exact source commit, archive digest and all 13 archive members. The standalone adapter is `scripts/vulkan_dlssg_provider.py`; catalog integration remains pending. Installation requires explicit Experimental opt-in, the pinned archive and a matching locally built loader. `runtime_verified` and `default_promoted` remain false.
+`source.json` identifies the unmodified [bg3fgvk v1.2.1 release](https://github.com/thierbig/bg3fgvk/releases/tag/v1.2.1), its exact source commit, archive digest and all 13 archive members. The standalone adapter is `scripts/vulkan_dlssg_provider.py`; catalog integration remains pending. Installation requires explicit Experimental opt-in, the pinned archive and a matching locally built loader. `runtime_verified` and `default_promoted` remain false.
 
 ## Route contract
 
@@ -23,7 +23,7 @@ The initial qualification target is RTX 40 at 2x displayed frames, with HAGS ena
 
 ## General Vulkan adapter requirements
 
-The [pinned source](https://github.com/thierbig/bg3fgvk/tree/66082e6f691fba1c48e319b688a25fa5ae196e56) includes BG3 input assumptions beyond its loader:
+The [pinned source](https://github.com/thierbig/bg3fgvk/tree/c7afba2c73e2ed71f1f511c79e67a2dc831143c7) includes BG3 input assumptions beyond its loader:
 
 - `src/inputs.cpp` supplies synthetic camera constants (0.84 radian FOV, near 0.05, far 10000) and identity reprojection matrices. It assumes depth/motion attachment layouts, one viewport, and a particular frame-token handoff between evaluation and presentation.
 - `src/slboot.cpp` hard-codes NGX application ID `0xE658703`. A general adapter must resolve an appropriate identity and feature support for each target.

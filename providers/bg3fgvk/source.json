@@ -9,21 +9,21 @@
   "default_promoted": false,
   "upstream": {
     "repository": "thierbig/bg3fgvk",
-    "tag": "v1.2.0",
-    "tag_object": "6f8bfe6255f34a94e2963223d7045097f369edc5",
-    "commit": "66082e6f691fba1c48e319b688a25fa5ae196e56",
+    "tag": "v1.2.1",
+    "tag_object": "c7afba2c73e2ed71f1f511c79e67a2dc831143c7",
+    "commit": "c7afba2c73e2ed71f1f511c79e67a2dc831143c7",
     "license": "MIT",
-    "source_url": "https://github.com/thierbig/bg3fgvk/tree/66082e6f691fba1c48e319b688a25fa5ae196e56",
-    "release_url": "https://github.com/thierbig/bg3fgvk/releases/tag/v1.2.0"
+    "source_url": "https://github.com/thierbig/bg3fgvk/tree/c7afba2c73e2ed71f1f511c79e67a2dc831143c7",
+    "release_url": "https://github.com/thierbig/bg3fgvk/releases/tag/v1.2.1"
   },
   "archive": {
-    "name": "bg3fgvk-v1.2.0.zip",
-    "asset_id": 603771339,
-    "url": "https://github.com/thierbig/bg3fgvk/releases/download/v1.2.0/bg3fgvk-v1.2.0.zip",
-    "size": 5055411,
-    "sha256": "f5ffa33f51990cfd929e356085ced4a7b4746c3249094f1433e1639819d15e89",
-    "verified_at": "2026-10-22",
-    "path_separator": "backslash",
+    "name": "bg3fgvk-v1.2.1.zip",
+    "asset_id": 690891618,
+    "url": "https://github.com/thierbig/bg3fgvk/releases/download/v1.2.1/bg3fgvk-v1.2.1.zip",
+    "size": 5055825,
+    "sha256": "5d3178bbb13863a9703a4f00fa23b971230cb35b3e258a210ec36f5792c935da",
+    "verified_at": "2026-11-11",
+    "path_separator": "forward-slash",
     "inventory_paths": "Canonical forward-slash names; these are upstream archive paths, not approved deployment destinations."
   },
   "target": {
@@ -119,8 +119,8 @@
   },
   "files": {
     "NativeMods/fgvk.dll": {
-      "size": 81408,
-      "sha256": "8aeb0b591e46fd0ab0eacec49eee6b2c113df38a3d95e2cd33c4d8233c756ae1"
+      "size": 82432,
+      "sha256": "a4fcdffed6d3dceca1801962389516a83c663348bacf8b827680984daf863af8"
     },
     "NativeMods/Streamline/NvLowLatencyVk.dll": {
       "size": 57840,
@@ -160,7 +160,7 @@
     },
     "INSTALL.txt": {
       "size": 1140,
-      "sha256": "14c095fdbde37c204de6ae802defd6b5be3677db973ccaa6ed3589411bb79719"
+      "sha256": "d335cbe5ed105f79c694e6ba7726017cf19e7de30e215477adad1c0155f878de"
     },
     "LICENSE.txt": {
       "size": 1065,

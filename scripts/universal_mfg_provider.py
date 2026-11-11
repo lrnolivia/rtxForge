@@ -25,13 +25,18 @@ KNOWN = {
     '1.6.1': ('29504cdd5d209a25e3b91e809a7e0d6f9db8cbdc',
               'abe4d6ae7eab1ea4cacc4775b05521c459516ed72f434784e4420080571e87c5', 2713094,
               '24e3e6a8c07639fd9cbd79274e4eb21cc65a13f0453e1157720620c3d6286b33', 7353344),
+    '1.7.0': ('b97deee1ea58d9b3d8b318041c89d6f9d27eb959',
+              '5bd19d03288e1ece1d0bb2030ac072b36758045028da192044dcaad73fd901dd', 4842619,
+              'e6b6e6b70a6ed3af839c9647a32fc22660ae6b2d655062c5c072246c91fc10c7', 14445568),
 }
 # Upstream notices from the pinned commit, installed beside OptiScaler's other licenses.
 NOTICES = {'LICENSE': 'MFG-Unlocker-LICENSE.txt', 'NOTICE.md': 'MFG-Unlocker-NOTICE.md'}
 # A manual install hides under a proxy name; these are the files that give it away.
 FOREIGN_PREFIXES = ('mfgunlocker', 'rtxmfg', 'rtx40mfg')
+RUN_REPORT_SUFFIXES = ('.log', '.status.json', '-intervals.csv', '.crash.dmp')
 # Written by the plugin beside the game executable on every run.
 STATUS = 'RTXMFG-Universal.status.json'
+CONTROL = 'RTXMFG-Universal.json'
 
 
 def pinned():
@@ -77,6 +82,14 @@ def _read(path, digest, size):
     return data
 
 
+def startup_payload(record):
+    # 1.7 defaults to sharing OptiScaler's UI and adds its own DLSS 5 path.
+    # Delegate control to the bridge and keep the second NR path disabled.
+    if record.get('version') == '1.7.0':
+        return {CONTROL: b'{"multiplier":2,"followGame":true,"optiScalerUi":"optiscaler","dlss5":false}\n'}
+    return {}
+
+
 def load_payload(config, record):
     """The plugin from the exact release member, never by extracting arbitrary paths."""
     record = validate(record)
@@ -89,7 +102,7 @@ def load_payload(config, record):
         dll = bundle.read(members[0])
     t.need(hashlib.sha256(dll).hexdigest() == record['dll']['sha256'] and skynizz_provider.amd64(dll),
            'Universal MFG plugin architecture/hash mismatch')
-    data = {PLUGIN: dll}
+    data = {PLUGIN: dll, **startup_payload(record)}
     for name, notice in record['notices'].items():
         path = packages.download(notice['url'], cache / NOTICES[name], expected=notice['sha256'], size=notice['release_size'])
         data['OptiScaler/licenses/' + NOTICES[name]] = _read(path, notice['sha256'], notice['release_size'])
@@ -116,7 +129,7 @@ def check_target(e, game, baseline):
     for path in target.iterdir():
         name = path.name.casefold()
         # The plugin's own run reports outlive a restore; they are not an install.
-        if name.startswith('rtxmfg-') and name.endswith(('.log', '.status.json', '-intervals.csv')):
+        if name.startswith('rtxmfg-') and name.endswith(RUN_REPORT_SUFFIXES):
             continue
         t.need(not name.startswith(FOREIGN_PREFIXES),
                'An unmanaged MFG Unlocker install is present (' + path.name + '); remove it before installing.')

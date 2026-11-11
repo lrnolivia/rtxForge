@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "recipe": "Feeder 1.19.0 / RenoDX 8.5.0-rc10 (rtxForge live settings 3)",
+  "recipe": "Feeder 1.19.1-beta.1 / RenoDX 8.5.0-rc10 (rtxForge live settings 3)",
   "sources": [
     {
       "name": "DLSS5-Feeder",
       "archive": "feeder.zip",
-      "url": "https://github.com/jlrouzies-fr/DLSS5-Feeder/releases/download/v1.19.0/DLSS5-Feeder-1.19.0.zip",
-      "size": 503554,
-      "sha256": "9cc19e28f8fb4e216ea61621fdf6443e207e338ec639979ab335503c75f48f36",
+      "url": "https://github.com/jlrouzies-fr/DLSS5-Feeder/releases/download/v1.19.1-beta.1/DLSS5-Feeder-1.19.1-beta.1.zip",
+      "size": 507912,
+      "sha256": "8cec629b5fe2fad245675f68ee53241aa67ca31c28b34798f2f48bc7a9345838",
       "members": {
         "dlss5-feed.addon64": "dlss5-feed.addon64",
         "reshade-shaders/Shaders/DLSS5_Feed.fx": "reshade-shaders/Shaders/DLSS5_Feed.fx"

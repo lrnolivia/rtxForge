@@ -131,12 +131,13 @@ def owned_assets(e):
     spec = lock()
     t.need(record.get('schema') == 1 and record.get('recipe') == spec['id'] and isinstance(record.get('files'), dict)
            and set(record['files']) <= set(spec['assets']), 'The stored legacy Feeder recipe is invalid')
+    stale = False
     for name, item in record['files'].items():
         cached = f.cached_input(e, item)
-        expected = spec['assets'][name]
-        t.need(f.digest(cached, cached=True) == expected['sha256'] and cached.stat().st_size == expected['size'],
-               'Stored legacy Feeder component changed: ' + name)
-    return record
+        identity = (f.digest(cached, cached=True), cached.stat().st_size)
+        t.need(identity in f.accepted(spec, name, installed=True), 'Stored legacy Feeder component changed: ' + name)
+        stale |= identity not in f.accepted(spec, name, installed=False)
+    return None if stale else record
 
 
 def download_assets(e):
@@ -181,17 +182,25 @@ def import_assets(e, source):
     if not source.is_dir():
         return None
     files = dict((owned_assets(e) or {}).get('files', {}))
-    for name, spec in lock()['assets'].items():
+    pin = lock()
+    previous = False
+    for name, spec in pin['assets'].items():
         path = t.safe(source / name)
         if not path.exists():
             continue
-        t.need(path.is_file() and path.stat().st_size == spec['size'] and f.digest(path) == spec['sha256'],
-               'Legacy Feeder import is missing or changed: ' + name)
+        t.need(path.is_file(), 'Legacy Feeder import is missing or changed: ' + name)
+        identity = (f.digest(path), path.stat().st_size)
+        t.need(identity in f.accepted(pin, name, installed=True), 'Legacy Feeder import is missing or changed: ' + name)
+        if identity not in f.accepted(pin, name, installed=False):
+            previous = True
+            continue
         if spec.get('machine'):
             t.need(machine(path) == spec['machine'], 'Wrong architecture: ' + name)
         files[name] = f.cache(e, path)
+    if previous and not files:
+        return None
     t.need(files, 'No verified legacy Feeder files were found')
-    record = {'schema': 1, 'recipe': lock()['id'], 'files': files}
+    record = {'schema': 1, 'recipe': pin['id'], 'files': files}
     t.atomic_file(store_path(e), (json.dumps(record, indent=2) + '\n').encode(), 0o600)
     return record
 
@@ -202,17 +211,12 @@ def inputs(e, settings, recipe):
     source = settings.get('feeder_source')
     if source and Path(source).is_dir():
         import_assets(e, source)
-    path = store_path(e)
-    if not path.is_file():
-        download_assets(e)
-    t.need(path.is_file() and path.stat().st_size <= 1024**2,
-           'The DX9/DX10 support download is incomplete. Retry the installation.')
-    record = t.read_json(path)
-    t.need(record.get('schema') == 1 and record.get('recipe') == lock()['id'] and isinstance(record.get('files'), dict),
-           'The stored legacy Feeder recipe is invalid')
+    record = owned_assets(e)
     required = {name for name in layout(recipe).values() if not name.startswith('base:')}
-    if recipe.endswith('d3d9'): required.add('dgVoodoo.conf')
-    if not required <= set(record['files']): record = download_assets(e)
+    if recipe.endswith('d3d9'):
+        required.add('dgVoodoo.conf')
+    if record is None or not required <= set(record['files']):
+        record = download_assets(e)
     result = {}
     for dest, name in layout(recipe).items():
         item = base.get(name[5:]) if name.startswith('base:') else record['files'].get(name)

@@ -340,6 +340,32 @@ class FeederTest(unittest.TestCase):
         self.apply(review)
         self.assertTrue((Path(row['game']) / feeder.MODEL).is_file())
 
+    def test_previous_feeder_source_downloads_current_build_without_reimporting(self):
+        name = 'dlss5-feed.addon64'
+        previous = self.assets[name]
+        feeder.import_stack(self.e, self.source)
+        self.spec['version'] = 'new Feeder'
+        self.spec.setdefault('previous_assets', {})[name] = [
+            {'version': 'old Feeder', 'sha256': t.sha(previous), 'size': len(previous)}]
+        current = pe(b'current feeder')
+        self.assets[name] = current
+        self.spec['assets'][name] = {'sha256': t.sha(current), 'size': len(current)}
+        source = self.root / 'new-source'
+        source.mkdir()
+        self.write_stack(source)
+
+        row = self.game('feeder-upgrade')
+        before = self.files(row)
+        with patch.object(feeder, 'download_stack', side_effect=lambda e: feeder.import_stack(e, source)) as download:
+            review = self.prepare(row)
+        download.assert_called_once_with(self.e)
+        self.assertEqual(self.files(row), before)
+        self.assertEqual((self.source / name).read_bytes(), previous)
+        self.apply(review)
+        self.assertEqual((Path(row['game']) / name).read_bytes(), current)
+        self.apply(self.prepare(row, 'uninstall'))
+        self.assertEqual(self.files(row), before)
+
     def test_changed_owned_stack_is_refused(self):
         record = feeder.import_stack(self.e, self.source)
         Path(record['files']['dxgi.dll']['path']).write_bytes(pe(b'tampered'))

@@ -222,7 +222,6 @@ select { padding: 10dp 16dp; }
 .prototype-toolbar button { font-size: 16dp; height: 36dp; line-height: 36dp; padding: 0 14dp; }
 .prototype-toolbar button.selected { background: #c7685024; color: #813e2b; }
 #layout-switch { display: flex; }
-.prototype-toolbar select { width: 116dp; height: 36dp; font-size: 16dp; padding: 5dp 10dp; }
 .sidebar { display: none; }
 .welcome { z-index: 3; }
 .layout-centered .main-panel { left: 50vw; top: 50vh; margin-left: -470dp; margin-top: -390dp; width: 940dp; height: 780dp; max-height: 88vh; overflow-y: hidden; }
@@ -336,7 +335,6 @@ button:active { transform: scale(.98); }
 .ratios button { padding: 0 8dp; font-size: 18dp; }
 .preview-label { font-size: 15dp; color: #514b44; margin: 0 8dp; }
 .prototype-toolbar { left: 50vw; padding: 7dp 12dp; }
-#scene-select { width: 230dp; height: 38dp; font-size: 17dp; margin: 0; }
 .settings-menu { width: 280dp; right: 0; top: 46dp; padding: 12dp; }
 .settings-menu button { height: 48dp; line-height: 48dp; font-size: 19dp; padding: 0 14dp; }
 .settings-menu #layout-switch { display: flex; }
@@ -600,7 +598,6 @@ h2 .glyph, .model-field label .glyph, .field-heading label .glyph { margin: 0 10
    inset rather than applying CSS absolute positioning that it overrides. */
 select selectarrow { position: static; margin: 7dp 18dp 0 0; }
 .appearance-panel select selectarrow { margin-top: 6dp; }
-#scene-select selectarrow { margin-top: 9dp; }
 select selectvalue { min-width: 0; padding-right: 28dp; }
 .welcome { max-width: 96vw; }
 .group-heading { height: 50dp; padding: 0 44dp 0 18dp; }
@@ -946,11 +943,13 @@ body { --utility-size: 19dp; --segment-size: 20dp; }
 .side-panel-position { margin-top: 20dp; }
 .side-panel-position .segments { margin-top: 12dp; }
 .desktop-preview .prototype-toolbar { transform: none; }
-.desktop-preview #scene-select { --scene-width: 352dp; --scene-height: 44dp; width: var(--scene-width); height: var(--scene-height); padding: 0; }
-.desktop-preview #scene-select selectvalue {
+#scene-select { --scene-width: 230dp; --scene-height: 38dp; width: var(--scene-width); height: var(--scene-height); font-size: 17dp; margin: 0; padding: 0; }
+.desktop-preview #scene-select { --scene-width: 352dp; --scene-height: 44dp; }
+#scene-select selectvalue {
     width: var(--scene-width); box-sizing: border-box; padding: 0 34dp;
     line-height: var(--scene-height); text-align: center; text-overflow: ellipsis;
 }
+#scene-select selectarrow { margin-top: 14dp; }
 .desktop-preview #scene-select selectarrow { margin-top: 17dp; }
 .desktop-preview .prototype-toolbar .preview-label { min-width: 62dp; }
 .desktop-preview #scene-select selectbox { max-height: 360dp; margin-top: 6dp; margin-bottom: 6dp; }

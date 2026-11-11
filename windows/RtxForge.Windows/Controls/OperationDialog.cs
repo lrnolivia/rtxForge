@@ -28,6 +28,7 @@ public sealed class OperationDialog
     OperationReview? review;
     EngineReview? preparedReview;
     readonly ContentDialog dialog;
+    readonly SolidColorBrush stepAccent = new();
     Stage stage = Stage.Review;
     CancellationTokenSource? cancel;
     bool closed, completed;
@@ -48,6 +49,10 @@ public sealed class OperationDialog
         this.includesPresets = includesPresets;
         dialog = shell.NewDialog();
         dialog.Resources["ContentDialogMaxWidth"] = 760.0;
+        checkingPanel.AccentChanged += palette =>
+        {
+            if (ReferenceEquals(checkingPanel.Root.Parent, dialog.Content)) stepAccent.Color = palette.Color;
+        };
         dialog.PrimaryButtonClick += OnPrimary;
         dialog.CloseButtonClick += OnClose;
         dialog.Closing += (_, e) => { if (stage == Stage.Progress) e.Cancel = true; };
@@ -63,9 +68,9 @@ public sealed class OperationDialog
     public static async Task<bool> ShowAsync(MainWindow shell, string operation, IReadOnlyList<Game> targets, Tuning values, bool includesPresets)
     {
         var flow = new OperationDialog(shell, operation, targets, values, includesPresets);
-        flow.ShowChecking();
         // One game: its accent from the first screen, as in its Details.
         await AccentResources.ApplyAsync(flow.dialog.Resources, AccentResources.Single(targets));
+        flow.ShowChecking();
         var shown = flow.dialog.ShowAsync();
         await flow.PrepareAsync();
         await shown;
@@ -125,7 +130,7 @@ public sealed class OperationDialog
         var startup = new CheckBox { Content = "Enable NR on launch", IsChecked = shell.Settings.NrOnLaunch };
         var separateStartup = shell.Settings.RuntimeProvider != "skynizz";
         if (separateStartup && mode != "mfg-only") body.Children.Add(startup);
-        dialog.Content = WithSteps(new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled,
+        dialog.Content = WithSteps(dialog, new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled,
             MaxHeight = Math.Max(240, ((shell.Content as FrameworkElement)?.XamlRoot?.Size.Height ?? 900) - 312) },
             FlowStep.Presets, "Install", includesPresets: true);
         dialog.PrimaryButtonText = "Review games";
@@ -144,8 +149,9 @@ public sealed class OperationDialog
         dialog.IsPrimaryButtonEnabled = false;
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
-        checkingPanel.Show("Preparing", targets.FirstOrDefault(), 0, listGames && targets.Count > 0 ? targets.Count : null, "Downloading packages/files…");
+        stepAccent.Color = DialogAccent(dialog).Color;
         dialog.Content = WithSteps(checkingPanel.Root, FlowStep.Review);
+        checkingPanel.Show("Preparing", targets.FirstOrDefault(), 0, listGames && targets.Count > 0 ? targets.Count : null, "Downloading packages/files…");
     }
 
     /// <summary>The game being checked now; the one before it is done.</summary>
@@ -190,6 +196,7 @@ public sealed class OperationDialog
     void ShowReview(OperationReview review)
     {
         dialog.Title = Title();
+        stepAccent.Color = DialogAccent(dialog).Color;
         var body = new StackPanel { Spacing = 16, MinWidth = ReviewWidth };
         // One list for every package: games that get only part of the selection show what they get.
         var games = review.AllGames;
@@ -341,20 +348,25 @@ public sealed class OperationDialog
     };
 
     UIElement WithSteps(UIElement content, FlowStep current) =>
-        WithSteps(content, current, operation switch
+        WithSteps(dialog, content, current, operation switch
         {
             "update-dlss" => "Update DLSS",
             "uninstall" => "Restore files",
             _ => ActionVerb(),
-        }, includesPresets);
+        }, includesPresets, accent: stepAccent);
 
-    internal static StackPanel WithReviewSteps(UIElement content, bool applying, string action) =>
-        WithSteps(content, applying ? FlowStep.Apply : FlowStep.Review, action, includesPresets: false, reviewLabel: "Review changes");
+    static SolidColorBrush DialogAccent(ContentDialog dialog) =>
+        dialog.Resources.ContainsKey("AccentButtonBackground") && dialog.Resources["AccentButtonBackground"] is SolidColorBrush accent
+            ? accent : (SolidColorBrush)Application.Current.Resources["AccentFillColorDefaultBrush"];
 
-    static StackPanel WithSteps(UIElement content, FlowStep current, string action, bool includesPresets, string reviewLabel = "Review games")
+    internal static StackPanel WithReviewSteps(ContentDialog dialog, UIElement content, bool applying, string action) =>
+        WithSteps(dialog, content, applying ? FlowStep.Apply : FlowStep.Review, action, includesPresets: false, reviewLabel: "Review changes");
+
+    static StackPanel WithSteps(ContentDialog dialog, UIElement content, FlowStep current, string action,
+        bool includesPresets, string reviewLabel = "Review games", Brush? accent = null)
     {
         var body = new StackPanel { Spacing = 12 };
-        var steps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        var steps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, HorizontalAlignment = HorizontalAlignment.Right };
         AutomationProperties.SetName(steps, "Operation steps");
         var phases = new List<(FlowStep Step, string Label)>();
         if (includesPresets) phases.Add((FlowStep.Presets, "Presets"));
@@ -374,7 +386,7 @@ public sealed class OperationDialog
             {
                 Child = numeral, Width = 24, Height = 24, CornerRadius = new CornerRadius(12),
                 BorderThickness = new Thickness(active ? 2 : 1),
-                BorderBrush = (Brush)Application.Current.Resources[active ? "AccentFillColorDefaultBrush" : "CardStrokeColorDefaultBrush"],
+                BorderBrush = active ? accent ?? DialogAccent(dialog) : (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
             });
             var caption = Prefs.Label(label, active ? "ForgeHeadingTextStyle" : "ForgeCaptionDimTextStyle");
             caption.FontSize = 12;
@@ -383,7 +395,27 @@ public sealed class OperationDialog
             item.Children.Add(caption);
             steps.Children.Add(item);
         }
-        body.Children.Add(steps);
+        var header = new Grid { ColumnSpacing = 16 };
+        header.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        if (dialog.Title is string { Length: > 0 } title)
+        {
+            var heading = Prefs.Label(title, "ForgeHeadingTextStyle");
+            heading.FontSize = 20;
+            heading.TextWrapping = TextWrapping.Wrap;
+            heading.VerticalAlignment = VerticalAlignment.Center;
+            header.Children.Add(heading);
+            AutomationProperties.SetName(dialog, title);
+            dialog.Title = null;
+        }
+        Grid.SetColumn(steps, 1);
+        steps.VerticalAlignment = VerticalAlignment.Center;
+        header.Children.Add(steps);
+        body.Children.Add(new Border
+        {
+            Child = header, Padding = new Thickness(12, 8, 12, 8), CornerRadius = new CornerRadius(8),
+            Background = (Brush)Application.Current.Resources["ControlFillColorSecondaryBrush"],
+        });
         body.Children.Add(content);
         return body;
     }
@@ -509,13 +541,13 @@ public sealed class OperationDialog
     {
         stage = Stage.Progress;
         cancel = new CancellationTokenSource();
-        dialog.Title = null;
+        dialog.Title = ProgressVerb();
         dialog.PrimaryButtonText = "";
         dialog.SecondaryButtonText = "";
         dialog.CloseButtonText = preparedReview is null ? "Cancel" : "";
         progressPanel.AccentChanged += TintButtons;
-        progressPanel.Show(ProgressVerb(), review!.Ready.FirstOrDefault()?.Game, 0, review.Ready.Count, "Starting");
         dialog.Content = WithSteps(progressPanel.Root, FlowStep.Apply);
+        progressPanel.Show(ProgressVerb(), review!.Ready.FirstOrDefault()?.Game, 0, review.Ready.Count, "Starting");
 
         var done = 0;
         var progress = new Progress<OperationStep>(step =>
@@ -568,6 +600,7 @@ public sealed class OperationDialog
     /// <summary>The current game's accent on the dialog's suggested button (Linux button.suggested-action).</summary>
     void TintButtons(Services.AccentPalette palette)
     {
+        stepAccent.Color = palette.Color;
         dialog.Resources["AccentButtonBackground"] = palette.AccentBrush;
         dialog.Resources["AccentButtonBackgroundPointerOver"] = palette.Brush(palette.Color, 0.9);
         dialog.Resources["AccentButtonBackgroundPressed"] = palette.Brush(palette.Color, 0.8);
@@ -583,6 +616,7 @@ public sealed class OperationDialog
         stage = Stage.Done;
         dialog.SecondaryButtonText = "";
         dialog.Title = null;
+        AutomationProperties.SetName(dialog, title ?? (success ? "Done" : "Could not finish"));
         dialog.Resources["ContentDialogMaxWidth"] = 520.0;
 
         var line = new Grid { ColumnSpacing = 24, MinWidth = 440 };

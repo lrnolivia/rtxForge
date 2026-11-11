@@ -769,6 +769,11 @@ def artwork_accent(path,color=None,muted=False):
             f'color: {accent_fg}; '
             f'}} '
 
+            f'.operation-flow.{name} .operation-current .operation-step-number {{ '
+            f'border-color: {color}; '
+            f'box-shadow: inset 0 0 0 1px {color}; '
+            f'}} '
+
             f'.{name} button:focus-visible {{ '
             f'outline-color: {color}; '
             f'}}'
@@ -3896,6 +3901,7 @@ class OperationFlow:
         self.dialog.connect('closed',self._closed)
         self.dialog.connect('close-attempt',lambda *_:self.cancel())
         toolbar=Adw.ToolbarView()
+        toolbar.set_top_bar_style(Adw.ToolbarStyle.RAISED)
         self.header=Adw.HeaderBar(show_start_title_buttons=False,show_end_title_buttons=False)
         self.header.set_title_widget(Adw.WindowTitle(title=self.review_title))
         self.cancel_button=Gtk.Button(label='Cancel')
@@ -3903,11 +3909,11 @@ class OperationFlow:
         self.primary=Gtk.Button(label=self.verb,sensitive=False)
         self.primary.add_css_class('suggested-action')
         self.primary.connect('clicked',lambda *_:self._primary_clicked())
-        toolbar.add_top_bar(self.header)
-        self.steps=Gtk.Box(spacing=12,halign=Gtk.Align.START,margin_start=24,margin_end=24)
+        self.steps=Gtk.Box(spacing=12,margin_start=12,margin_end=12,margin_top=4,margin_bottom=4)
         self.steps.add_css_class('operation-steps')
         self.steps.update_property([Gtk.AccessibleProperty.LABEL],['Operation steps'])
-        toolbar.add_top_bar(self.steps)
+        self.header.pack_end(self.steps)
+        toolbar.add_top_bar(self.header)
         # Actions sit along the bottom: Cancel, then the action, right aligned.
         actions=Gtk.Box(spacing=12,halign=Gtk.Align.END)
         actions.add_css_class('operation-actions')
@@ -3967,7 +3973,7 @@ class OperationFlow:
     def _fit(self,child,width):
         """Size the dialog to the current stage, within the window."""
         if self.closed or self.content is not child:return False
-        header=sum(bar.measure(Gtk.Orientation.VERTICAL,width)[1] for bar in (self.header,self.steps,self.actions))
+        header=self.header.measure(Gtk.Orientation.VERTICAL,width)[1]+self.actions.measure(Gtk.Orientation.VERTICAL,width)[1]
         content=child.measure(Gtk.Orientation.VERTICAL,width)[1]
         if isinstance(child,Gtk.ScrolledWindow) and child.get_child() is not None:
             content=child.get_child().measure(Gtk.Orientation.VERTICAL,width)[1]

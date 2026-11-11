@@ -1,5 +1,6 @@
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using RtxForge.Windows.Models;
@@ -18,6 +19,7 @@ public sealed class ReviewDialog
 
     readonly MainWindow shell;
     readonly ContentDialog dialog;
+    readonly string initialTitle;
     readonly string? emptyMessage;
     EngineReview? review;
     EngineResult? result;
@@ -28,8 +30,8 @@ public sealed class ReviewDialog
     {
         this.shell = shell;
         this.emptyMessage = emptyMessage;
+        initialTitle = title;
         dialog = shell.NewDialog();
-        dialog.Title = title;
         dialog.Resources["ContentDialogMaxWidth"] = 760.0;
         dialog.PrimaryButtonClick += OnPrimary;
         dialog.Closing += (_, e) => { if (stage == Stage.Working) e.Cancel = true; };
@@ -57,6 +59,7 @@ public sealed class ReviewDialog
 
     void ShowWorking(string text)
     {
+        dialog.Title = review?.Title ?? initialTitle;
         var body = new StackPanel { Spacing = 16, MinWidth = 440, Padding = new Thickness(0, 12, 0, 12) };
         body.Children.Add(new ProgressBar { IsIndeterminate = true });
         var phase = Prefs.Label(text);
@@ -199,6 +202,7 @@ public sealed class ReviewDialog
     {
         var applying = stage == Stage.Working;
         stage = Stage.Done;
+        AutomationProperties.SetName(dialog, success ? "Done" : "Could not finish");
         var line = new Grid { ColumnSpacing = 24, MinWidth = 440 };
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -219,5 +223,5 @@ public sealed class ReviewDialog
     }
 
     StackPanel WithSteps(UIElement content, bool applying) =>
-        OperationDialog.WithReviewSteps(content, applying, review?.Action is { Length: > 0 } action ? action : "Apply changes");
+        OperationDialog.WithReviewSteps(dialog, content, applying, review?.Action is { Length: > 0 } action ? action : "Apply changes");
 }

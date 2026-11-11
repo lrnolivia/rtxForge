@@ -156,7 +156,7 @@ function applyAppearance() {
         window.addEventListener('pagehide',stop,{once:true});applyAppearance();
       }).catch(()=>{nativeDisplay=undefined;announce('The display scale could not be read.');});
     }else{
-      const zoom=webviewZoom(appearance.scale,nativeSystemScale,nativeMonitorSize)*(backend.preview?0.88:1);
+      const zoom=webviewZoom(appearance.scale,nativeSystemScale,nativeMonitorSize)*(backend.preview&&!backend.fullscreen?0.88:1);
       if(appliedZoom!==zoom){appliedZoom=zoom;void import('@tauri-apps/api/webview').then(({getCurrentWebview})=>getCurrentWebview().setZoom(zoom)).catch(()=>{appliedZoom=undefined;announce('The interface scale could not be applied.');});}
     }
   }
@@ -172,6 +172,7 @@ function serializeAppearance(){
 }
 function flushAppearance(){
   clearTimeout(appearanceTimer);
+  if(backend.preview)return Promise.resolve();
   const pending=appearanceWrites.catch(()=>{}).then(async()=>{
     const stored=serializeAppearance();
     if(stored===appearanceStored)return;
@@ -1301,6 +1302,13 @@ function setupScrollFades() {
 }
 let arrivalKey = '';
 let disposeLibraryLayout = () => {};
+function previewWindowActions() {
+  if(!backend.preview)return '';
+  const title=backend.fullscreen?'Exit full screen':'Enter full screen';
+  const arrows=backend.fullscreen?'M4 20l6-6m0 0H5m5 0v5M20 4l-6 6m0 0h5m-5 0V5':'M10 14l-6 6m0 0v-5m0 5h5M14 10l6-6m0 0v5m0-5h-5';
+  return `<button class="preview-fullscreen" data-action="toggle-window-mode" aria-label="${title}" title="${title}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${arrows}"/></svg></button><button class="preview-close" data-action="exit-app" aria-label="Close preview" title="Close preview"><span aria-hidden="true">×</span></button>`;
+}
+
 function render() {
   const priorFocus = document.activeElement instanceof HTMLElement && app.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = priorFocus ? (priorFocus.id ? `#${CSS.escape(priorFocus.id)}` : [...priorFocus.attributes].filter(a=>a.name.startsWith('data-')).map(a=>`[${a.name}="${CSS.escape(a.value)}"]`).join('')) : null;
@@ -1325,7 +1333,7 @@ function render() {
   const removalReview = operationModal && operation?.kind === 'remove-nr-addons' && surface === 'packages';
   const modalClass = removalModal ? ' split-remove-modal' : removalReview ? ' split-remove-review' : '';
   const overlay = modal ? `<div class="operation-backdrop"><section class="operation-modal glass-section${modalClass}" role="dialog" aria-modal="true" aria-labelledby="page-title">${removalModal ? splitRemovalPicker() : operationView()}</section></div>` : '';
-  app.innerHTML = `<div class="shell" ${modal?'inert aria-hidden="true"':''}><header class="app-header" data-tauri-drag-region><div class="brand"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></div><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${surface === tab.id || surface === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button>${backend.preview?'<button class="preview-close" data-action="exit-app" aria-label="Close preview" title="Close preview"><span aria-hidden="true">×</span></button>':''}<div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div>${backend.preview?'':`<button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button>`}<button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><div id="input-hints">${hints()}</div></footer></div>${overlay}`;
+  app.innerHTML = `<div class="shell" ${modal?'inert aria-hidden="true"':''}><header class="app-header" data-tauri-drag-region><div class="brand"><img src="/logo-mark.png" alt="" /><span>rtxForge</span></div><nav class="glass main-nav" aria-label="Main navigation">${tabs.map(tab => `<button data-route="${tab.id}" ${surface === tab.id || surface === 'details' && tab.id === 'library' ? 'aria-current="page"' : ''}>${icon(tab.icon)}<span>${tab.label}</span></button>`).join('')}</nav><div class="shell-more"><button class="menu-button" id="shell-menu-button" data-action="shell-menu" aria-label="More options" aria-haspopup="menu" aria-expanded="${shellMenuOpen}">${icon('dots')}</button>${previewWindowActions()}<div class="shell-menu glass-section" id="shell-menu" role="menu" ${shellMenuOpen ? '' : 'hidden'}><button role="menuitem" data-route="library">${icon('books')}Library</button><button role="menuitem" data-action="menu-appearance">${icon('palette')}Appearance</button><button role="menuitem" data-action="refresh">${icon('refresh')}Refresh library</button><button role="menuitem" data-action="menu-library">${icon('folder')}Library options</button><button role="menuitem" data-action="menu-controls">${icon('controller')}Controls</button><div class="menu-divider"></div>${backend.preview?'':`<button role="menuitem" data-action="toggle-window-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}${backend.fullscreen?'Switch to Windowed Mode':'Switch to Fullscreen'}</button>`}<button role="menuitem" data-action="minimize-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('minus')}Minimize</button><button role="menuitem" data-action="desktop-mode" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('grid')}Desktop mode</button><button role="menuitem" data-action="exit-app" ${!('__TAURI_INTERNALS__' in window)?'disabled':''}>${icon('arrow')}Exit rtxForge</button><span class="menu-preview">${backend.enabled?'Engine connected':'Read-only preview'}</span></div></div></header><main id="content" class="content glass" aria-label="${view === 'details' ? 'Game details' : tabs.find(tab => tab.id === view)?.label}">${content}</main><footer class="app-footer"><div id="input-hints">${hints()}</div></footer></div>${overlay}`;
   const game = selectedGame(), scene = document.querySelector<HTMLElement>('#scene')!;
   if(view==='details'&&snapshot&&game)prioritizeArtwork(snapshot,game.id);
   applyStoreBackground(surface==='details'&&currentPreferences().online_art!==false&&game&&(game.accent||game.artworkAccentReady)?game.appid:null,scene,game?.id,detailsAccent(game));
@@ -1649,7 +1657,14 @@ function saveGameAccent(game:Game,color:string|null):Promise<void>{
 function action(name: string) {
   if(name==='reset-hero-framing'){const game=selectedGame();if(game)heroFocusDrafts.delete(game.id);heroAdjustment=undefined;render();app.querySelector<HTMLElement>('[data-action="reset-hero-framing"]')?.focus();return;}
   if(name==='save-hero-framing'){const game=selectedGame(),point=game?heroFocusDrafts.get(game.id):undefined;if(!game||!point||!backend.enabled)return;void engineRequest<Record<string,unknown>>('settings_get').then(settings=>{const choices={...(settings.game_hero_focus||{}) as Record<string,number[]>};const identity=Object.keys(choices).find(key=>pathKey(key)===pathKey(game.path))||game.path;choices[identity]=point;return withOperation('Review hero framing','settings_review',{changes:{game_hero_focus:choices}});}).catch(problem=>announce(problem.message));return;}
-  if(name==='toggle-window-mode'&&!backend.preview&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke<boolean>('toggle_fullscreen')).then(fullscreen=>{backend.fullscreen=fullscreen;render();}).catch(problem=>announce(String(problem)));return;}
+  if(name==='toggle-window-mode'&&'__TAURI_INTERNALS__' in window){
+    shellMenuOpen=false;
+    void import('@tauri-apps/api/core').then(({invoke})=>invoke<boolean>('toggle_fullscreen')).then(fullscreen=>{
+      backend.fullscreen=fullscreen;render();
+      if(backend.preview)app.querySelector<HTMLElement>('.preview-fullscreen')?.focus({preventScroll:true});
+    }).catch(problem=>announce(String(problem)));
+    return;
+  }
   if(name==='minimize-app'&&'__TAURI_INTERNALS__' in window){shellMenuOpen=false;void import('@tauri-apps/api/core').then(({invoke})=>invoke('minimize_app')).catch(problem=>announce(String(problem)));return;}
   if(name==='reset-game-accent'){const game=selectedGame();if(game&&backend.enabled)void saveGameAccent(game,null).then(()=>render()).catch(problem=>announce(problem.message));return;}
   if (name === 'reset-presets') { drafts.delete(presetId); render(); return; }
@@ -1921,7 +1936,7 @@ document.addEventListener('pointerdown',event=>{
   if(shellMenuOpen&&!target.closest('.shell-more')){shellMenuOpen=false;const menu=app.querySelector<HTMLElement>('#shell-menu');if(menu)menu.hidden=true;app.querySelector('#shell-menu-button')?.setAttribute('aria-expanded','false');}
   if(detailsMenuOpen&&!target.closest('.hero-more')){detailsMenuOpen=false;const menu=app.querySelector<HTMLElement>('.game-menu');if(menu)menu.hidden=true;app.querySelector('[data-action="game-menu"]')?.setAttribute('aria-expanded','false');}
 });
-document.addEventListener('keydown',event=>{if(event.key==='F11'&&!backend.preview&&'__TAURI_INTERNALS__' in window){event.preventDefault();action('toggle-window-mode');}});
+document.addEventListener('keydown',event=>{if(event.key==='F11'&&'__TAURI_INTERNALS__' in window){event.preventDefault();action('toggle-window-mode');}});
 function closeLibrarySize(restoreFocus=true){librarySizeOpen=false;const control=app.querySelector<HTMLElement>('.library-size-control');if(control)control.dataset.open='false';app.querySelector('#library-size-button')?.setAttribute('aria-expanded','false');if(restoreFocus)app.querySelector<HTMLElement>('#library-size-button')?.focus();}
 installInput(() => {
   const reviewInfo = app.querySelector<HTMLElement>('.review-info-popover:popover-open');

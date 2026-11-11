@@ -91,7 +91,6 @@ fn close_safely(app: &tauri::AppHandle) {
 
 #[tauri::command]
 fn toggle_fullscreen(window: tauri::Window) -> Result<bool,String> {
-    if preview_view(std::env::args()).is_some() { return Ok(false); }
     let fullscreen=!window.is_fullscreen().map_err(|e|e.to_string())?;
     window.set_fullscreen(fullscreen).map_err(|e|e.to_string())?;
     Ok(fullscreen)

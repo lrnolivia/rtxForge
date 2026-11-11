@@ -455,7 +455,7 @@ input[type=color]::-moz-color-swatch{border:0;border-radius:50%}
 .app-header nav.main-nav button{min-height:50px;padding:11px 18px}
 .brand,.shell-more>.menu-button{filter:drop-shadow(0 1px 2px rgb(0 0 0 / .2))}
 :root[data-game-mode-preview=true] .shell-more { display:flex; align-items:center; gap:6px; }
-.preview-close {
+.preview-close,.preview-fullscreen {
   display:grid;
   place-items:center;
   width:36px;
@@ -468,7 +468,7 @@ input[type=color]::-moz-color-swatch{border:0;border-radius:50%}
   font-size:1.3rem;
   line-height:1;
 }
-.preview-close:hover { background:var(--control); }
+.preview-close:hover,.preview-fullscreen:hover { background:var(--control); }
 :root[data-theme=light] .brand,:root[data-theme=light] .shell-more>.menu-button{filter:none}
 :root[data-navigation=bottom] .shell-menu{top:auto;bottom:calc(100% + 10px)}
 @media(max-width:1100px){.app-header{padding:0 4px;grid-template-columns:minmax(150px,1fr) auto minmax(46px,1fr);gap:12px}.app-header nav.main-nav button{padding:11px 12px}}

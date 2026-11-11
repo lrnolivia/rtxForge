@@ -1116,7 +1116,7 @@ def prepare(config, rows, mode, operation, settings, e):
                     if recipe:
                         import overlay_settings
                         effective = settings | overlay_settings.effective(settings, row['game'])
-                        plan, entry = feeder_legacy.prepare(e, row, mode, operation, effective, recipe)
+                        plan, entry = feeder_legacy.prepare(config, e, row, mode, operation, effective, recipe)
                         plans.append(plan); ready.append(entry)
                     else:
                         part = _prepare(config, [row], mode, operation, settings, e)
@@ -1352,18 +1352,25 @@ def execute(review):
                 ui.progress('Backing up Feeder files', game=plan['row']['name'], current=index, total=len(review['plans']))
                 import cross_os
                 shared_marker = directory / cross_os.MARKER
-                checkpoint = session.capture([directory / name for name in plan['writes']] + [state_dir(e, directory), shared_marker], label=plan['row']['name'])
+                writes = {directory / t.relative(name): (plan['checks'][name], item) for name, item in plan['writes'].items()}
+                if split_render := plan.get('split_render_restore'):
+                    # Feeder restores the original when both plans touch the same file.
+                    root = Path(split_render['game'])
+                    for change in split_render['changes']:
+                        item = {'path': change['source'], 'sha256': change['after']} if change['after'] is not None else None
+                        writes.setdefault(root / t.relative(change['path']), (change['before'], item))
+                checkpoint = session.capture([*writes, state_dir(e, directory), shared_marker], label=plan['row']['name'])
                 try:
                     # A durable baseline precedes any model replacement.
                     if plan['operation'] != 'uninstall':
                         baseline = copy.deepcopy(plan['baseline'])
                         baseline['status'] = 'preparing'
                         t.atomic_file(state_dir(e, directory) / 'baseline.json', (json.dumps(baseline, indent=2) + '\n').encode(), 0o600)
-                    for name, item in plan['writes'].items():
+                    for destination, (expected, item) in writes.items():
                         if cancel is not None and cancel.is_set():
                             raise Cancelled('Changes undone.')
-                        path = t.safe(directory / t.relative(name))
-                        t.need(digest(path) == plan['checks'][name], 'Feeder target changed during installation')
+                        path = t.safe(destination)
+                        t.need(digest(path) == expected, 'Feeder target changed during the operation')
                         if item is None:
                             if path.exists():
                                 path.unlink()

@@ -286,6 +286,12 @@ def cleanup_directories(directory, baseline):
                 pass
 
 
+HELPER_DIAGNOSTIC = re.compile(
+    r'(?:ReShade\.log\d*|dlss5-feed-host\.log(?:\.\d+)?|RenoDX-DLSS5-crash\.log|'
+    r'nvsdk_ngx\.log|nvngx\.log|nvngx_dlss[gd]?_\d+(?:_\d+){1,4}\.log|'
+    r'ReShade\.ini\.renodx-dlss5-pre-v4-migration-\d{8}-\d{6}\.bak)', re.IGNORECASE)
+
+
 def _cached_text(e, text):
     import feeder_provider as f
     path = t.safe(e.STATE_ROOT / 'feeder-cache' / t.sha(text.encode()))
@@ -341,13 +347,18 @@ def check(e, plan):
     t.need(f.digest(f.state_dir(e, directory) / 'baseline.json') == plan['baseline_before'], 'Feeder install record changed since review')
     for item in plan['inputs'].values():
         t.need(f.digest(f.cached_input(e, item)) == item['sha256'], 'Feeder source or original backup changed since review')
+    if plan.get('split_render_restore'):
+        import nr_install
+        nr_install.check_files(plan['split_render_restore'])
+    elif 'split_render_receipt' in plan:
+        t.need(not t.safe(plan['split_render_receipt']).exists(), 'Split Render was installed after review. Review the restore again.')
 
 
-def prepare(e, row, mode, operation, settings, recipe):
+def prepare(config, e, row, mode, operation, settings, recipe):
     import feeder_provider as f
     t.need(mode == 'nr-only' or operation == 'uninstall', 'Feeder provides NR Only. Frame generation is not available for this route')
     t.need(f._windows(e), 'DX9/DX10 Feeder setup is available on Windows only in this release')
-    _, exe, directory = f.target(row)
+    root, exe, directory = f.target(row)
     record = f.state(e, directory)
     current = record if record and record.get('status') != 'restored' else None
     t.need(not current or current.get('legacy_recipe') == recipe, 'Restore the existing Feeder recipe before switching routes')
@@ -383,12 +394,12 @@ def prepare(e, row, mode, operation, settings, recipe):
             # This route does not adopt unmanaged graphics hooks or commandeer
             # a pre-existing host64 folder.
             host = directory / 'host64'
-            retained_logs = False
+            retained_diagnostics = False
             if helper(recipe) and host.exists() and record and record.get('status') == 'restored' and record.get('legacy_recipe') == recipe:
                 entries = list(host.iterdir())
-                retained_logs = len(entries) <= 64 and all(t.safe(entry).is_file() and re.fullmatch(
-                    r'(?i)(?:ReShade\.log\d*|dlss5-feed-host\.log(?:\.\d+)?|RenoDX-DLSS5-crash\.log)', entry.name) for entry in entries)
-            t.need(not host.exists() or retained_logs if helper(recipe) else True,
+                retained_diagnostics = len(entries) <= 64 and all(
+                    t.safe(entry).is_file() and HELPER_DIAGNOSTIC.fullmatch(entry.name) for entry in entries)
+            t.need(not helper(recipe) or not host.exists() or retained_diagnostics,
                    'A host64 folder already exists. Restore its graphics mod before installing Feeder')
             t.need(not any((directory / name).exists() for name in (*t.PROXIES, 'ReShade.ini', 'dlss5-feed.addon32',
                        'dlss5-feed.addon64', 'dlss5-feed-helper.addon64', 'renodx-dlss5.addon64')),
@@ -428,7 +439,21 @@ def prepare(e, row, mode, operation, settings, recipe):
     plan = dict(row=dict(row), target=str(directory), existing=existing, checks=checks,
                 baseline_before=f.digest(f.state_dir(e, directory) / 'baseline.json'), baseline=baseline,
                 inputs=sources, writes=writes, operation=operation, legacy_recipe=recipe, exe_hash=f.digest(exe))
+    split_render_details = []
+    if operation == 'uninstall':
+        import nr_install
+        receipt, split_render = nr_install.prepare_feeder_restore(config, row)
+        plan['split_render_receipt'] = str(receipt)
+        if split_render:
+            plan['split_render_restore'] = split_render
+            feeder_paths = {directory / name for name in writes}
+            changes = [change for change in split_render['changes'] if root / change['path'] not in feeder_paths]
+            split_render_details = nr_install.describe_changes(dict(split_render, changes=changes)).splitlines()
+            summary += ' Also remove the recorded Split Render setup.'
+            if split_render.get('notes'):
+                summary += ' ' + ' '.join(split_render['notes'])
     check(e, plan)
     detail = json.dumps({'target': str(directory), 'recipe': recipe, 'runtime_verified': False,
-                         'writes': {name: item['sha256'] if item else None for name, item in writes.items()}}, indent=2)
+                         'writes': {name: item['sha256'] if item else None for name, item in writes.items()},
+                         **({'split_render': split_render_details} if split_render_details else {})}, indent=2)
     return plan, {'name': row['name'], 'game': row['game'], 'summary': summary, 'detail': detail}

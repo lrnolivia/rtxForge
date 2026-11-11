@@ -563,6 +563,23 @@ def prepare_remove(config, row):
     return hdr._freeze(config, review)
 
 
+def prepare_feeder_restore(config, row):
+    """Review a Split Render receipt left by an older Feeder pairing."""
+    receipt = _receipt(row)
+    if not receipt.exists():
+        return receipt, None
+    review = prepare_remove(config, row)
+    t.need(review['prefix'] is None, 'Remove Split Render first to restore this Feeder setup.')
+    return receipt, review
+
+
+def check_files(review):
+    root = t.check_plan(review)
+    for path, digest in review['checks'].items():
+        t.need(t.safe(path).is_relative_to(root) and Path(path).is_file() and t.digest(path) == digest,
+               'Files changed since review. Review the Split Render change again.')
+
+
 def _restore_key(text, section, key, before):
     if before is not None:
         return t.setvalue(text, section, key, before)
@@ -581,10 +598,7 @@ def apply(config, review):
     state = base / uuid.uuid4().hex
     with e.mutation_lock():
         hdr._eligible(config, review)
-        t.check_plan(review)
-        for path, digest in review['checks'].items():
-            t.need(t.safe(path).is_relative_to(root) and Path(path).is_file() and t.digest(path) == digest,
-                   'Files changed since review. Review the Split Render change again.')
+        check_files(review)
         prefix = review.get('prefix')
         if prefix:
             import proton_prefix

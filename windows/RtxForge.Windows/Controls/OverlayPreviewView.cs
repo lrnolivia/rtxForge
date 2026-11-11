@@ -22,7 +22,7 @@ sealed class OverlayPreviewView : StackPanel
     readonly Microsoft.UI.Dispatching.DispatcherQueueTimer timer;
     IReadOnlyList<Game> games;
     public Game SelectedGame=>selected;
-    Game selected = new() { Id = "overlay-preview-control", Name = "Control Resonant" };
+    Game selected = new() { Id = "overlay-preview-control", Name = "Control Resonant", AppId = "3669870" };
     OverlayPreview.Screenshot shot = new(Path.Combine(AppContext.BaseDirectory,"Assets","OverlayScene.webp"), "Control Resonant · gameplay", .27f);
     CancellationTokenSource? loading;
     Process? fullPreview;
@@ -105,7 +105,7 @@ sealed class OverlayPreviewView : StackPanel
             accent=palette.Color;Draw();
             var found=await photo;
             if(!Current())return;
-            if(found is null){accent=sceneAccent;Draw();status.Text="No screenshot available · showing "+selected.Name;return;}
+            if(found is null){accent=sceneAccent;Draw();status.Text="No 1440p or 4K screenshot available · showing "+selected.Name;return;}
             selected=game;shot=found;sampledAccent=sceneAccent=accent;SetPhoto(shot);Draw();
             await SampleSceneAsync(found,request.Token);
             if(Current())status.Text="Explore every control in the full preview.";
@@ -139,7 +139,7 @@ sealed class OverlayPreviewView : StackPanel
         var accent = appearance.AccentMode == "theme" ? (light ? Color.FromArgb(255,82,82,82) : Color.FromArgb(255,180,180,180)) : appearance.AccentMode == "adaptive" ? sampledAccent : this.accent;
         if(appearance.AccentMode=="custom" && appearance.AccentColor.Length==7){var rgb=Convert.ToUInt32(appearance.AccentColor[1..],16);accent=Color.FromArgb(255,(byte)(rgb>>16),(byte)(rgb>>8),(byte)rgb);}
         var neutral=light?Color.FromArgb(238,235,235,235):clear?Color.FromArgb(112,225,225,225):Color.FromArgb(225,40,40,40);
-        if(appearance.AccentEnabled)neutral=Mix(neutral,accent,light?.26:clear?.30:.32);
+        if(appearance.AccentEnabled && appearance.AccentMode!="theme")neutral=Mix(neutral,accent,appearance.Tint/100.0);
         var ink=light?Color.FromArgb(255,59,59,59):Color.FromArgb(255,246,246,246);
         void Shape(double x,double y,double w,double h,Color color,double radius=8){var shape=new Border {Width=w,Height=h,Background=new SolidColorBrush(color),CornerRadius=new CornerRadius(radius)};Canvas.SetLeft(shape,x);Canvas.SetTop(shape,y);diagram.Children.Add(shape);}
         void Panel(double x,double y,double w,double h){Shape(x,y+5,w,h,Color.FromArgb(35,0,0,0),14);Shape(x,y,w,h,neutral,14);}

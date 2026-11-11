@@ -25,6 +25,8 @@ internal sealed class GameModeAppearanceView : UserControl
     Border? tintRow;
     string backgroundKey = "";
     Task<BitmapImage?>? backgroundImage;
+    string? sampledBackground;
+    global::Windows.UI.Color? libraryAccent;
     public List<PreferencesGroup> Groups { get; } = [];
 
     public GameModeAppearanceView(EngineForgeService? service)
@@ -45,7 +47,12 @@ internal sealed class GameModeAppearanceView : UserControl
 
     async Task LoadAsync()
     {
-        try { appearance=(store is null?null:await store.ReadAsync()) ?? GameModeAppearance.Defaults; Build(); }
+        try
+        {
+            appearance=(store is null?null:await store.ReadAsync()) ?? GameModeAppearance.Defaults;
+            await ReadLibraryAccentAsync();
+            Build();
+        }
         catch (Exception error) { Children.Clear(); Children.Add(Prefs.Label(error.Message));
             Children.Add(Prefs.ActionButton("Try again", async (_, _) => await LoadAsync())); }
     }
@@ -60,7 +67,9 @@ internal sealed class GameModeAppearanceView : UserControl
         try
         {
             var latest=await store.ReadAsync() ?? appearance.DeepClone().AsObject(); latest[key]=value?.DeepClone();
-            appearance=await store.WriteAsync(latest); Paint();
+            appearance=await store.WriteAsync(latest);
+            await ReadLibraryAccentAsync();
+            Paint();
             if(tintRow is not null)tintRow.Visibility=Text("accentMode")=="theme"?Visibility.Collapsed:Visibility.Visible;
             ShowFeedback("Saved");
         }
@@ -193,6 +202,7 @@ internal sealed class GameModeAppearanceView : UserControl
         var light = Text("theme") == "light";
         var clear = Text("theme") == "clear";
         var accent = ArtAccent.TryParse(Text("accent"), out var value) ? value : ArtAccent.NoArtwork;
+        if (Text("accentMode") == "adaptive" && libraryAccent is { } sampled) accent = sampled;
         var ink = new SolidColorBrush(light ? global::Windows.UI.Color.FromArgb(255,35,35,33) : global::Windows.UI.Color.FromArgb(255,245,243,238));
         var shellInk = new SolidColorBrush(global::Windows.UI.Color.FromArgb(255,245,243,238));
         var neutral = light ? global::Windows.UI.Color.FromArgb(222,246,244,239) :
@@ -204,10 +214,10 @@ internal sealed class GameModeAppearanceView : UserControl
         {
             Canvas.SetLeft(element,x); Canvas.SetTop(element,y); sample.Children.Add(element);
         }
-        var asset = light ? "app-hero-light.png" : "app-hero-dark.png";
+        var asset = LibraryBackground(light);
         var backdrop = new Border { Width=480,Height=270,CornerRadius=new CornerRadius(12),Background=new ImageBrush
         {
-            ImageSource=new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory,"Assets","GameMode",asset))) { DecodePixelWidth=480 },
+            ImageSource=new BitmapImage(new Uri(asset)) { DecodePixelWidth=480 },
             Stretch=Stretch.UniformToFill, Opacity=light ? .85 : .58,
         }};
         Place(backdrop,0,0);
@@ -240,8 +250,13 @@ internal sealed class GameModeAppearanceView : UserControl
     async Task LoadGameAccentAsync(Models.Game game)
     {
         var palette = await ArtAccent.ForGameAsync(game);
-        if(!ReferenceEquals(accentGame, game) || palette is null) return;
-        gameAccent = palette.Color; PaintDetails();
+        if (palette is null) return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!ReferenceEquals(accentGame, game) || !IsLoaded) return;
+            gameAccent = palette.Color;
+            PaintDetails();
+        });
     }
 
     void PaintDetails()
@@ -329,6 +344,27 @@ internal sealed class GameModeAppearanceView : UserControl
             Label(labels[index],x+7,cardY+6,8,ink,cardWidth-14,true);
             Panel(x+7,cardY+23,cardWidth*.53,7,3,glass);
         }
+    }
+
+    static string LibraryBackground(bool light) => Path.Combine(AppContext.BaseDirectory,"Assets","GameMode",
+        light ? "app-hero-light.png" : "app-hero-dark.png");
+
+    async Task ReadLibraryAccentAsync()
+    {
+        if (Text("accentMode") != "adaptive") return;
+        var source = Text("background");
+        var custom = source.StartsWith("data:image/",StringComparison.Ordinal);
+        if (!custom) source = LibraryBackground(Text("theme") == "light");
+        if (sampledBackground == source) return;
+        sampledBackground = source;
+        libraryAccent = null;
+        try
+        {
+            var bytes = custom ? Convert.FromBase64String(source[(source.IndexOf(',')+1)..]) : await File.ReadAllBytesAsync(source);
+            libraryAccent = await ArtAccent.SignatureColorAsync(bytes);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or FormatException
+            or ArgumentException or System.Runtime.InteropServices.COMException) {}
     }
 
     double TintStrength() => Text("accentMode")=="theme" ? 0 : Math.Clamp(Number("tintStrength",50),0,100)/50;

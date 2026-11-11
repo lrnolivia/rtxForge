@@ -1280,7 +1280,6 @@ function setupScrollFades() {
 let arrivalKey = '';
 let disposeLibraryLayout = () => {};
 function render() {
-  if (!appearanceReady) return;
   const priorFocus = document.activeElement instanceof HTMLElement && app.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = priorFocus ? (priorFocus.id ? `#${CSS.escape(priorFocus.id)}` : [...priorFocus.attributes].filter(a=>a.name.startsWith('data-')).map(a=>`[${a.name}="${CSS.escape(a.value)}"]`).join('')) : null;
   const nextArrival = `${view}:${view==='details'?selectedGame()?.id+':'+detailsSection:view==='settings'?settingsCategory:view==='operation'?operation?.stage:''}`;

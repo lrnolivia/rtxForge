@@ -459,10 +459,10 @@ def restored_support_tree(e, game):
         return False
 
 
-def check_target(e, game, baseline):
+def check_target(e, game, baseline, *, package_update=False):
     target = game.target_dir
     if component := e.Y4MY_PROVIDER.get('mfg_component'):
-        mfg_component_module(component).check_target(e, game, baseline)
+        mfg_component_module(component).check_target(e, game, baseline, package_update=package_update)
     t.need(not (target / 'renodx-dlss5.addon64').exists(),
            'Another NR consumer (renodx-dlss5.addon64) is present. Disable it yourself before installing Skynizz.')
     # A second OptiScaler cannot share this INI or the existing MFG hook tree.

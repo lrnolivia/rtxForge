@@ -180,6 +180,14 @@ public sealed class PreviewForgeService : IForgeService
             await Task.Delay(250, cancel);
         }
         // As engine_bridge.adopt_plan: a Linux install is adapted for Windows, not reinstalled.
+        if (operation == "update")
+        {
+            var updates = targets.Where(g => g.CanUpdateFeatures).Select(g => new OperationGameReview(g,
+                "Example package update", "Installed build → Current build")).ToList();
+            var skipped = targets.Where(g => !g.CanUpdateFeatures)
+                .Select(g => new ReviewBlock(g, g.Name, "No local installation to update")).ToList();
+            return new OperationReview(operation, Guid.NewGuid().ToString("N"), updates, skipped);
+        }
         var ready = targets.Where(g => !g.Blocked && (operation is not ("uninstall" or "reset") || g.Installed))
             .Select(g => new OperationGameReview(g, g.InstalledOnLinux
                 ? operation == "uninstall" ? "Installed with rtxForge on Linux · restores the original files it backed up"
@@ -357,6 +365,7 @@ public sealed class PreviewForgeService : IForgeService
 
     static string StepCaption(string operation) => operation switch
     {
+        "update" => "Updating features",
         "install" => "Installing features…",
         "uninstall" => "Restoring original files…",
         "update-dlss" => "Updating DLSS files…",

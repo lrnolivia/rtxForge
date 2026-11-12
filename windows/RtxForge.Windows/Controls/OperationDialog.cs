@@ -176,6 +176,8 @@ public sealed class OperationDialog
     string Title() => operation switch
     {
         "install" => "Review Installation",
+        "update" => "Review Feature Updates",
+        "repair" => "Review Feature Repair",
         "install-nr-addons" => "Review Split Render",
         "remove-nr-addons" => "Review Split Render removal",
         "uninstall" => "Review Restoration",
@@ -217,7 +219,7 @@ public sealed class OperationDialog
             });
         if (review.Blocked.Count > 0)
         {
-            var header = Prefs.Label($"Needs attention · {review.Blocked.Count}", "ForgeHeadingTextStyle");
+            var header = Prefs.Label($"{(operation == "update" ? "Skipped" : "Needs attention")} · {review.Blocked.Count}", "ForgeHeadingTextStyle");
             header.Margin = new Thickness(0, 12, 0, 2);
             list.Children.Add(header);
             foreach (var block in review.Blocked)
@@ -331,6 +333,8 @@ public sealed class OperationDialog
     string ActionVerb() => operation switch
     {
         "install" => "Install",
+        "update" => "Update Features",
+        "repair" => "Repair",
         "install-nr-addons" => "Install Split Render",
         "remove-nr-addons" => "Remove Split Render",
         "uninstall" => "Restore",
@@ -446,6 +450,11 @@ public sealed class OperationDialog
         {
             yield return preparedReview.Summary;
             if (preparedReview.Note is { Length: > 0 } note) yield return note;
+            yield break;
+        }
+        if (operation == "update")
+        {
+            yield return "Keep each game’s package, feature mode, tuning, and original backups.";
             yield break;
         }
         if (operation == "install" && (shell.Settings.RuntimeProvider == "feeder" || targets.All(g => g.IsFeeder)))
@@ -597,9 +606,11 @@ public sealed class OperationDialog
             progressPanel.Complete();
             ShowDone(true, $"{count} game{(count == 1 ? "" : "s")} updated.");
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException error)
         {
-            ShowDone(false, $"Cancelled. Changes to the remaining games were undone ({done} of {review!.Ready.Count} had started).", "Cancelled");
+            var message = operation == "update" ? error.Message
+                : $"Cancelled. Changes to the remaining games were undone ({done} of {review!.Ready.Count} had started).";
+            ShowDone(false, message, "Cancelled");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
@@ -610,6 +621,8 @@ public sealed class OperationDialog
     string ProgressVerb() => operation switch
     {
         "install" => "Installing",
+        "update" => "Updating",
+        "repair" => "Repairing",
         "install-nr-addons" => "Installing Split Render",
         "remove-nr-addons" => "Removing Split Render",
         "uninstall" => "Restoring",

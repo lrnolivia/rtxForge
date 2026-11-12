@@ -5,7 +5,7 @@ export interface FlowState {
  review?:Review;progress?:Record<string,unknown>;result?:unknown;error?:string;cancelRequested?:boolean;targets?:Game[];acceptedTrust?:boolean;
 }
 type Icon=(name:string)=>string;
-const verb=(kind?:string)=>kind==='uninstall'?'Restoring':kind==='remove-nr-addons'?'Removing':kind==='update-dlss'?'Updating':kind==='install'||kind==='install-nr-addons'?'Installing':'Applying';
+const verb=(kind?:string)=>kind==='uninstall'?'Restoring':kind==='remove-nr-addons'?'Removing':kind==='update-dlss'||kind==='update'?'Updating':kind==='install'||kind==='install-nr-addons'?'Installing':'Applying';
 export function flowGame(item:Record<string,unknown>,games:Game[]) {
  const key=String(item.game||item.path||item.game_id||'').replaceAll('\\','/').toLowerCase();
  return games.find(game=>key&&(game.path.replaceAll('\\','/').toLowerCase()===key||game.id.toLowerCase()===key))||games.find(game=>game.name===String(item.name||item.title||''));
@@ -51,7 +51,7 @@ export function operationStep(state:FlowState,games:Game[],icon:Icon) {
 }
 const stepActions:Record<string,string> = {
  install:'Install', 'install-nr-addons':'Install', 'remove-nr-addons':'Remove',
- 'update-dlss':'Update DLSS', uninstall:'Restore', adopt:'Adopt', 'adopt-clean':'Install',
+ update:'Update Features', 'update-dlss':'Update DLSS', uninstall:'Restore', adopt:'Adopt', 'adopt-clean':'Install',
 };
 export function flowSteps(kind:string,phase:'start'|'review'|'apply',chooseGames=false) {
  const steps = [kind==='review'?'Review changes':'Review games',stepActions[kind] || 'Apply changes'];
@@ -75,7 +75,7 @@ export function operationFlow(state:FlowState,games:Game[],icon:Icon,startup='',
   body=operationStep(state,games,icon);
   footer=state.stage==='checking'?'<button class="quiet" data-action="discard-review">Cancel</button>':(state.kind==='install-nr-addons'||state.kind==='remove-nr-addons')?'':`<button class="quiet" data-action="cancel-operation" ${state.cancelRequested?'disabled':''}>${state.cancelRequested?'Cancellation requested':'Request cancellation'}</button>`;
  }else if(state.stage==='review'&&review){
-  body=`<div class="flow-summary"><h2>${rows.length?`${rows.length} game${rows.length===1?'':'s'} ready`:'Nothing ready yet'}</h2>${review.summary?`<p>${e(review.summary)}</p>`:''}</div><div class="flow-review-list">${rows.map(row=>reviewRow(row,games,icon)).join('')}${blocked.length?`<h3 class="flow-attention">Needs attention · ${blocked.length}</h3>${blocked.map(row=>reviewRow(row,games,icon,false)).join('')}`:''}</div>${supported}${warnings.length?`<div class="flow-warnings">${warnings.map(row=>`<div>${icon('warning')}<p><strong>${e(row.name||row.title||'Review warning')}</strong>${e(row.reason||row.detail||'')}</p></div>`).join('')}</div>`:''}${review.note?`<p class="flow-note">${e(review.note)}</p>`:''}${installOptions}<p class="flow-assurance">Your files will only change after you review and confirm.</p>${review.trust?`<label class="trust-choice"><input id="review-trust" type="checkbox" ${state.acceptedTrust ? 'checked' : ''}/><span>${e(review.trust)}</span></label>`:''}`;
+  body=`<div class="flow-summary"><h2>${rows.length?`${rows.length} game${rows.length===1?'':'s'} ready`:'Nothing ready yet'}</h2>${review.summary?`<p>${e(review.summary)}</p>`:''}</div><div class="flow-review-list">${rows.map(row=>reviewRow(row,games,icon)).join('')}${blocked.length?`<h3 class="flow-attention">${state.kind==='update'?'Skipped':'Needs attention'} · ${blocked.length}</h3>${blocked.map(row=>reviewRow(row,games,icon,false)).join('')}`:''}</div>${supported}${warnings.length?`<div class="flow-warnings">${warnings.map(row=>`<div>${icon('warning')}<p><strong>${e(row.name||row.title||'Review warning')}</strong>${e(row.reason||row.detail||'')}</p></div>`).join('')}</div>`:''}${review.note?`<p class="flow-note">${e(review.note)}</p>`:''}${installOptions}<p class="flow-assurance">Your files will only change after you review and confirm.</p>${review.trust?`<label class="trust-choice"><input id="review-trust" type="checkbox" ${state.acceptedTrust ? 'checked' : ''}/><span>${e(review.trust)}</span></label>`:''}`;
   footer=`<button class="quiet" data-action="discard-review">Back</button><button class="primary" data-action="confirm-operation" ${!rows.length||review.trust?'disabled':''}>${e(review.action||'Confirm changes')}</button>`;
  }else{
   const result=state.result as Record<string,unknown>|undefined,errors=Array.isArray(result?.errors)?result.errors:[];

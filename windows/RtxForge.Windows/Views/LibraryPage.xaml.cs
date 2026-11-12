@@ -391,8 +391,7 @@ public sealed partial class LibraryPage : Page
         Add("Game Details", "", () => shell.OpenGame(game));
         Add("DLSS Files", "", () => shell.OpenGame(game, "DLSS Files"));
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add(game.InstallLabel, "", () => _ = game.Installed && !game.AdoptionAvailable && !game.InstalledOnLinux
-            ? shell.LaunchAction("repair", [game], shell.GameTuning(game)) : shell.LaunchAction("install", [game]), (!game.Blocked || game.AdoptionAvailable) && !shell.Busy);
+        Add(game.InstallLabel, "", () => _ = shell.LaunchAction(game.FeatureOperation, [game]), (!game.Blocked || game.AdoptionAvailable || game.CanUpdateFeatures) && !shell.Busy);
         if (game.OfflineOnly) Add("Launch offline", "", () => _ = shell.LaunchOfflineAsync(game), !shell.Busy);
         Add("Restore Original Files", "", () => _ = shell.LaunchAction("uninstall", [game]), game.Installed && !shell.Busy);
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -457,8 +456,10 @@ public sealed partial class LibraryPage : Page
 
     void UpdateSelectionActions()
     {
-        var count = SelectedGames().Count;
-        InstallText.Text = count > 0 ? $"Install Selected ({count})" : "Install Features";
+        var selected = SelectedGames();
+        var count = selected.Count;
+        var verb = IsUpdateSelection(count > 0 ? selected : Selection()) ? "Update" : "Install";
+        InstallText.Text = count > 0 ? $"{verb} Selected ({count})" : $"{verb} Features";
         RestoreText.Text = count > 0 ? $"Restore Selected ({count})" : "Restore Original Files";
         shell.SyncCompactDashboard(shell.Mode, ModeNrOnly.IsEnabled, InstallText.Text);
         shell.SyncCompactPresets(count);
@@ -468,7 +469,15 @@ public sealed partial class LibraryPage : Page
         ToolTipService.SetToolTip(SelectAllButton, count > 0 ? "Clear selection" : "Select every game in this view");
     }
 
-    void OnInstallFeatures(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("install", Selection().Where(g => !g.Blocked).ToList());
+    bool IsUpdateSelection(IReadOnlyList<Game> games) =>
+        games.Any(g => g.CanUpdateFeatures) && (selectedIds.Count > 0 || games.All(g => g.Installed));
+
+    void OnInstallFeatures(object sender, RoutedEventArgs e)
+    {
+        var games = Selection();
+        if (IsUpdateSelection(games)) _ = shell.LaunchAction("update", games);
+        else _ = shell.LaunchAction("install", games.Where(g => !g.Blocked && !g.CanUpdateFeatures).ToList());
+    }
     void OnRestoreOriginal(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("uninstall", Selection().Where(g => g.Installed).ToList());
     void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", Selection().Where(g => !g.Blocked).ToList());
 

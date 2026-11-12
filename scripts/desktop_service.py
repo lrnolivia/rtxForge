@@ -215,13 +215,15 @@ class DesktopService:
         # Saving library defaults with no games selected changes no game.
         defaults_only=rows==[] and operation=='reset' and bool(save_defaults) and scope is None
         if not defaults_only:engine_bridge.check_scope(rows,scope)
-        if operation in ('install','repair','adopt-clean'):
+        if operation in ('install','update','repair','adopt-clean'):
             host=self.hardware()
             if not host['ready']:return {'kind':'batch','operation':operation,'title':operation.title(),'plans':[],'rows':[],'blocked':[{'name':'Hardware check','reason':host['reason']}]}
         settings=library_media.load_settings(self.config)
         if visual_settings is not None:settings.update(visual_settings)
         if scope is not None:settings['operation_scope']=scope
         settings['defaults_only']=defaults_only
+        if operation == 'update':
+            return self._prepare_feature_update(rows, settings)
         if operation in ('adopt', 'adopt-clean'):
             import package_adoption
             return package_adoption.prepare(self.config, rows, operation, settings)
@@ -271,6 +273,57 @@ class DesktopService:
                                            settings, engine_bridge.module(self.config))
         review=engine_bridge.prepare(self.config,rows,mode,operation,settings)
         if save_defaults and operation=='reset':review['save_defaults']={k:settings[k] for k in ('nr_strength','sharpening_strength','mfg_multiplier','dynamic_mfg','mfg_saved_mode','mfg_saved_multiplier','feature_controls') if k in settings}
+        return review
+
+    def _prepare_feature_update(self, rows, settings):
+        from collections import defaultdict
+        import feeder_provider
+        import vulkan_app
+
+        groups = defaultdict(list)
+        review = dict(kind='feature-update', operation='update', title='Review feature updates',
+                      plans=[], rows=[], blocked=[], companions=[])
+        roots = []
+        for row in rows:
+            root = Path(row['game']).resolve()
+            t.need(not any(root.is_relative_to(other) or other.is_relative_to(root) for other in roots),
+                   'Duplicate or overlapping game selection; refresh the library')
+            roots.append(root)
+            provider, mode = row.get('runtime_provider'), row.get('feature_mode')
+            if not row.get('installed'):
+                reason = 'No features installed'
+            elif row.get('executable_error') or not row.get('exe'):
+                reason = row.get('executable_error') or 'The installed executable could not be verified'
+            elif row.get('installed_on') in cross_os.OPERATING_SYSTEMS and row['installed_on'] != cross_os.THIS_OS:
+                reason = 'Update this installation in rtxForge on ' + ('Windows' if row['installed_on'] == 'windows' else 'Linux')
+            elif provider not in ('skynizz', 'y4my', 'dlss-unlocked', 'feeder', 'vulkan-native'):
+                reason = 'No published update for this installed package'
+            elif mode not in ('nr-only', 'nr-mfg', 'mfg-only'):
+                reason = 'The installed feature mode could not be verified'
+            else:
+                groups[provider, mode].append(row)
+                continue
+            review['blocked'].append(dict(name=row['name'], game=row['game'], reason=reason))
+
+        for (provider, mode), games in groups.items():
+            values = dict(settings, runtime_provider=provider, upgrade_skynizz_bridge=False,
+                          operation_scope=None, apply_requested_presets=False, nr_runtime=None)
+            try:
+                if provider in ('feeder', 'vulkan-native'):
+                    route = feeder_provider if provider == 'feeder' else vulkan_app
+                    part = route.prepare(self.config, games, mode, 'update', values, engine_bridge.module(self.config))
+                else:
+                    part = engine_bridge.prepare(self.config, games, mode, 'repair', values, package_update=True)
+            except (OSError, ValueError, RuntimeError) as error:
+                review['blocked'].extend(dict(name=row['name'], game=row['game'], reason=str(error)) for row in games)
+                continue
+            review['blocked'].extend(part['blocked'])
+            if part['rows']:
+                review['companions'].append(part)
+                review['plans'].extend(part['plans'])
+                review['rows'].extend(part['rows'])
+        review['rows'].sort(key=lambda row: row['name'].casefold())
+        review['blocked'].sort(key=lambda row: row['name'].casefold())
         return review
 
     def _prepare_routes(self, rows, mode, operation, adopt, visual_settings, save_defaults, scope, settings):
@@ -469,6 +522,8 @@ class DesktopService:
 
     def _execute(self,review):
         # The desktop must pass the exact in-memory review shown to the user.
+        if review['kind'] == 'feature-update':
+            return self._execute_feature_update(review)
         result=self._execute_one(review)
         for companion in review.get('companions') or []:
             # The other routes of the same review (another package, Feeder NR, Vulkan),
@@ -479,6 +534,38 @@ class DesktopService:
                 if cancel is not None and companion.get('cancel_event') is None:companion['cancel_event']=cancel
                 result=self._execute(companion) or result
         return result
+
+    def _execute_feature_update(self, review):
+        import ui
+        from operation_session import Cancelled
+
+        total = len(review['rows'])
+        cancel = review.get('cancel_event')
+        offset = completed = 0
+        reports, failures = [], []
+        for part in review['companions']:
+            if cancel is not None and cancel.is_set():
+                break
+            count = len(part['rows'])
+            part['cancel_event'] = cancel
+            try:
+                with ui.batch_progress(offset, count, total):
+                    reports.append(str(self._execute_one(part)))
+                completed += count
+            except Cancelled:
+                break
+            except (OSError, RuntimeError, ValueError) as error:
+                failures.append(str(error))
+            offset += count
+        if review.get('on_finalizing'):
+            review['on_finalizing']()
+        if failures:
+            raise t.Refusal(' '.join(failures))
+        if cancel is not None and cancel.is_set():
+            if completed:
+                raise Cancelled(f'Update cancelled. {completed} games finished before cancellation and keep their updates.')
+            raise Cancelled('Changes undone.')
+        return '\n'.join(reports)
 
     def _execute_one(self,review):
         kind=review['kind']

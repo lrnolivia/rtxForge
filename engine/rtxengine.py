@@ -39,6 +39,7 @@ It deliberately does NOT ask the user to browse to individual .exe files.
 from __future__ import annotations
 
 import argparse
+import configparser
 import ctypes
 import ctypes.util
 import datetime as _dt
@@ -4623,6 +4624,7 @@ def install_target(
     nr_on_launch: Optional[bool] = False,
     dry_run: bool = False,
     repair_changed: bool = False,
+    package_update: bool = False,
     projection: Optional[dict] = None,
 ) -> dict:
     visual_defaults(nr_strength, mfg_multiplier, sharpening_strength)  # Validate before any mutation.
@@ -4646,6 +4648,16 @@ def install_target(
 
     target = game.target_dir
     existing_baseline = load_baseline(target)
+    if package_update:
+        recorded = (existing_baseline or {}).get("current") or {}
+        require((existing_baseline or {}).get("status") == "active"
+                and recorded.get("provider_id", "y4my") == Y4MY_PROVIDER["id"]
+                and recorded.get("feature_mode") == feature_mode,
+                "Repair the installed package before updating it")
+        recorded_policy = recorded.get("compatibility_policy") or {}
+        native_mfg_fallback = bool(recorded_policy.get("native_mfg_fallback"))
+        nr_on_launch = None
+        mfg_multiplier = recorded_policy.get("mfg_multiplier") or mfg_multiplier
     keep = _RepairKeeper(target, dry_run) if repair_changed and existing_baseline else None
     if existing_baseline:
         status = existing_baseline.get("status")
@@ -4666,7 +4678,7 @@ def install_target(
         require(prior_mode in (None, feature_mode), "Uninstall before changing DLSS-Unlocked pipelines")
     restored_support_tree = False
     if is_skynizz:
-        restored_support_tree = skynizz_provider.check_target(_ENGINE_MODULE, game, existing_baseline)
+        restored_support_tree = skynizz_provider.check_target(_ENGINE_MODULE, game, existing_baseline, package_update=package_update)
     reshade = detect_reshade(target)
     # Keep y4my's overlay behavior unchanged by default. Its global overlay
     # blocker also disables Steam Input, so RC1 does not infer a per-game route.
@@ -4764,7 +4776,22 @@ def install_target(
         # native Ada unlock and the Streamline/DLSS-G companion stack.
         mfg_proxy = None
 
+    if package_update:
+        require(chosen_proxy == prior_proxy and build_launch_options(chosen_proxy, reshade, mfg_proxy) == prior.get("launch_options"),
+                "The game’s loader route changed. Repair feature files before updating.")
     payload = dict(base_payload)
+    preserved_configs = set()
+    if package_update and mfg_component and mfg_component.get("id") == "universal":
+        from universal_mfg_provider import CONTROL
+        control = target / CONTROL
+        if CONTROL in payload and (control.exists() or control.is_symlink()):
+            require(control.is_file() and not control.is_symlink(), "The Universal MFG settings path is not a regular file")
+            raw = control.read_bytes()
+            values = json.loads(raw)
+            require(isinstance(values, dict) and values.get("optiScalerUi") == "optiscaler" and values.get("dlss5") is False,
+                    "Universal MFG settings conflict with Skynizz. Set its UI to OptiScaler and disable its separate DLSS 5 before updating.")
+            payload[CONTROL] = raw
+            preserved_configs.add(CONTROL)
     dxgi_key = next(k for k in payload if k.casefold() == "dxgi.dll")
     proxy_bytes = payload.pop(dxgi_key)
     # base_payload's normalized dxgi.dll is the exact y4my OptiScaler.dll.
@@ -4824,6 +4851,9 @@ def install_target(
             f"{NR_RUNTIME_NAME} is required for Neural Rendering. Select a suitable local model in Settings, "
             "put a trusted copy beside the game executable, or pass --nr-runtime.",
         )
+        if package_update:
+            require(selected_nr_meta.get("sha256") == (recorded.get("nr_runtime") or {}).get("sha256"),
+                    "Repair the recorded NR model before updating features")
         require(len(selected_nr_payload) > NR_RUNTIME_MIN_BYTES and selected_nr_payload[:2] == b"MZ", f"Invalid {NR_RUNTIME_NAME}")
         payload[NR_RUNTIME_NAME] = selected_nr_payload
 
@@ -4841,9 +4871,9 @@ def install_target(
         if current_hash is None:
             # Path casing may differ between archive revisions; state keys are
             # semantically case-insensitive on the Windows game namespace.
-            for rel, digest in (((existing_baseline.get("current") or {}).get("installed_hashes") or {}).items()):
+            for rel, recorded_hash in (((existing_baseline.get("current") or {}).get("installed_hashes") or {}).items()):
                 if isinstance(rel, str) and rel.casefold() == ini_key.casefold():
-                    current_hash = digest
+                    current_hash = recorded_hash
                     break
         if (
             isinstance(current_hash, str)
@@ -4937,13 +4967,21 @@ def install_target(
         original_text = payload['ReShade.ini'].decode('utf-8-sig')
         updated_text = overlay_policy.reshade(original_text, _ENGINE_MODULE.OVERLAY_UI)
         if updated_text != original_text: payload['ReShade.ini'] = updated_text.encode('utf-8')
-    payload[ini_key] = text.encode("utf-8")
+    if package_update:
+        require(saved_ini is not None, "Restore the game’s tuning file with Repair Feature Files before updating")
+        config = configparser.ConfigParser(interpolation=None, strict=False)
+        config.read_string(saved_ini.decode("utf-8-sig"))
+        for key in nr_tuning:
+            nr_tuning[key] = config.get("DlssNr", key, fallback=nr_tuning[key])
+    payload[ini_key] = saved_ini if package_update else text.encode("utf-8")
 
     if mfg_proxy:
         payload[mfg_proxy] = rtxmfg_payload
 
     if existing_baseline:
-        _verify_root_payload_refresh_safe(target, existing_baseline, payload, ini_key, digest, keep)
+        _verify_root_payload_refresh_safe(target, existing_baseline,
+                                          {name: data for name, data in payload.items() if name not in preserved_configs},
+                                          ini_key, digest, keep)
 
     if dry_run:
         stale = stale_owned_proxies(target, chosen_proxy, reshade)

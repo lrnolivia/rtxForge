@@ -34,6 +34,24 @@ def report_to(callback):
     try:yield
     finally:_reporter.reset(token)
 
+@contextlib.contextmanager
+def batch_progress(offset, count, total):
+    report = _reporter.get()
+    if report is None:
+        yield
+        return
+
+    def forward(event):
+        if event.get('kind') == 'progress' and 'current' in event:
+            event = dict(event, current=event['current'] + offset, total=total)
+            if 'fraction' in event:
+                event['fraction'] = (offset + event['fraction'] * count) / total
+        report(event)
+
+    with report_to(forward):
+        yield
+
+
 _display_lock=threading.RLock()
 _active=False
 

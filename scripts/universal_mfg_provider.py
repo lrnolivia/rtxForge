@@ -116,12 +116,13 @@ def configure(e, text):
     return e.set_ini_value(text, 'Plugins', 'LoadAsiPlugins', 'true')
 
 
-def check_target(e, game, baseline):
+def check_target(e, game, baseline, *, package_update=False):
     """Never stack on a manual unlocker install or switch a game's recorded MFG component."""
     record = validate(e.Y4MY_PROVIDER['mfg_component'])
     current = (baseline or {}).get('current') or {}
     installed = ((current.get('archive') or {}).get('release') or {}).get('mfg_component')
-    t.need(not current or installed == record, 'Restore before changing MFG components.')
+    same_owner = package_update and installed and validate(installed)['id'] == record['id']
+    t.need(not current or installed == record or same_owner, 'Restore before changing MFG components.')
     if installed:
         return
     target = game.target_dir

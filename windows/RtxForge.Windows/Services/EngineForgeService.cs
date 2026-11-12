@@ -301,7 +301,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
     {
         var ordered = targets.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
         var counted = progress is null ? null : new OneCount(progress, targets.Count);
-        return operation is "install" or "repair" or "uninstall" or "reset" or "apply"
+        return operation is "install" or "update" or "repair" or "uninstall" or "reset" or "apply"
             ? await PlanAsync(operation, ordered, tuning, mode, counted, cancel)
             : await PrepareOneAsync(operation, ordered, tuning, mode, counted, cancel);
     }
@@ -426,7 +426,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         : targets.FirstOrDefault(g => g.Name == name);
 
     static IReadOnlyList<ReviewBlock> Blocks(JsonNode? items, IReadOnlyList<Game> targets, bool summary) =>
-        Objects(items).Select(b => new ReviewBlock(Match(targets, b["name"]?.ToString()), b["name"]?.ToString() ?? "",
+        Objects(items).Select(b => new ReviewBlock(Match(targets, b["name"]?.ToString(), b["game"]?.ToString()), b["name"]?.ToString() ?? "",
             b["reason"]?.ToString() ?? "", summary ? b["summary"]?.ToString() : null)).ToArray();
 
     /// <summary>A host review (token, rows, blocked, warnings, trust) as the dialog shows it.</summary>
@@ -500,7 +500,7 @@ public sealed partial class EngineForgeService : IForgeService, IDisposable
         {
             await CallAsync("execute", new { token = review.Token, offline_acknowledged = review.OfflineAcknowledged }, Report);
         }
-        catch (EngineException error) when (error.Message.Contains("Changes undone", StringComparison.Ordinal))
+        catch (EngineException error) when (error.Message.Contains("Changes undone", StringComparison.Ordinal) || error.Message.StartsWith("Update cancelled.", StringComparison.Ordinal))
         {
             throw new OperationCanceledException(error.Message, error);
         }

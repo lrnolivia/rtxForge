@@ -412,12 +412,20 @@ def prepare(params):
     import offline_routes
     with executable_selection.choices((params.get('settings') or {}).get('game_executables')):
         routes = []
-        if params.get('operation') in ('install', 'repair', 'reset', 'apply', 'adopt', 'adopt-clean', 'uninstall'):
+        updating = params.get('operation') == 'update'
+        if params.get('operation') in ('install', 'update', 'repair', 'reset', 'apply', 'adopt', 'adopt-clean', 'uninstall'):
             for row in params.get('rows') or []:
+                if updating and (not row.get('installed') or not row.get('exe') or row.get('executable_error')):
+                    continue
                 # Reinspect, rather than accepting the scan's anti-cheat boolean.
-                game = engine_bridge.game(engine_bridge.module(service.config), row)
-                if game.anti_cheat:
-                    routes.append(offline_routes.receipt(row, manual=True))
+                try:
+                    game = engine_bridge.game(engine_bridge.module(service.config), row)
+                    if game.anti_cheat:
+                        routes.append(offline_routes.receipt(row, manual=True))
+                except (OSError, RuntimeError, ValueError) as error:
+                    if not updating:
+                        raise
+                    row['executable_error'] = str(error)
         params = dict(params, rows=[dict(row, offline_only=True, blocked='' if row.get('blocked') == 'Anti-cheat detected' else row.get('blocked', ''))
                                    if any(str(Path(row['game']).resolve()).casefold() == str(Path(route['root']).resolve()).casefold() for route in routes)
                                    else row for row in params.get('rows') or []])
@@ -442,8 +450,9 @@ def prepare(params):
 
 def _prepare_request(params):
     rows = params.get('rows') or []
-    for row in rows:
-        t.need(not row.get('executable_error'), row.get('executable_error') or '')
+    if params.get('operation') != 'update':
+        for row in rows:
+            t.need(not row.get('executable_error'), row.get('executable_error') or '')
     if params.get('operation') == 'apply' and rows and all(row.get('runtime_provider') == 'feeder' for row in rows):
         # Installed Feeder games keep their presets in their own ReShade.ini,
         # whichever package is selected for new installs.
@@ -471,7 +480,7 @@ def _prepare_request(params):
         import review_copy
         review_copy.attach(review)
         review["cancel_event"] = threading.Event()
-    elif review.get('kind') in ('feeder', 'adoption', 'vulkan-native'):
+    elif review.get('kind') in ('feeder', 'adoption', 'vulkan-native', 'feature-update'):
         review['cancel_event'] = threading.Event()
     token = uuid.uuid4().hex
     reviews[token] = review

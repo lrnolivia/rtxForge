@@ -112,10 +112,15 @@
                                 <Grid><TextBlock Text=" " Opacity="0" AutomationProperties.AccessibilityView="Raw" /><FontIcon Glyph="&#xE712;" FontSize="14" /></Grid>
                                 <Button.Flyout>
                                     <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                        <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AB;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
-                                        <MenuFlyoutItem x:Name="AdoptionItem" Text="Adopt with rtxForge" Click="OnAdoption" />
+                                        <MenuFlyoutItem x:Name="SteamLaunchItem" Text="Launch in Steam" Click="OnLaunchSteam"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7FC;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
                                         <MenuFlyoutItem x:Name="OfflineLaunchItem" Text="Launch offline" Click="OnLaunchOffline" />
                                         <MenuFlyoutItem x:Name="OpenFolderItem" Text="Open Folder" Click="OnOpenFolder"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                        <MenuFlyoutItem Text="Copy game location" Click="OnCopyLocation"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                        <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem Text="Overlay settings" Click="OnOverlaySettings"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9E9;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                        <MenuFlyoutItem x:Name="UpdateDlssItem" Text="Update DLSS" Click="OnUpdateDlss"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AB;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                        <MenuFlyoutItem x:Name="RepairItem" Text="Repair Feature Files" Click="OnRepair"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE90F;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                                        <MenuFlyoutItem x:Name="AdoptionItem" Text="Adopt with rtxForge" Click="OnAdoption" />
                                         <MenuFlyoutSeparator />
                                         <MenuFlyoutItem Text="Remove from library" Click="OnRemoveFromLibrary"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
                                     </MenuFlyout>

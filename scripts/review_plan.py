@@ -118,6 +118,11 @@ def prefetch(groups, operation, mode, settings):
     return [{'mode': mode, 'settings': dict(settings, runtime_provider=name)} for name in seen]
 
 
+def repair_mode(row, fallback):
+    installed = row.get('feature_mode') if row.get('installed') else None
+    return installed if installed in ('nr-only', 'nr-mfg', 'mfg-only') else fallback
+
+
 def offer_groups(operation, mode, provider, rows, ready, blocked):
     """[(reason_code, subset_mode, rows)] to review again for only NR or only MFG.
 
@@ -152,8 +157,15 @@ def plan(prepare, discard, rows, operation, mode, settings, prefetch_files=None)
         else:
             discard([result['token']])
         return dict(steps=steps, offers=[], blocked=result.get('blocked', []), warnings=result.get('warnings', []))
-    groups = batches(rows, operation, mode, settings)
-    downloads = prefetch(groups, operation, mode, settings)
+    by_mode = {}
+    for row in rows:
+        selected_mode = repair_mode(row, mode) if operation == 'repair' else mode
+        by_mode.setdefault(selected_mode, []).append(row)
+    groups, downloads = [], []
+    for selected_mode, rows_for_mode in by_mode.items():
+        grouped = batches(rows_for_mode, operation, selected_mode, settings)
+        groups.extend((selected_mode, name, group) for name, group in grouped)
+        downloads.extend(prefetch(grouped, operation, selected_mode, settings))
     if downloads and prefetch_files:
         prefetch_files(downloads)
     steps, offers, blocked, warnings, tokens = [], [], [], [], []
@@ -172,21 +184,21 @@ def plan(prepare, discard, rows, operation, mode, settings, prefetch_files=None)
         return paths
 
     try:
-        for name, group in groups:
+        for requested_mode, name, group in groups:
             selected_operation, provider = step(name, operation, settings)
-            result = review(group, mode, selected_operation, provider, False)
+            result = review(group, requested_mode, selected_operation, provider, False)
             ready = admitted(result, group)
-            entry = {'route': name, 'operation': selected_operation, 'provider': provider, 'mode': mode, 'review': result}
+            entry = {'route': name, 'operation': selected_operation, 'provider': provider, 'mode': requested_mode, 'review': result}
             warnings += result.get('warnings', [])
             refused = list(result.get('blocked', []))
             if result.get('rows'):
-                if selected_operation == 'install' and mode == 'nr-mfg' and name == 'feeder':
+                if selected_operation == 'install' and requested_mode == 'nr-mfg' and name == 'feeder':
                     offers.append(dict(entry, code='feeder-nr-only', nr=True, mfg=False, reason=REASONS['feeder-nr-only']))
                 else:
                     steps.append(entry)
             offered = set()
             reasons = {item.get('name'): item.get('reason', '') for item in refused}
-            for code, subset_mode, subset in offer_groups(selected_operation, mode, provider, group, ready, reasons):
+            for code, subset_mode, subset in offer_groups(selected_operation, requested_mode, provider, group, ready, reasons):
                 subset = [row for row in subset if identity(row['game']) not in offered]
                 if not subset:
                     continue

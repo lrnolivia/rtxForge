@@ -343,16 +343,17 @@ class DesktopService:
             return review_plan.package_for(row, operation, settings) if name == 'adopt' else name
         groups = {}
         for row in sorted(rows, key=lambda r: str(r.get('name', '')).casefold()):
-            groups.setdefault(route(row), []).append(row)
-        if len(groups) < 2:
+            selected_mode = review_plan.repair_mode(row, mode) if operation == 'repair' else mode
+            groups.setdefault((route(row), selected_mode), []).append(row)
+        if len(groups) < 2 and all(selected_mode == mode for _, selected_mode in groups):
             return None
         if operation == 'install' and mode == 'nr-mfg':
-            groups.pop('feeder', None)
+            groups.pop(('feeder', mode), None)
         parts = []
-        for name, group in groups.items():
+        for (name, selected_mode), group in groups.items():
             _, provider = review_plan.step(name, operation, settings)
             part_scope = dict(scope, games=[row['game'] for row in group]) if isinstance(scope, dict) else scope
-            parts.append(self.prepare(group, mode, operation, adopt, visual_settings=visual_settings,
+            parts.append(self.prepare(group, selected_mode, operation, adopt, visual_settings=visual_settings,
                                       save_defaults=save_defaults and not parts, scope=part_scope, _provider=provider))
         ready = [part for part in parts if part.get('rows')]
         lead = next((part for part in ready if part.get('kind') == 'engine'), ready[0] if ready else parts[0])

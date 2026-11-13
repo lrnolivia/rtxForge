@@ -16,6 +16,28 @@ import transactions as t
 RENODX = 'renodx-dlss5.addon64'
 
 
+class OverlayAttention(t.Refusal):
+    def __init__(self, detail, action):
+        super().__init__(detail)
+        self.action = action
+
+
+def require(condition, detail, action):
+    if not condition:
+        raise OverlayAttention(detail, action)
+
+
+def attention(title, error, root=None):
+    row = {'title': title, 'detail': str(error), 'details': ''}
+    if root is not None:
+        row['game'] = str(root)
+    if isinstance(error, OverlayAttention):
+        row['action'] = error.action
+    elif isinstance(error, PermissionError):
+        row['action'] = 'retry'
+    return row
+
+
 def renodx_update(e, owned):
     """Every RenoDX file rtxForge installed moves to the pinned build, which
     applies NR tuning live. Callers have already verified each owned file.
@@ -32,8 +54,9 @@ def renodx_update(e, owned):
     except (t.Refusal, OSError, KeyError, TypeError) as error:
         # Stale and not updated is not current: the caller reports it so the
         # required refresh stays pending and retries.
-        raise t.Refusal('RenoDX could not be updated to rtxForge’s build; this game keeps its current one. '
-                        + (str(error) if not isinstance(error, KeyError) else 'The stored Feeder stack is incomplete.')) from error
+        raise OverlayAttention('RenoDX could not be updated to rtxForge’s build; this game keeps its current one. '
+                               + (str(error) if not isinstance(error, KeyError) else 'The stored Feeder stack is incomplete.'),
+                               'retry') from error
     return ({name: data for name in stale},
             'RenoDX is updated to rtxForge’s build, so NR tuning applies while you play.')
 
@@ -121,7 +144,7 @@ def feeder_plan(e, path, params, running, digests=None):
     t.need(path.parent == feeder.state_dir(e, target), 'Feeder record location differs.')
     if record.get('legacy_recipe'):
         return legacy_feeder_plan(e, path, raw, record, params, running, digests)
-    t.need(not running(root), 'Close this game, then review again.')
+    require(not running(root), 'Close this game, then try again.', 'retry')
     values = preferences(params, record, target)
     baseline = copy.deepcopy(record)
     owned = baseline['installed_hashes']
@@ -142,7 +165,7 @@ def feeder_plan(e, path, params, running, digests=None):
         recipe_name = RENODX if name.endswith('/' + RENODX) else name
         if actual != expected and feeder._published(e, spec, recipe_name, destination, actual):
             owned[name] = expected = actual; adopted = True
-        t.need(actual == expected, 'Feeder files changed; repair this game first: ' + name)
+        require(actual == expected, 'A managed Feeder file is missing or changed: ' + name, 'repair')
         checks[str(destination)] = expected
     for name, item in available.items():
         if name not in owned:
@@ -176,7 +199,7 @@ def feeder_plan(e, path, params, running, digests=None):
     if missing:
         note += '\nUse Repair Features to add the overlay to this older installation.'
     if not writes and not adopted:
-        return None, {'title': name, 'detail': 'Overlay packages and menus are up to date.', 'details': note}
+        return None, {'title': name, 'game': str(root), 'detail': 'Overlay packages and menus are up to date.', 'details': note}
     share_inventory(target, 'feeder', owned, checks, writes)
     writes[str(path)] = bulk._json(baseline)
     plan = {'name': name, 'game': str(root), 'root': str(root), 'target': str(target),
@@ -189,13 +212,13 @@ def legacy_feeder_plan(e, path, raw, record, params, running, digests):
     import feeder_legacy as legacy
     target = t.safe(record['target']); root = t.safe(record['game'])
     legacy.validate_state(e, target, record)
-    t.need(not running(root), 'Close this game, then review again.')
+    require(not running(root), 'Close this game, then try again.', 'retry')
     baseline = copy.deepcopy(record); owned = baseline['installed_hashes']
     checks = {str(path): t.sha(raw)}; writes = {}
     for name, expected in owned.items():
         if name in legacy.config_names(record['legacy_recipe']): continue
         destination = t.safe(target / t.relative(name))
-        t.need(_digest(digests, destination) == expected, 'Feeder files changed; repair first: ' + name)
+        require(_digest(digests, destination) == expected, 'A managed Feeder file is missing or changed: ' + name, 'repair')
         checks[str(destination)] = expected
     available = feeder.panel(e)
     for name, source in legacy.panel_names(record['legacy_recipe']).items():
@@ -227,7 +250,7 @@ def legacy_feeder_plan(e, path, raw, record, params, running, digests):
             'Translation layer, helper, NR model, tuning and original restore backups are preserved.')
     if renodx_note: note += '\n' + renodx_note
     if values is not None: note += '\n\n' + overlay_settings.describe(values)
-    if not writes: return None, {'title': name, 'detail': 'Overlay packages and menus are up to date.', 'details': note}
+    if not writes: return None, {'title': name, 'game': str(root), 'detail': 'Overlay packages and menus are up to date.', 'details': note}
     share_inventory(target, 'feeder', owned, checks, writes, record['legacy_recipe'])
     writes[str(path)] = bulk._json(baseline)
     plan = {'name': name, 'game': str(root), 'root': str(root), 'target': str(target),
@@ -242,13 +265,18 @@ def vulkan_plans(e, params, running, digests=None):
     import vulkan_dlssg_provider as native
     digests = digests or file_stamps.Operation()
     plans, blocked, skipped = [], [], []
-    candidates = sorted((vulkan_app.state_root() / 'targets').glob('*/baseline.json'))
+    state_root = vulkan_app.state_root()
+    # Cross-OS adoption retains the previous record under retired-<key>-<revision>.
+    # Only canonical target keys are eligible for a refresh.
+    candidates = sorted(path for path in (state_root / 'targets').glob('*/baseline.json')
+                        if len(path.parent.name) == 64 and all(c in '0123456789abcdef' for c in path.parent.name))
     t.need(len(candidates) <= 1000, 'Too many Vulkan installation records.')
     if not candidates:
         return plans, blocked, skipped
     folder, manifest, archive, spec = vulkan_app.bundled()
     for path in candidates:
         name = path.parent.name
+        root = None
         try:
             raw = bulk._read(path); record = json.loads(raw)
             if record.get('status') != 'active': continue
@@ -257,8 +285,8 @@ def vulkan_plans(e, params, running, digests=None):
             target = t.safe(record['target']); root = target.parent if profile == 'bg3' and target.name.casefold() == 'bin' else target
             if not selected(params, root, target): continue
             name = vulkan_app.PROFILES[profile][1]
-            t.need(path.parent == native.state_path(target, vulkan_app.state_root()), 'Vulkan record path differs.')
-            t.need(not running(root), 'Close this game, then review again.')
+            t.need(path.parent == native.state_path(target, state_root), 'Vulkan record path differs.')
+            require(not running(root), 'Close this game, then try again.', 'retry')
             with native.profile(profile, manifest):
                 # Checks original recovery objects, inventory, profile and all immutable ownership.
                 native._record(target, path.parent)
@@ -279,8 +307,11 @@ def vulkan_plans(e, params, running, digests=None):
                            'NativeMods/Streamline/nvngx_dlss.dll': 'sr_runtime',
                            'NativeMods/Streamline/nvngx_dlssd.dll': 'rr_runtime'}.get(filename)
                 pin = production.get(runtime, {})
-                verified_runtime = actual != expected and actual == pin.get('sha256') and destination.stat().st_size == pin.get('release_size')
-                t.need(actual == expected or verified_runtime, 'Vulkan package files changed; repair first: '+filename)
+                verified_runtime = actual is not None and actual != expected and actual == pin.get('sha256') and destination.stat().st_size == pin.get('release_size')
+                if actual != expected and not verified_runtime:
+                    original = (record['originals'].get(filename) or {}).get('sha256')
+                    raise OverlayAttention('A managed Vulkan file is missing or changed: '+filename,
+                                           'repair' if actual in (None, original) else 'inspect')
                 checks[str(destination)] = actual
                 if verified_runtime:
                     retained_runtimes.add(filename)
@@ -302,7 +333,7 @@ def vulkan_plans(e, params, running, digests=None):
             # overlay update never replaces it with the bundled model.
             for filename, data in payload.items():
                 if filename in mutable or filename == 'NativeMods/nvngx_dlssnr.dll' or filename in retained_runtimes or filename in baseline.get('runtime_overrides', {}): continue
-                t.need(filename in baseline['installed'], 'Vulkan inventory upgrade needs the full Repair Features review.')
+                require(filename in baseline['installed'], 'The installed Vulkan inventory differs from this package.', 'inspect')
                 if t.sha(data) != baseline['installed'][filename]:
                     writes[str(target / filename)] = data
                     baseline['installed'][filename] = t.sha(data)
@@ -311,7 +342,7 @@ def vulkan_plans(e, params, running, digests=None):
             if values is not None: note += '\n\n'+overlay_settings.describe(values)
             shared = cross_os.read(target)
             if not writes and baseline == record and shared and shared.get('shared_recovery',{}).get('readable') is True and record.get('cross_os_revision') == shared.get('revision'):
-                skipped.append({'title':name,'detail':'Vulkan overlay package is up to date.','details':note}); continue
+                skipped.append({'title':name,'game':str(root),'detail':'Vulkan overlay package is up to date.','details':note}); continue
             share_inventory(target, vulkan_app.ID, baseline['installed'], checks, writes)
             marker_path = str(target/cross_os.MARKER)
             marker = json.loads(writes[marker_path])
@@ -324,5 +355,5 @@ def vulkan_plans(e, params, running, digests=None):
                     'checks':checks,'writes':writes,'summary':'Update Vulkan overlay package','note':note}
             bulk._check(e,plan,digests,running); plans.append(plan)
         except (t.Refusal,e.Stop,OSError,ValueError,KeyError,TypeError) as error:
-            blocked.append({'title':name,'detail':str(error),'details':''})
+            blocked.append(attention(name, error, root))
     return plans, blocked, skipped

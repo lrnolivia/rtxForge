@@ -56,6 +56,16 @@ class RequiredRefreshTest(unittest.TestCase):
         self.assertEqual([game['title'] for game in result['updated_games']],['Ready'])
         self.assertEqual([item['title'] for item in result['blocked']],['Busy'])
 
+    def test_retry_does_not_list_an_updated_game_as_already_current(self):
+        previous = {'plans':[{'name':'Updated','game':'A','target':'A/bin'}],
+                    'blocked':[{'title':'Busy','game':'B','action':'retry'}]}
+        next_review = {'plans':[], 'blocked':[],
+                       'skipped':[{'title':'Updated','game':'A'},{'title':'Already current','game':'C'}]}
+        refresh.run(self.root,self.state,Mock(return_value=previous),Mock(return_value={}))
+        report=refresh.run(self.root,self.state,Mock(return_value=next_review),Mock())
+        self.assertEqual(report['updated_games'],[{'title':'Updated','game':'A','target':'A/bin'}])
+        self.assertEqual(report['skipped'],[{'title':'Already current','game':'C'}])
+
     def test_tampered_bundle_never_reaches_game_planner(self):
         (self.folder/'rtxforge-glass.dll').write_bytes(b'foreign')
         prepare=Mock();execute=Mock()

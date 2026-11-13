@@ -872,6 +872,7 @@ button.ui-control:not(:where(.game-card,.select-game,.theme-choice,.layout-choic
 .operation-modal:has(>.operation-flow:is([data-stage=done],[data-stage=error])){--operation-width:540px}
 .operation-modal>.operation-flow{height:auto;max-width:100%}
 .operation-modal>.operation-flow>.flow-panel{flex:0 1 auto;min-height:0}
+.flow-review-list.overlay-results{max-height:260px;overflow:auto;overscroll-behavior:contain}
 .shell[inert] .content>*{animation:none}
 body:has(.operation-backdrop) #toast{z-index:49}
 

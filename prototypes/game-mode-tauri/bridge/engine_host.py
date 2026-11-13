@@ -12,7 +12,7 @@ import sys
 import threading
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-ALLOWED = frozenset(('hello', 'hardware', 'scan', 'prepare', 'execute', 'cancel', 'discard_operation',
+ALLOWED = frozenset(('hello', 'hardware', 'scan', 'prepare', 'execute', 'cancel', 'discard_operation', 'overlay_refresh_retry',
                      'prepare_routes', 'execute_routes', 'cancel_routes', 'discard_routes',
                      'nr_catalog', 'nr_review', 'nr_match', 'nr_status', 'nr_check', 'nr_combo_save', 'split_render_routes_review', 'feeder_character_apply',
                      'prepare_dlss', 'update_dlss', 'packages', 'overview_inspect', 'extras_list', 'extra_review',

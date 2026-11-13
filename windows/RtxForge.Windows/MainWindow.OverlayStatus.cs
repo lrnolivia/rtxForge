@@ -25,6 +25,8 @@ public sealed partial class MainWindow
         var dialog = NewDialog();
         dialog.Title = "Overlay Status"; dialog.CloseButtonText = "Close";
         dialog.PrimaryButtonText = "Update all"; dialog.DefaultButton = ContentDialogButton.Close;
+        var hasReport = engine.OverlayRefreshResult is not null || File.Exists(OverlayRefreshReportPath);
+        if (hasReport) dialog.SecondaryButtonText = "Update results";
         dialog.IsPrimaryButtonEnabled = false;
         var body = new StackPanel { Spacing = 12, MinWidth = 320, MaxWidth = 820 };
         var summary = Prefs.Label("Checking installed overlays…");
@@ -58,7 +60,13 @@ public sealed partial class MainWindow
             dialog.IsPrimaryButtonEnabled = games.Length > 0 && !engine.IsPreview && !Busy;
         }
         catch (Exception error) { summary.Text = "Overlay Status could not be read."; notice.Text = error.Message; notice.Visibility = Visibility.Visible; }
-        if (await shown != ContentDialogResult.Primary) return;
+        var action = await shown;
+        if (action == ContentDialogResult.Secondary)
+        {
+            await ShowOverlayUpdateDetailsAsync();
+            return;
+        }
+        if (action != ContentDialogResult.Primary) return;
         var completed = await OperationDialog.ShowPreparedAsync(this, "update-overlays", progress => engine.ReviewOverlayPackagesAsync(progress));
         if (completed) await ShowOverlayStatusAsync();
     }

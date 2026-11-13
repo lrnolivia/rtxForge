@@ -3,6 +3,7 @@ import type {Review} from './engine';
 export interface FlowState {
  stage:'startup'|'checking'|'review'|'running'|'done'|'error';title:string;kind?:string;origin?:string;method?:string;
  review?:Review;progress?:Record<string,unknown>;result?:unknown;error?:string;cancelRequested?:boolean;targets?:Game[];acceptedTrust?:boolean;
+ overlayReportAction?:'Fix'|'Try again';
 }
 type Icon=(name:string)=>string;
 const verb=(kind?:string)=>kind==='uninstall'?'Restoring':kind==='remove-nr-addons'?'Removing':kind==='update-dlss'||kind==='update'?'Updating':kind==='install'||kind==='install-nr-addons'?'Installing':'Applying';
@@ -52,6 +53,7 @@ export function operationStep(state:FlowState,games:Game[],icon:Icon) {
 const stepActions:Record<string,string> = {
  install:'Install', 'install-nr-addons':'Install', 'remove-nr-addons':'Remove',
  update:'Update Features', 'update-dlss':'Update DLSS', uninstall:'Restore', adopt:'Adopt', 'adopt-clean':'Install',
+ 'overlay-update-report':'Update Overlays', repair:'Repair',
 };
 export function flowSteps(kind:string,phase:'start'|'review'|'apply',chooseGames=false) {
  const steps = [kind==='review'?'Review changes':'Review games',stepActions[kind] || 'Apply changes'];
@@ -73,7 +75,12 @@ export function operationFlow(state:FlowState,games:Game[],icon:Icon,startup='',
   footer='<button class="quiet" data-action="discard-review">Cancel</button><button class="primary" data-action="startup-review">Review games</button>';
  }else if(state.stage==='checking'||state.stage==='running'){
   body=operationStep(state,games,icon);
-  footer=state.stage==='checking'?'<button class="quiet" data-action="discard-review">Cancel</button>':(state.kind==='install-nr-addons'||state.kind==='remove-nr-addons')?'':`<button class="quiet" data-action="cancel-operation" ${state.cancelRequested?'disabled':''}>${state.cancelRequested?'Cancellation requested':'Request cancellation'}</button>`;
+  footer=state.stage==='checking'?'<button class="quiet" data-action="discard-review">Cancel</button>':(state.kind==='install-nr-addons'||state.kind==='remove-nr-addons'||state.kind==='overlay-update-report')?'':`<button class="quiet" data-action="cancel-operation" ${state.cancelRequested?'disabled':''}>${state.cancelRequested?'Cancellation requested':'Request cancellation'}</button>`;
+ }else if(state.stage==='review'&&review&&state.kind==='overlay-update-report'){
+  body=`<div class="flow-summary"><h2>${e(review.summary)}</h2></div>
+  ${rows.length?`<div class="flow-review-list overlay-results" tabindex="0" aria-label="Overlay results">${rows.map(row=>reviewRow(row,games,icon)).join('')}</div>`:''}
+  ${blocked.length?`<h3 class="flow-attention">Needs attention · ${blocked.length}</h3><div class="flow-review-list overlay-results" tabindex="0" aria-label="Games that need attention">${blocked.map(row=>reviewRow(row,games,icon,false)).join('')}</div>`:''}`;
+  footer=`<button class="quiet" data-action="operation-back">Done</button>${state.overlayReportAction?`<button class="primary" data-action="fix-overlay-report">${state.overlayReportAction}</button>`:''}`;
  }else if(state.stage==='review'&&review){
   body=`<div class="flow-summary"><h2>${rows.length?`${rows.length} game${rows.length===1?'':'s'} ready`:'Nothing ready yet'}</h2>${review.summary?`<p>${e(review.summary)}</p>`:''}</div><div class="flow-review-list">${rows.map(row=>reviewRow(row,games,icon)).join('')}${blocked.length?`<h3 class="flow-attention">${state.kind==='update'?'Skipped':'Needs attention'} · ${blocked.length}</h3>${blocked.map(row=>reviewRow(row,games,icon,false)).join('')}`:''}</div>${supported}${warnings.length?`<div class="flow-warnings">${warnings.map(row=>`<div>${icon('warning')}<p><strong>${e(row.name||row.title||'Review warning')}</strong>${e(row.reason||row.detail||'')}</p></div>`).join('')}</div>`:''}${review.note?`<p class="flow-note">${e(review.note)}</p>`:''}${installOptions}<p class="flow-assurance">Your files will only change after you review and confirm.</p>${review.trust?`<label class="trust-choice"><input id="review-trust" type="checkbox" ${state.acceptedTrust ? 'checked' : ''}/><span>${e(review.trust)}</span></label>`:''}`;
   footer=`<button class="quiet" data-action="discard-review">Back</button><button class="primary" data-action="confirm-operation" ${!rows.length||review.trust?'disabled':''}>${e(review.action||'Confirm changes')}</button>`;

@@ -11,6 +11,8 @@ public sealed partial class EngineForgeService
         ToReview(await CallAsync("overlay_ui_review", changes, m => progress?.Report(Phase(m))));
     public async Task<EngineReview> ReviewOverlayPackagesAsync(IProgress<PrepareProgress>? progress = null, IEnumerable<string>? games = null) =>
         ToReview(await CallAsync("overlay_package_review", ForgeSettings.Load().OverlayReviewOptions(games), m => progress?.Report(Phase(m))));
+    public async Task<EngineReview> ReviewOverlaySettingsRepairAsync(IProgress<PrepareProgress> progress, string[] games) =>
+        ToReview(await CallAsync("overlay_package_review", new { repair_settings = true, target_games = games }, m => progress.Report(Phase(m))));
     public Task ReloadCompanionPresetsAsync() => CallAsync("companion_reload");
     public async Task<IReadOnlyList<Game>> CompanionTargetsAsync()
     {

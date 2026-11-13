@@ -109,6 +109,88 @@ public sealed class OperationDialog
         return flow.completed;
     }
 
+    public static async Task ShowOverlayReportAsync(MainWindow shell, EngineForgeService engine, JsonObject report)
+    {
+        var dialog = shell.NewDialog();
+        SetWidth(dialog, 640, 760);
+        dialog.Title = "Review Overlay Update";
+        dialog.CloseButtonText = "Done";
+        dialog.DefaultButton = ContentDialogButton.Close;
+
+        JsonObject[] Rows(string key) => report[key] is JsonArray array ? array.OfType<JsonObject>().ToArray() : [];
+        string? Identity(JsonObject row) => (row["game"] ?? row["target"])?.ToString();
+        Game? Installation(JsonObject row) => Identity(row) is { } path
+            ? shell.Games.FirstOrDefault(game => string.Equals(game.Location, path, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(game.EngineRow?["target_dir"]?.ToString(), path, StringComparison.OrdinalIgnoreCase))
+            : null;
+        Game? GameFor(JsonObject row) => Installation(row)
+            ?? shell.Games.FirstOrDefault(game => game.Name == row["title"]?.ToString());
+
+        var updated = Rows("updated_games");
+        var skipped = Rows("skipped");
+        var blocked = Rows("blocked");
+        var error = report["error"]?.ToString();
+        var settingsRepair = blocked.Where(row => row["action"]?.ToString() == "repair-settings")
+            .Select(Identity).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var repair = blocked.Where(row => row["action"]?.ToString() == "repair")
+            .Select(Installation).OfType<Game>().Where(game => game.CanUpdateFeatures && !game.Blocked)
+            .DistinctBy(game => game.Id).ToArray();
+        var retry = report["status"]?.ToString() == "pending"
+            && (blocked.Any(row => row["action"]?.ToString() == "retry") || blocked.Any(row => row["action"] is null));
+
+        var body = new StackPanel { Spacing = 12 };
+        body.Children.Add(new TextBlock
+        {
+            Text = $"{report["updated"] ?? JsonValue.Create(0)} updated · {skipped.Count(row => row["badge"] is null)} already current",
+            FontSize = 20, FontWeight = FontWeights.SemiBold,
+        });
+        var results = new StackPanel { Spacing = 4 };
+        foreach (var row in updated)
+            results.Children.Add(ReviewRow(GameFor(row), row["title"]?.ToString() ?? "Game", "Overlay updated", "Updated", true));
+        foreach (var row in skipped)
+        {
+            var badge = row["badge"]?.ToString();
+            results.Children.Add(ReviewRow(GameFor(row), row["title"]?.ToString() ?? "Game",
+                row["detail"]?.ToString() ?? "", badge ?? "Current", true));
+        }
+        if (results.Children.Count > 0)
+            body.Children.Add(new ScrollViewer { Content = results, MaxHeight = blocked.Length > 0 || error is not null ? 224 : 380,
+                HorizontalScrollMode = ScrollMode.Disabled });
+        if (blocked.Length > 0 || error is not null)
+        {
+            body.Children.Add(Prefs.Label($"Needs attention · {blocked.Length + (error is null ? 0 : 1)}", "ForgeHeadingTextStyle"));
+            var attention = new StackPanel { Spacing = 4 };
+            foreach (var row in blocked)
+                attention.Children.Add(ReviewRow(GameFor(row), row["title"]?.ToString() ?? "Game",
+                    row["detail"]?.ToString() ?? "", row["action"]?.ToString() switch
+                    {
+                        "repair" or "repair-settings" => "Needs repair",
+                        "retry" => "Try again",
+                        _ => "Check needed",
+                    }, false));
+            if (error is not null)
+                attention.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Error, Message = error });
+            body.Children.Add(new ScrollViewer { Content = attention, MaxHeight = 216, HorizontalScrollMode = ScrollMode.Disabled });
+        }
+        var content = new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled,
+            MaxHeight = Math.Max(160, dialog.XamlRoot.Size.Height - 236) };
+        var canFix = settingsRepair.Length > 0 || repair.Length > 0;
+        dialog.Content = WithSteps(dialog, content, FlowStep.Review, canFix ? "Fix" : "Update Overlays",
+            includesPresets: false, reviewLabel: "Review games");
+        dialog.PrimaryButtonText = canFix ? "Fix" : retry ? "Try again" : "";
+        dialog.IsPrimaryButtonEnabled = !shell.Busy;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        if (settingsRepair.Length > 0)
+        {
+            if (!await ShowPreparedAsync(shell, "repair-overlay-records", progress =>
+                    engine.ReviewOverlaySettingsRepairAsync(progress, settingsRepair))) return;
+        }
+        else if (repair.Length > 0 && !await shell.LaunchAction("repair", repair, repair.Length == 1 ? shell.GameTuning(repair[0]) : null))
+            return;
+        await shell.RetryOverlayUpdateAsync(engine);
+    }
+
     /// <summary>"Install Features" presets step that precedes the review (Linux: _presets_confirmed).</summary>
     public static async Task<Tuning?> AskPresetsAsync(MainWindow shell, Tuning initial, Game? game = null, IReadOnlyList<Game>? targets = null)
     {
@@ -183,6 +265,7 @@ public sealed class OperationDialog
         "uninstall" => "Review Restoration",
         "update-dlss" => "Review DLSS Update",
         "update-overlays" => "Update Overlays",
+        "repair-overlay-records" => "Review Overlay Repair",
         "adopt" or "adopt-clean" => "Review Adoption",
         _ => "Review Presets",
     };
@@ -340,6 +423,7 @@ public sealed class OperationDialog
         "uninstall" => "Restore",
         "update-dlss" => "Update",
         "update-overlays" => "Update Overlays",
+        "repair-overlay-records" => "Repair",
         "adopt" => "Adopt with rtxForge",
         "adopt-clean" => "Adopt and clean install",
         _ => "Apply presets",

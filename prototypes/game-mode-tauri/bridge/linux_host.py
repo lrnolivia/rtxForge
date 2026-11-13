@@ -240,6 +240,9 @@ def bind(root, send):
     def overlay_review(params, packages=False):
         e = engine_bridge.module(service.config)
         plan = overlay_packages.prepare(e, storage(service.config), params) if packages else overlay_ui.prepare(e, params)
+        if packages and params.get('repair_settings') is True:
+            return reviewed('Review Overlay Repair', [{'name': p['name'], 'game': p['game'], 'detail': p['summary']} for p in plan['plans']],
+                            plan, global_controls.execute, blocked=plan['blocked'], action='Repair')
         return reviewed('Review overlay update' if packages else 'Review game menus', [{'name': value['name'], 'detail': value['summary']} for value in plan['plans']], plan, global_controls.execute, blocked=plan['blocked'], action='Update overlays' if packages else 'Apply menus')
     def art_store(params):
         import transactions as t
@@ -281,6 +284,10 @@ def bind(root, send):
     def overlay_status(params):
         import overlay_status as status_inventory
         return status_inventory.snapshot(service.config)
+
+    def overlay_refresh_retry(_params):
+        import linux_runtime
+        return linux_runtime.retry_installed_overlays(service.config)
 
     import overview_summary
     import nr_addons
@@ -351,6 +358,7 @@ def bind(root, send):
                    test_finish=lambda p: game_notes.finish(service.config, p['row'], helper=p.get('helper')),
                    report_draft=report_draft, report_preview=report_preview, global_review=global_review,
                    overlay_ui_review=lambda p: overlay_review(p), overlay_package_review=lambda p: overlay_review(p, True),
+                   overlay_refresh_retry=overlay_refresh_retry,
                    art_store=art_store, art_reset=art_reset, sgdb_status=lambda _p: {'connected': bool(steamgrid_credentials.load_key())},
                    sgdb_connect=sgdb_connect, sgdb_disconnect=lambda _p: {'external': steamgrid_credentials.clear_key()},
                    sgdb_search=lambda p: [{'id': item['id'], 'name': item['name']} for item in steamgrid_client.Client().search(p['term'])],

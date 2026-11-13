@@ -15,6 +15,7 @@ public sealed partial class GamePage : Page
     readonly MainWindow shell = App.Main!;
     Game game = null!;
     string section = "Overview";
+    Expander? overlaySettings;
     Services.AccentPalette? gamePalette;
     readonly CollapsingHero collapsingHero;
     double heroLayoutWidth;
@@ -153,6 +154,11 @@ public sealed partial class GamePage : Page
         BugReportButton.IsEnabled = !shell.Service.IsPreview;
         AdoptionItem.Visibility = game.AdoptionAvailable ? Visibility.Visible : Visibility.Collapsed;
         OfflineLaunchItem.Visibility = game.OfflineLaunchAvailable ? Visibility.Visible : Visibility.Collapsed;
+        SteamLaunchItem.Visibility = game.Library == "Steam" && !game.OfflineOnly
+            && uint.TryParse(game.AppId, out var appId) && appId != 0 ? Visibility.Visible : Visibility.Collapsed;
+        SteamLaunchItem.IsEnabled = !shell.Service.IsPreview;
+        RepairItem.Visibility = game.CanUpdateFeatures ? Visibility.Visible : Visibility.Collapsed;
+        RepairItem.IsEnabled = !game.Blocked && !shell.Busy && !shell.Service.IsPreview;
         UpdateDlssItem.IsEnabled = !game.Blocked;
         OpenFolderItem.IsEnabled = !shell.Service.IsPreview && Directory.Exists(game.Location);
         Build(section);
@@ -184,12 +190,35 @@ public sealed partial class GamePage : Page
     void OnUpdateDlss(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("update-dlss", [game]);
     void OnAdoption(object sender, RoutedEventArgs e) => _ = shell.ReviewAdoptionAsync([game]);
     void OnLaunchOffline(object sender, RoutedEventArgs e) => _ = shell.LaunchOfflineAsync(game);
+    void OnLaunchSteam(object sender, RoutedEventArgs e)
+    {
+        if (SteamLaunchItem.Visibility != Visibility.Visible || !SteamLaunchItem.IsEnabled
+            || !uint.TryParse(game.AppId, out var appId) || appId == 0) return;
+        try { MainWindow.OpenUri($"steam://rungameid/{appId}"); }
+        catch (System.ComponentModel.Win32Exception) { shell.ShowToast("Couldn’t open Steam."); }
+    }
+    void OnRepair(object sender, RoutedEventArgs e) => _ = shell.LaunchAction("repair", [game],
+        game.UsesFeeder ? null : shell.GameTuning(game));
+    void OnCopyLocation(object sender, RoutedEventArgs e) => CopyLocation();
+    void CopyLocation()
+    {
+        var data = new DataPackage();
+        data.SetText(game.Location);
+        Clipboard.SetContent(data);
+        shell.ShowToast("Location copied.");
+    }
+    void OnOverlaySettings(object sender, RoutedEventArgs e)
+    {
+        SelectSection("Features");
+        if (overlaySettings is not null) overlaySettings.IsExpanded = true;
+    }
     void OnRemoveFromLibrary(object sender, RoutedEventArgs e) => _ = shell.ConfirmRemoveLibraryEntriesAsync([game]);
     void OnOpenFolder(object sender, RoutedEventArgs e) => _ = shell.OpenGameFolderAsync(game);
 
     void Build(string name)
     {
         section = name;
+        overlaySettings = null;
         PageHost.Children.Clear();
         var g = game;
 
@@ -332,8 +361,9 @@ public sealed partial class GamePage : Page
                 if (g.ProviderCandidatesText.Length > 0)
                     package.Add(new Expander { Header = "Package details", Content = Prefs.Label(g.ProviderCandidatesText),
                         HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
-                package.Add(new Expander { Header = "Overlay", Content = new GameOverlayPreferencesView(shell, g),
-                    HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+                overlaySettings = new Expander { Header = "Overlay", Content = new GameOverlayPreferencesView(shell, g),
+                    HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+                package.Add(overlaySettings);
                 PageHost.Children.Add(package);
                 if (g.RuntimeProvider == "vulkan-native")
                 {
@@ -391,13 +421,8 @@ public sealed partial class GamePage : Page
                 var open = Prefs.ActionButton("Open", (_, _) => OnOpenFolder(this, new RoutedEventArgs()));
                 open.IsEnabled = OpenFolderItem.IsEnabled;
                 locationTools.Children.Add(DetailActionCard("Game Folder", g.Location, open, ""));
-                locationTools.Children.Add(DetailActionCard("Copy Location", "Copy the install path to the clipboard.", Prefs.ActionButton("Copy", (_, _) =>
-                {
-                    var data = new DataPackage();
-                    data.SetText(g.Location);
-                    Clipboard.SetContent(data);
-                    shell.ShowToast("Location copied.");
-                }), ""));
+                locationTools.Children.Add(DetailActionCard("Copy Location", "Copy the install path to the clipboard.",
+                    Prefs.ActionButton("Copy", (_, _) => CopyLocation()), ""));
                 tools.Add(locationTools);
                 PageHost.Children.Add(tools);
                 var reshade = new PreferencesGroup("ReShade & add-ons", "Manage the ReShade runtime, presets, filters and add-ons for this game.");

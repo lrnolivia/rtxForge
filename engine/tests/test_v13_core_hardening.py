@@ -2481,6 +2481,35 @@ class CoreHardeningTests(unittest.TestCase):
         chosen = self.m.choose_rtxmfg_proxy(self.game, {"dxgi.dll"})
         self.assertEqual(chosen, "winmm.dll")
 
+    def test_winhttp_is_never_selected_as_injection_proxy(self):
+        write_minimal_pe(self.exe, ["winhttp.dll", "winmm.dll"])
+        prior = {"current": {"proxy": "winhttp.dll", "installed_hashes": {}}}
+        self.assertEqual(self.m.choose_optiscaler_proxy(
+            self.target, {"detected": False}, prior, self.exe,
+            prefer_imported=True, preserve_prior=True), "winmm.dll")
+        self.assertEqual(self.m.choose_rtxmfg_proxy(self.game, set()), "winmm.dll")
+        write_minimal_pe(self.exe, ["winhttp.dll"])
+        self.assertNotEqual(self.m.choose_optiscaler_proxy(
+            self.target, {"detected": False}, prior, self.exe,
+            prefer_imported=True, preserve_prior=True), "winhttp.dll")
+        self.assertIsNone(self.m.choose_rtxmfg_proxy(self.game, set()))
+        self.assertIn("winhttp.dll", self.m.PROXY_NAMES)
+        self.assertIn("winhttp.dll", self.m.DEEP_CLEAN_PROXY_NAMES)
+
+    def test_refresh_migrates_legacy_winhttp_and_restore_remains_safe(self):
+        write_minimal_pe(self.exe, ["winhttp.dll", "winmm.dll"])
+        self.game.dlss = True
+        self.game.dlssg = True
+        archive = {"name": "fixture.7z", "sha256": "a" * 64, "tag": "fixture"}
+        with patch.object(self.m, "FORBIDDEN_INJECTION_PROXY_NAMES", frozenset()):
+            first = self.m.install_target(self.game, self._sm86_payload(), archive, "ada")
+        self.assertEqual(first["proxy"], "winhttp.dll")
+        refreshed = self.m.install_target(self.game, self._sm86_payload(), archive, "ada")
+        self.assertEqual(refreshed["proxy"], "winmm.dll")
+        self.assertFalse((self.target / "winhttp.dll").exists())
+        self.m.restore_target(self.game)
+        self.assertFalse((self.target / "winmm.dll").exists())
+
     def test_y4my_v4_prefers_imported_wininet_over_unproven_dxgi(self):
         write_minimal_pe(self.exe, ["wininet.dll"])
         self.game.dlss = True

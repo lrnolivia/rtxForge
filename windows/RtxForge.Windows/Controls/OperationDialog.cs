@@ -130,6 +130,8 @@ public sealed class OperationDialog
         var skipped = Rows("skipped");
         var blocked = Rows("blocked");
         var error = report["error"]?.ToString();
+        var settingsRepair = blocked.Where(row => row["action"]?.ToString() == "repair-settings")
+            .Select(Identity).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var repair = blocked.Where(row => row["action"]?.ToString() == "repair")
             .Select(Installation).OfType<Game>().Where(game => game.CanUpdateFeatures && !game.Blocked)
             .DistinctBy(game => game.Id).ToArray();
@@ -162,7 +164,7 @@ public sealed class OperationDialog
                 attention.Children.Add(ReviewRow(GameFor(row), row["title"]?.ToString() ?? "Game",
                     row["detail"]?.ToString() ?? "", row["action"]?.ToString() switch
                     {
-                        "repair" => "Needs repair",
+                        "repair" or "repair-settings" => "Needs repair",
                         "retry" => "Try again",
                         _ => "Check needed",
                     }, false));
@@ -172,13 +174,19 @@ public sealed class OperationDialog
         }
         var content = new ScrollViewer { Content = body, HorizontalScrollMode = ScrollMode.Disabled,
             MaxHeight = Math.Max(160, dialog.XamlRoot.Size.Height - 236) };
-        dialog.Content = WithSteps(dialog, content, FlowStep.Review, repair.Length > 0 ? "Fix" : "Update Overlays",
+        var canFix = settingsRepair.Length > 0 || repair.Length > 0;
+        dialog.Content = WithSteps(dialog, content, FlowStep.Review, canFix ? "Fix" : "Update Overlays",
             includesPresets: false, reviewLabel: "Review games");
-        dialog.PrimaryButtonText = repair.Length > 0 ? "Fix" : retry ? "Try again" : "";
+        dialog.PrimaryButtonText = canFix ? "Fix" : retry ? "Try again" : "";
         dialog.IsPrimaryButtonEnabled = !shell.Busy;
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
 
-        if (repair.Length > 0 && !await shell.LaunchAction("repair", repair, repair.Length == 1 ? shell.GameTuning(repair[0]) : null))
+        if (settingsRepair.Length > 0)
+        {
+            if (!await ShowPreparedAsync(shell, "repair-overlay-records", progress =>
+                    engine.ReviewOverlaySettingsRepairAsync(progress, settingsRepair))) return;
+        }
+        else if (repair.Length > 0 && !await shell.LaunchAction("repair", repair, repair.Length == 1 ? shell.GameTuning(repair[0]) : null))
             return;
         await shell.RetryOverlayUpdateAsync(engine);
     }
@@ -257,6 +265,7 @@ public sealed class OperationDialog
         "uninstall" => "Review Restoration",
         "update-dlss" => "Review DLSS Update",
         "update-overlays" => "Update Overlays",
+        "repair-overlay-records" => "Review Overlay Repair",
         "adopt" or "adopt-clean" => "Review Adoption",
         _ => "Review Presets",
     };
@@ -414,6 +423,7 @@ public sealed class OperationDialog
         "uninstall" => "Restore",
         "update-dlss" => "Update",
         "update-overlays" => "Update Overlays",
+        "repair-overlay-records" => "Repair",
         "adopt" => "Adopt with rtxForge",
         "adopt-clean" => "Adopt and clean install",
         _ => "Apply presets",

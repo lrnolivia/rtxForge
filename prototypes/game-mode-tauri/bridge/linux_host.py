@@ -240,6 +240,9 @@ def bind(root, send):
     def overlay_review(params, packages=False):
         e = engine_bridge.module(service.config)
         plan = overlay_packages.prepare(e, storage(service.config), params) if packages else overlay_ui.prepare(e, params)
+        if packages and params.get('repair_settings') is True:
+            return reviewed('Review Overlay Repair', [{'name': p['name'], 'game': p['game'], 'detail': p['summary']} for p in plan['plans']],
+                            plan, global_controls.execute, blocked=plan['blocked'], action='Repair')
         return reviewed('Review overlay update' if packages else 'Review game menus', [{'name': value['name'], 'detail': value['summary']} for value in plan['plans']], plan, global_controls.execute, blocked=plan['blocked'], action='Update overlays' if packages else 'Apply menus')
     def art_store(params):
         import transactions as t

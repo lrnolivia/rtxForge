@@ -3810,6 +3810,7 @@ OPERATION_WORDS={
     'menus':('Review Game Menus','Apply','Applying'),
     'update-overlays':('Update Overlays','Update Overlays','Updating'),
     'overlay-update-report':('Review Overlay Update','Fix','Fixing'),
+    'repair-overlay-records':('Review Overlay Repair','Repair','Repairing'),
     'storage':('Review App Storage','Clear','Clearing'),
 }
 
@@ -11012,7 +11013,8 @@ class Window(Adw.ApplicationWindow):
         updated=report.get('updated_games') or []
         skipped=report.get('skipped') or []
         blocked=report.get('blocked') or []
-        badges={'repair':'Needs repair','retry':'Try again'}
+        badges={'repair':'Needs repair','repair-settings':'Needs repair','retry':'Try again'}
+        settings_repair=list(dict.fromkeys(item['game'] for item in blocked if item.get('action')=='repair-settings' and item.get('game')))
         paths={item['game'] for item in blocked if item.get('action')=='repair' and item.get('game')}
         repair=[game for game in self.games if game['game'] in paths and game.get('installed')
                 and game.get('installed_on')!='windows' and not game.get('blocked')]
@@ -11029,7 +11031,16 @@ class Window(Adw.ApplicationWindow):
                 'summary':f"{report.get('updated',0)} updated · {sum('badge' not in item for item in skipped)} already current"}
         flow=self.new_operation_flow('overlay-update-report',[])
         def fix(_review):
-            if repair:
+            if settings_repair:
+                flow.dialog.force_close()
+                params={'repair_settings':True,'target_games':settings_repair}
+                def apply(review):
+                    result=runtime.apply_review(review)
+                    runtime.retry_installed_overlays(self.service.config)
+                    return result
+                self.bulk_review('repair-overlay-records',lambda e:runtime.overlay_packages_review(e,params),apply,
+                                 ['Synchronize overlay recovery records','Game settings and original backups are kept'])
+            elif repair:
                 flow.dialog.force_close()
                 self.launch_action('repair',targets=repair)
                 if self.operation_flow is not None:
@@ -11038,8 +11049,8 @@ class Window(Adw.ApplicationWindow):
                 flow.show_working('Updating overlays…')
                 self.start('Updating overlays',lambda:runtime.retry_installed_overlays(self.service.config),
                            lambda result:self.overlay_refresh_review(report if result.get('status')=='busy' else result))
-        if not repair and retry:flow.verb='Try again'
-        flow.show_review(review,fix,enabled=bool(runtime and (repair or retry) and not self.busy and not self.options.demo),report=True)
+        if not settings_repair and not repair and retry:flow.verb='Try again'
+        flow.show_review(review,fix,enabled=bool(runtime and (settings_repair or repair or retry) and not self.busy and not self.options.demo),report=True)
 
     def check_overlay_refresh(self):
         import json,hashlib

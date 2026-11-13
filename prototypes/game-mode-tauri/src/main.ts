@@ -843,18 +843,18 @@ function showOverlayReport(report: Record<string,unknown>) {
   const updated = overlayReportRows(report,'updated_games');
   const skipped = overlayReportRows(report,'skipped');
   const attention = overlayReportRows(report,'blocked');
-  const blocked: Record<string,unknown>[] = attention.map(item=>({...item,badge:item.action==='repair'?'Needs repair':item.action==='retry'?'Try again':'Check needed'}));
+  const blocked: Record<string,unknown>[] = attention.map(item=>({...item,badge:item.action==='repair'||item.action==='repair-settings'?'Needs repair':item.action==='retry'?'Try again':'Check needed'}));
   if(report.error) blocked.push({title:'Overlay update',detail:String(report.error),badge:'Check needed'});
   const rows = [
     ...updated.map(item=>({...item,game:item.game||item.target,detail:'Overlay updated',badge:'Updated'})),
     ...skipped.map(item=>({...item,badge:item.badge||'Current'})),
   ];
-  const repair = overlayRepairGames(report);
+  const repair = overlayRepairGames(report).length || attention.some(item=>item.action==='repair-settings' && typeof item.game==='string');
   const retry = report.status==='pending' && attention.some(item=>!item.action || item.action==='retry');
   const origin = view==='operation' ? operation?.origin : view;
   operation = {stage:'review',title,kind:'overlay-update-report',execute:'inspect',origin,
     review:{token:'',title,rows,blocked,summary:`${Number(report.updated)||0} updated · ${skipped.filter(item=>!item.badge).length} already current`},
-    overlayReportAction:backend.enabled ? repair.length?'Fix':retry?'Try again':undefined : undefined};
+    overlayReportAction:backend.enabled ? repair?'Fix':retry?'Try again':undefined : undefined};
   setView('operation');
 }
 
@@ -872,6 +872,13 @@ async function fixOverlayReport() {
     } catch (problem) {
       state.stage='error'; state.error=problem instanceof Error?problem.message:'Overlay update failed.'; render();
     }
+    return;
+  }
+  const settingsPaths = [...new Set(overlayReportRows(report,'blocked')
+    .filter(item=>item.action==='repair-settings' && typeof item.game==='string').map(item=>String(item.game)))];
+  if (settingsPaths.length) {
+    await withOperation('Review Overlay Repair','overlay_package_review',{repair_settings:true,target_games:settingsPaths});
+    if (operation?.method==='overlay_package_review' && operation.stage==='review') operation.refreshOverlaysAfterRepair=true;
     return;
   }
   state.stage='checking'; render();

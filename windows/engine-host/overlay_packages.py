@@ -86,7 +86,54 @@ def shared_overlay_revision(e, path, record):
     return candidate, True
 
 
+def settings_repair(e, path, raw, record, root, target):
+    """Reconcile a recorded settings change without changing the live INI."""
+    current = record['current']
+    marker_path = target / cross_os.MARKER
+    marker_raw = bulk._read(marker_path)
+    marker = json.loads(marker_raw)
+    owned, marked = current['installed_hashes'], marker.get('files') or {}
+    config = 'OptiScaler.ini'
+    if owned == marked:
+        return None
+    if (marker.get('provider', {}).get('id') != 'skynizz' or marker.get('proxy') != current['proxy']
+            or marker.get('feature_mode') != current['feature_mode'] or marker.get('os') != cross_os.THIS_OS
+            or not record.get('cross_os_revision') or marker.get('revision') != record['cross_os_revision']
+            or owned.keys() != marked.keys() or config not in owned
+            or any(owned[name] != marked[name] for name in owned if name != config)):
+        return None
+    config_path = target / config
+    digest = t.sha(bulk._read(config_path))
+    if digest != marked[config]:
+        return None
+    shared = cross_os.shared_state(target) / 'baseline.json'
+    if marker.get('shared_state') is not True or not shared.is_file():
+        return None
+    shared_raw = bulk._read(shared)
+    portable = cross_os.portable(record, path.parent, target)
+    shared_record = json.loads(shared_raw)
+    if any(shared_record.get(key) != portable.get(key) for key in
+           ('schema', 'status', 'target_dir', 'exe', 'originals', 'managed_paths', 'cross_os_revision')):
+        return None
+    shared_current = shared_record.get('current') or {}
+    if any(shared_current.get(key) != portable['current'].get(key) for key in
+           ('provider_id', 'proxy', 'feature_mode', 'installed_hashes', 'archive')):
+        return None
+    e.verify_baseline_integrity(target, record, adopt_legacy=False)
+    baseline = copy.deepcopy(record)
+    baseline['current']['installed_hashes'][config] = digest
+    shared_current['installed_hashes'][config] = digest
+    checks = {str(path): t.sha(raw), str(marker_path): t.sha(marker_raw),
+              str(shared): t.sha(shared_raw), str(config_path): digest}
+    return {'name': record.get('name') or root.name, 'game': str(root), 'root': str(root), 'target': str(target),
+            'checks': checks, 'writes': {str(path): bulk._json(baseline), str(shared): bulk._json(shared_record)},
+            'summary': 'Synchronize overlay recovery records',
+            'note': 'Your current settings, package files and original backups are kept.'}
+
+
 def prepare(e, state, params=None):
+    repair_settings = (params or {}).get('repair_settings') is True
+    t.need(not repair_settings or 'target_games' in params, 'Choose games with overlay recovery records to repair.')
     if params is not None:
         overlay_settings.options(params)
         routes.selected(params)  # Validate an explicitly scoped, nonempty selection.
@@ -106,13 +153,12 @@ def prepare(e, state, params=None):
             if record.get('status') != 'active': continue
             name = record.get('name') or name
             if record.get('provider_id') == 'feeder':
+                if repair_settings: continue
                 root = record.get('game')
                 plan, unchanged = routes.feeder_plan(e, path, params, running, digests)
                 if plan: plans.append(plan)
                 if unchanged: skipped.append(unchanged)
                 continue
-            record, adopted = shared_overlay_revision(e, path, record)
-            current = record.get('current') or {}
             target = t.safe(record['target_dir']); exe = t.safe(record['exe'])
             t.need(path.parent == e.state_dir_for(target) and exe.parent == target, 'Installation identity differs.')
             root = target
@@ -120,6 +166,20 @@ def prepare(e, state, params=None):
                 if parent.parent.name.casefold() in ('common', 'pinnedbuilds'): root = parent; break
             if not routes.selected(params, root, target): continue
             if not target.is_dir() or not exe.is_file():
+                continue
+            record, adopted = shared_overlay_revision(e, path, record)
+            current = record.get('current') or {}
+            if not adopted and current.get('provider_id') == 'skynizz':
+                repair = settings_repair(e, path, original, record, root, target)
+                if repair:
+                    bulk._check(e, repair, digests, running)
+                    if repair_settings:
+                        plans.append(repair)
+                    else:
+                        blocked.append(routes.attention(name, routes.OverlayAttention(
+                            'The overlay recovery records are behind the saved game settings.', 'repair-settings'), root))
+                    continue
+            if repair_settings:
                 continue
             if current.get('provider_id') != 'skynizz':
                 skipped.append({'title': name, 'game': str(root), 'badge': 'Not applicable', 'detail': 'Uses Feeder/ReShade.' if record.get('provider_id') == 'feeder'
@@ -228,6 +288,8 @@ def prepare(e, state, params=None):
             plans.append(plan)
         except (t.Refusal, e.Stop, OSError, ValueError, KeyError, TypeError) as error:
             blocked.append(routes.attention(name, error, root))
+    if repair_settings:
+        return {'engine': e, 'plans': plans, 'blocked': blocked, 'skipped': []}
     more, failures, unchanged = routes.vulkan_plans(e, params, running, digests)
     return {'engine': e, 'plans': plans + more, 'blocked': blocked + failures, 'skipped': skipped + unchanged,
             'record_overlay_updates': True}

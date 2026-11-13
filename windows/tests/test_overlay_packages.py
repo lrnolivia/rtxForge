@@ -69,6 +69,32 @@ assert identity['provider']['id']=='skynizz'
 assert identity['revision']==updated['cross_os_revision']==published['cross_os_revision']
 assert updated['cross_os_extras']==published['cross_os_extras']==portable['cross_os_extras']
 assert updated['originals']==record['originals']
+# A saved INI can match the marker while both recovery records still describe
+# the prior settings. Offer a metadata-only repair and keep the real INI bytes.
+ini=root/'OptiScaler.ini'
+saved_ini=ini.read_bytes()+b'\n; changed by the game overlay\n'
+ini.write_bytes(saved_ini)
+identity.update(os=cross_os.THIS_OS,shared_state=True,feature_mode=updated['current']['feature_mode'])
+identity['files']['OptiScaler.ini']=t.sha(saved_ini)
+marker.write_text(json.dumps(identity))
+report=overlays.prepare(e,h.LOCAL/'state')
+assert not report['plans'] and report['blocked'][0]['action']=='repair-settings',report['blocked']
+repair=overlays.prepare(e,h.LOCAL/'state',{'target_games':[str(root)],'repair_settings':True})
+assert len(repair['plans'])==1 and not repair['blocked'],repair['blocked']
+assert set(repair['plans'][0]['writes'])=={str(baseline),str(shared)}
+ini.write_bytes(saved_ini+b'; changed after review')
+try:
+    bulk.execute(repair)
+    raise AssertionError('Changed settings accepted after repair review')
+except t.Refusal:
+    pass
+assert t.read_json(baseline)['current']['installed_hashes']['OptiScaler.ini']!=t.sha(saved_ini)
+ini.write_bytes(saved_ini)
+repair=overlays.prepare(e,h.LOCAL/'state',{'target_games':[str(root)],'repair_settings':True})
+bulk.execute(repair)
+assert ini.read_bytes()==saved_ini and t.read_json(baseline)['originals']==record['originals']
+assert t.read_json(baseline)['current']['installed_hashes']['OptiScaler.ini']==t.sha(saved_ini)
+assert t.read_json(shared)['current']['installed_hashes']['OptiScaler.ini']==t.sha(saved_ini)
 # A real overlay revision from Linux may have new DLL hashes while Windows'
 # local record still names the previous revision. Matching restore ownership
 # allows one read-only review and an atomic state synchronization.

@@ -321,6 +321,11 @@ def overlay_ui_review(params):
 def overlay_package_review(params):
     import overlay_packages
     plan = overlay_packages.prepare(engine_bridge.module(_config()), LOCAL / 'state', params)
+    if params.get('repair_settings') is True:
+        return _review('overlay-packages', 'Review Overlay Repair',
+                       [_item(p['name'], p['summary'], game=p['game'], details=p['note']) for p in plan['plans']],
+                       blocked=plan['blocked'], payload=plan, action='Repair',
+                       note='Only recovery records change. Your game settings and backups are kept.')
     return _review('overlay-packages', 'Update Overlays',
                    [_item(p['name'], p['summary'], game=p.get('game'), details=p['note']) for p in plan['plans']],
                    blocked=plan['blocked'], skipped=plan['skipped'], payload=plan, action='Update Overlays',

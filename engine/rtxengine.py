@@ -205,6 +205,11 @@ REQUIRED_PREFIXES = {
 }
 PROXY_NAMES = OPTISCALER_SUPPORTED_PROXY_NAMES
 
+# Keep legacy loader names in the supported/detection inventory so existing
+# installations can still be identified and restored, but never select this
+# network library for a new or refreshed injection.
+FORBIDDEN_INJECTION_PROXY_NAMES = frozenset({"winhttp.dll"})
+
 
 ANTI_CHEAT_PATTERNS = (
     "easyanticheat*.exe",
@@ -2034,7 +2039,7 @@ def choose_rtxmfg_proxy(
 
     for name in RTXMFG_SUPPORTED_PROXY_NAMES:
         low = name.casefold()
-        if low in reserved or low not in imports:
+        if low in FORBIDDEN_INJECTION_PROXY_NAMES or low in reserved or low not in imports:
             continue
         dst = game.target_dir / name
         if dst.exists() and low not in managed:
@@ -2194,7 +2199,8 @@ def choose_optiscaler_proxy(
                 return name
         return None
 
-    supported = list(OPTISCALER_SUPPORTED_PROXY_NAMES)
+    supported = [name for name in OPTISCALER_SUPPORTED_PROXY_NAMES
+                 if name.casefold() not in FORBIDDEN_INJECTION_PROXY_NAMES]
     if reshade.get("detected"):
         supported = [name for name in supported if name.casefold() != "dxgi.dll"]
 

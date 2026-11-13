@@ -10,7 +10,7 @@ export const allowedMethods = new Set(['hello', 'hardware', 'scan', 'prepare', '
 allowedMethods.add('scan_game');
 ['test_start', 'test_finish', 'hdr_status', 'hdr_review'].forEach(method => allowedMethods.add(method));
 ['notes_get', 'report_draft', 'report_preview'].forEach(method => allowedMethods.add(method));
-['global_review', 'overlay_ui_review', 'overlay_package_review', 'storage_inventory', 'storage_review', 'update_check'].forEach(method => allowedMethods.add(method));
+['global_review', 'overlay_ui_review', 'overlay_package_review', 'overlay_refresh_retry', 'storage_inventory', 'storage_review', 'update_check'].forEach(method => allowedMethods.add(method));
 allowedMethods.add('executable_review');
 ['sgdb_status', 'sgdb_connect', 'sgdb_disconnect', 'sgdb_search', 'sgdb_artwork', 'sgdb_download', 'art_store', 'art_reset', 'art_sync_review', 'art_profiles', 'art_set_profile', 'media', 'feeder_storage'].forEach(method => allowedMethods.add(method));
 ['prepare_routes', 'execute_routes', 'cancel_routes', 'discard_routes'].forEach(method => allowedMethods.add(method));

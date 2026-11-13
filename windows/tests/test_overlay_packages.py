@@ -273,6 +273,21 @@ assert t.digest(destination)==glass_release['glass_sha256']
 saved=t.read_json(preset_path)['presets'][0]
 assert saved['name']=='My tuning' and saved['values']==preset_doc['presets'][0]['values']
 assert saved['recipe']==overlays.recipe(updated['current']['installed_hashes'],'nr-mfg')
+import vulkan_app
+import vulkan_dlssg_provider as native
+vulkan_state=h.LOCAL/'vulkan-test'
+vulkan_game=h.LOCAL/'vulkan-game'
+vulkan_game.mkdir()
+canonical=native.state_path(vulkan_game,vulkan_state)
+archived=canonical.with_name('retired-'+canonical.name+'-'+'a'*32)/'baseline.json'
+vulkan_record=json.dumps({'status':'active','provider_id':'rtxforge-vulkan-native:rdr2','target':str(vulkan_game)}).encode()
+t.atomic_file(archived,vulkan_record,0o600)
+t.atomic_file(canonical/'baseline.json',vulkan_record,0o600)
+with patch.object(vulkan_app,'state_root',return_value=vulkan_state), patch.object(vulkan_app,'bundled',return_value=(None,)*4):
+    plans, attention, unchanged=overlays.routes.vulkan_plans(e,None,lambda _:True)
+    assert not plans and not unchanged and len(attention)==1,attention
+    assert attention[0]['action']=='retry' and attention[0]['game']==str(vulkan_game),attention
+assert archived.read_bytes()==vulkan_record,'archived recovery changed'
 print('PASS: native-overlay review is read-only; loader, state and marker update atomically; tuning/originals preserved; idempotence, drift/running guards and exact rollback.')
 '''
 

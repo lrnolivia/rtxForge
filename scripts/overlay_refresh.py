@@ -91,10 +91,12 @@ def run(root,state,prepare,execute):
         for plan in review.get('plans') or []:
             if plan.get('target') in skip: continue
             key = str(plan.get('target') or plan.get('game') or plan['name'])
-            updated_games[key] = {'target': key, 'title': plan['name']}
+            updated_games[key] = {'target': key, 'game': plan.get('game'), 'title': plan['name']}
+        updated_paths = {game.get('game') or game['target'] for game in updated_games.values()}
+        skipped = [item for item in review.get('skipped') or [] if item.get('game') not in updated_paths]
         record={**required,'status':'pending' if blocked else 'complete',
                 'updated':len(updated_games), 'updated_games':list(updated_games.values()), 'blocked':blocked,
-                'skipped':review.get('skipped') or [],'result':result}
+                'skipped':skipped,'result':result}
         ledger.parent.mkdir(parents=True,exist_ok=True)
         t.atomic_file(ledger,(json.dumps(record,sort_keys=True)+'\n').encode(),0o600)
         return record

@@ -100,11 +100,13 @@ def prepare(e, state, params=None):
     digests = file_stamps.Operation()
     for index, path in enumerate(candidates, 1):
         name = path.parent.name
+        root = None
         try:
             original = bulk._read(path); record = json.loads(original)
             if record.get('status') != 'active': continue
             name = record.get('name') or name
             if record.get('provider_id') == 'feeder':
+                root = record.get('game')
                 plan, unchanged = routes.feeder_plan(e, path, params, running, digests)
                 if plan: plans.append(plan)
                 if unchanged: skipped.append(unchanged)
@@ -120,7 +122,7 @@ def prepare(e, state, params=None):
             if not target.is_dir() or not exe.is_file():
                 continue
             if current.get('provider_id') != 'skynizz':
-                skipped.append({'title': name, 'detail': 'Uses Feeder/ReShade.' if record.get('provider_id') == 'feeder'
+                skipped.append({'title': name, 'game': str(root), 'badge': 'Not applicable', 'detail': 'Uses Feeder/ReShade.' if record.get('provider_id') == 'feeder'
                                 else 'Uses a different MFG package.', 'details': 'The native overlay requires the Skynizz bridge; this loader is preserved.'})
                 continue
             t.need(target not in seen, 'Duplicate game record.'); seen.add(target)
@@ -133,10 +135,11 @@ def prepare(e, state, params=None):
                 metadata['path'] = str(cached)
                 bundled = release, payload, metadata, cached
             release, payload, metadata, cached = bundled
-            t.need(not running(root), 'Close this game, then review again.')
+            routes.require(not running(root), 'Close this game, then try again.', 'retry')
             ui.progress('Checking overlay packages', game=name, current=index, total=len(candidates))
             old_release = provider.validate_release(current['archive']['release'])
-            t.need(old_release.get('variant') == 'nr-mfg-bridge', 'This older NR package needs a reviewed package upgrade.')
+            routes.require(old_release.get('variant') == 'nr-mfg-bridge',
+                           'This NR package needs a reviewed feature update before its overlay can be updated.', 'inspect')
             mode, proxy = current['feature_mode'], current['proxy']
             t.need(mode in ('nr-only', 'mfg-only', 'nr-mfg') and str(t.relative(proxy)) == proxy and '/' not in proxy,
                    'The installed loader identity is invalid.')
@@ -150,8 +153,8 @@ def prepare(e, state, params=None):
                 destination = t.safe(target / filename)
                 expected = owned.get(filename)
                 actual = digests.digest(destination) if destination.is_file() else None
-                t.need(expected and actual in (None, expected),
-                       'The installed bridge is missing or changed. Use Repair Features: ' + filename)
+                t.need(expected, 'The installed bridge has no ownership record: ' + filename)
+                routes.require(actual in (None, expected), 'A managed bridge file changed: ' + filename, 'repair')
                 checks[str(destination)] = actual
                 if t.sha(data) != actual: writes[str(destination)] = data
                 baseline['current']['installed_hashes'][filename] = marker['files'][filename] = t.sha(data)
@@ -159,7 +162,8 @@ def prepare(e, state, params=None):
                 filename='rtxforge-glass.dll'; destination=t.safe(target / filename)
                 actual=digests.digest(destination) if destination.exists() else None
                 expected=owned.get(filename)
-                t.need(actual == expected, 'An unowned or changed glass renderer is present. Repair this game first.')
+                t.need(expected is not None or actual is None, 'An unowned glass renderer is present: ' + filename)
+                routes.require(actual in (None, expected), 'The managed glass renderer changed: ' + filename, 'repair')
                 checks[str(destination)]=actual
                 data=payload[filename]
                 if actual != t.sha(data): writes[str(destination)]=data
@@ -168,8 +172,6 @@ def prepare(e, state, params=None):
                 baseline['current']['installed_hashes'][filename]=marker['files'][filename]=t.sha(data)
             routes.menus(e, target, values, baseline['current']['installed_hashes'], checks, writes)
             marker['files'] = dict(baseline['current']['installed_hashes'])
-            if not writes and old_release.get('sha256') == release['sha256'] and not reconciled and not adopted:
-                skipped.append({'title': name, 'detail': 'Overlay packages and menus are up to date.', 'details': details}); continue
             for filename, expected in owned.items():
                 if filename.casefold().endswith(('.ini', '.log')): continue
                 destination = t.safe(target / t.relative(filename))
@@ -177,14 +179,17 @@ def prepare(e, state, params=None):
                     continue  # Already bound to its observed bytes (or absence) above.
                 if not destination.exists():
                     source = t.safe(e.STATE_ROOT / 'feeder-cache' / expected)
-                    t.need(source.is_file() and source.stat().st_size <= 512 * 1024**2 and digests.digest(source) == expected,
-                           'The missing managed file needs a verified recovery download: ' + filename)
+                    routes.require(source.is_file() and source.stat().st_size <= 512 * 1024**2 and digests.digest(source) == expected,
+                                   'The missing managed file needs a verified recovery download: ' + filename, 'repair')
                     if expected not in recovered: recovered[expected] = source.read_bytes()
                     checks[str(destination)] = None; checks[str(source)] = expected
                     writes[str(destination)] = recovered[expected]
                     continue
-                t.need(destination.is_file() and digests.digest(destination) == expected, 'Package files changed; repair this game first: ' + filename)
+                routes.require(destination.is_file() and digests.digest(destination) == expected,
+                               'A managed package file changed: ' + filename, 'repair')
                 checks[str(destination)] = expected
+            if not writes and old_release.get('sha256') == release['sha256'] and not reconciled and not adopted:
+                skipped.append({'title': name, 'game': str(root), 'detail': 'Overlay packages and menus are up to date.', 'details': details}); continue
             updated_release = dict(release)
             for key in ('mfg_component', 'nr_preset', *provider.PRODUCTION_RUNTIMES):
                 if key in old_release: updated_release[key] = old_release[key]
@@ -222,7 +227,7 @@ def prepare(e, state, params=None):
             bulk._check(e, plan, digests, running)
             plans.append(plan)
         except (t.Refusal, e.Stop, OSError, ValueError, KeyError, TypeError) as error:
-            blocked.append({'title': name, 'detail': str(error), 'details': ''})
+            blocked.append(routes.attention(name, error, root))
     more, failures, unchanged = routes.vulkan_plans(e, params, running, digests)
     return {'engine': e, 'plans': plans + more, 'blocked': blocked + failures, 'skipped': skipped + unchanged,
             'record_overlay_updates': True}

@@ -3809,6 +3809,7 @@ OPERATION_WORDS={
     'global':('Review Library Change','Apply','Applying'),
     'menus':('Review Game Menus','Apply','Applying'),
     'update-overlays':('Update Overlays','Update Overlays','Updating'),
+    'overlay-update-report':('Review Overlay Update','Fix','Fixing'),
     'storage':('Review App Storage','Clear','Clearing'),
 }
 
@@ -4117,7 +4118,7 @@ class OperationFlow:
         if self.step.show('Preparing',game,max(0,event.get('checked',0)-1),total,PREPARING_CAPTION,event.get('checked',0)/max(1,total)):
             self._set_accent(game)
 
-    def show_review(self,review,on_confirm,details=None,enabled=True,trust=None,note=None,extra=None):
+    def show_review(self,review,on_confirm,details=None,enabled=True,trust=None,note=None,extra=None,report=False):
         """N games ready, Needs attention · N, then the verb."""
         if self.stage=='checking' and getattr(self,'step',None) is not None:self.step.complete()
         self.primary.set_visible(True)
@@ -4129,9 +4130,9 @@ class OperationFlow:
         body=self._body()
         count=len(review.get('rows',[]))
         summary=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
-        summary.append(label(f"{count} game{'s' if count!=1 else ''} ready" if count else 'Nothing ready yet','title-2'))
+        summary.append(label(review['summary'] if report else f"{count} game{'s' if count!=1 else ''} ready" if count else 'Nothing ready yet','title-2'))
         line=' · '.join(details or [self.verb])
-        summary.append(label(line,'dim-label'))
+        if not report:summary.append(label(line,'dim-label'))
         body.append(summary)
         if review.get('rows'):
             listing=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
@@ -4152,30 +4153,34 @@ class OperationFlow:
             skipped=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
             skipped.add_css_class('boxed-list');skipped.add_css_class('review-list')
             for item in blocked:
-                skipped.append(owner.review_entry(item['name'],user_messages.friendly_error(item['reason']),owner.review_game(item['name']),'Skipped',str(item['reason']),icon='dialog-warning-symbolic'))
-            body.append(skipped)
-            if any('baseline' in str(item['reason']).lower() for item in blocked):
+                skipped.append(owner.review_entry(item['name'],user_messages.friendly_error(item['reason']),
+                    owner.review_game(item['name'],item.get('game')),item.get('badge','Skipped'),
+                    None if report else str(item['reason']),icon='dialog-warning-symbolic'))
+            body.append(self._rows_scroll(skipped,visible=3) if report else skipped)
+            if not report and any('baseline' in str(item['reason']).lower() for item in blocked):
                 previous=Gtk.Button(label='Previous Changes',halign=Gtk.Align.START)
                 previous.connect('clicked',lambda *_:(self.dialog.force_close(),owner.show_undo()))
                 body.append(previous)
-        if not count:
+        if not count and not report:
             body.append(label('There are no games ready for this change. Check the messages above for your next step.','dim-label'))
         if extra is not None:body.append(extra)
         if note:
             hint=label(note,'dim-label');body.append(hint)
         trusted=Gtk.CheckButton(label=trust) if trust else None
         if trusted is not None:body.append(trusted)
-        footer=label('Preview mode · all file changes are disabled.' if owner.options.demo else 'Your files will only change after you review and confirm.','dim-label')
-        footer.add_css_class('caption')
-        body.append(footer)
+        if not report:
+            footer=label('Preview mode · all file changes are disabled.' if owner.options.demo else 'Your files will only change after you review and confirm.','dim-label')
+            footer.add_css_class('caption')
+            body.append(footer)
         scroll=Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,vexpand=True)
         scroll.set_child(body)
         self.primary.set_label(self.verb)
-        ready=bool(count) and enabled
+        ready=(report or bool(count)) and enabled
         self.primary.set_sensitive(ready and trusted is None)
         # Where the engine asks for trust, the action waits for the checkbox.
         if trusted is not None:trusted.connect('toggled',lambda box:self.primary.set_sensitive(ready and box.get_active()))
-        self.cancel_button.set_label('Cancel' if count else 'Close')
+        self.cancel_button.set_label('Done' if report else 'Cancel' if count else 'Close')
+        if report:self.primary.set_visible(ready)
         self._page('review',scroll)
 
     def show_working(self,text,cancellable=False):
@@ -10955,6 +10960,9 @@ class Window(Adw.ApplicationWindow):
             library_media.save_settings(self.service.config,fresh);self.settings.update(fresh)
 
     def overlay_update_details(self,report=None):
+        if report is not None:
+            self.overlay_refresh_review(report)
+            return
         import json,overlay_status
         dialog=Adw.Dialog(title='Overlay Status',content_width=760,content_height=600)
         view=Adw.ToolbarView();view.add_top_bar(Adw.HeaderBar())
@@ -11000,6 +11008,39 @@ class Window(Adw.ApplicationWindow):
             except Exception as error:GLib.idle_add(populated,None,str(error))
         threading.Thread(target=read_status,daemon=True).start()
 
+    def overlay_refresh_review(self,report):
+        updated=report.get('updated_games') or []
+        skipped=report.get('skipped') or []
+        blocked=report.get('blocked') or []
+        badges={'repair':'Needs repair','retry':'Try again'}
+        paths={item['game'] for item in blocked if item.get('action')=='repair' and item.get('game')}
+        repair=[game for game in self.games if game['game'] in paths and game.get('installed')
+                and game.get('installed_on')!='windows' and not game.get('blocked')]
+        retry=report.get('status')=='pending' and any(item.get('action') in (None,'retry') for item in blocked)
+        runtime=self.runtime_api()
+        rows=[{'name':item['title'],'game':item.get('game') or item.get('target'),
+               'detail':'Overlay updated','badge':'Updated'} for item in updated]
+        rows.extend({'name':item['title'],'game':item.get('game'),'detail':item.get('detail',''),
+                     'badge':item.get('badge','Current')} for item in skipped)
+        attention=[{'name':item['title'],'game':item.get('game'),'reason':item.get('detail',''),
+                    'badge':badges.get(item.get('action'),'Check needed')} for item in blocked]
+        if report.get('error'):attention.append({'name':'Overlay update','reason':report['error'],'badge':'Check needed'})
+        review={'rows':rows,'blocked':attention,
+                'summary':f"{report.get('updated',0)} updated · {sum('badge' not in item for item in skipped)} already current"}
+        flow=self.new_operation_flow('overlay-update-report',[])
+        def fix(_review):
+            if repair:
+                flow.dialog.force_close()
+                self.launch_action('repair',targets=repair)
+                if self.operation_flow is not None:
+                    self.operation_flow.overlay_refresh_after_repair=True
+            else:
+                flow.show_working('Updating overlays…')
+                self.start('Updating overlays',lambda:runtime.retry_installed_overlays(self.service.config),
+                           lambda result:self.overlay_refresh_review(report if result.get('status')=='busy' else result))
+        if not repair and retry:flow.verb='Try again'
+        flow.show_review(review,fix,enabled=bool(runtime and (repair or retry) and not self.busy and not self.options.demo),report=True)
+
     def check_overlay_refresh(self):
         import json,hashlib
         import transactions as t
@@ -11012,8 +11053,8 @@ class Window(Adw.ApplicationWindow):
             receipt=root/'overlay-refresh-notified.txt'
             if receipt.is_file() and receipt.read_text(encoding='utf-8')==identity:return True
             blocked=len(report.get('blocked') or [])
-            text=f"Overlays: {report.get('updated',0)} updated · {len(report.get('skipped') or [])} already current"
-            text+=f' · {blocked} need repair' if blocked else '. Ready to play.'
+            text=f"Overlays: {report.get('updated',0)} updated · {sum('badge' not in item for item in report.get('skipped') or [])} already current"
+            text+=f' · {blocked} need attention' if blocked else '. Ready to play.'
             notice=Adw.Toast.new(text);notice.set_button_label('Details');notice.set_timeout(0 if blocked else 7)
             notice.connect('button-clicked',lambda *_:self.overlay_update_details(report));self.overlay.add_toast(notice)
             t.atomic_file(receipt,identity.encode(),0o600)
@@ -11220,7 +11261,20 @@ class Window(Adw.ApplicationWindow):
             reset_row.add_suffix(reset_all)
         history=row('Overlay Status','Installed overlays, current versions and last update dates.')
         details=button('View status',lambda *_:self.overlay_update_details());details.set_valign(Gtk.Align.CENTER);history.add_suffix(details);installed.add(history)
-        if not game:installed.add(reset_row)
+        if not game:
+            installed.add(reset_row)
+            if not self.options.demo:
+                import json
+                from storage import storage
+                try:
+                    path=storage(self.service.config)/'overlay-refresh.json'
+                    if path.is_file():
+                        results=row('Overlay update results','Review updated games and items that need attention.')
+                        def show_results(*_):
+                            try:self.overlay_refresh_review(json.loads(path.read_text(encoding='utf-8')))
+                            except (OSError,ValueError):self.toast('Overlay update results could not be read.')
+                        show=button('View results',show_results);show.set_valign(Gtk.Align.CENTER);results.add_suffix(show);installed.add(results)
+                except (OSError,RuntimeError):pass
         else:
             item=row('Update this overlay','Review package and native menu changes for this game.')
             action=button('Update overlay',lambda *_:self.overlay_packages_review(game));action.set_valign(Gtk.Align.CENTER);action.set_sensitive(self.runtime_api() is not None and not self.options.demo and game.get('installed',False))
@@ -13602,20 +13656,36 @@ class Window(Adw.ApplicationWindow):
         hero_report=icon_button('Bug Report','dialog-warning-symbolic',lambda *_:self.prepare_beta_reports([game]),'hero-report')
         hero_report.set_tooltip_text('Report a problem with this game');hero_report.set_sensitive(not self.options.demo)
         more=Gio.Menu()
-        more.append('Update DLSS','win.detail-update-dlss')
-        if feature_op=='update':more.append(action_labels.REPAIR,'win.detail-repair-features')
-        if self.adoptable(game):more.append('Adopt with rtxForge','win.detail-adopt')
-        more.append('Open Folder','win.detail-open-folder')
+        location=Gio.Menu()
+        steam=game.get('source')=='Steam' and str(game.get('appid','')).isdigit() and not game.get('offline_only')
+        if steam:location.append('Launch in Steam','win.detail-launch-steam')
+        location.append('Open Folder','win.detail-open-folder')
+        location.append('Copy game location','win.detail-copy-location')
+        more.append_section(None,location)
+        settings=Gio.Menu()
+        settings.append('Overlay settings','win.detail-overlay-settings')
+        settings.append('Update DLSS','win.detail-update-dlss')
+        if feature_op=='update':settings.append(action_labels.REPAIR,'win.detail-repair-features')
+        if self.adoptable(game):settings.append('Adopt with rtxForge','win.detail-adopt')
+        more.append_section(None,settings)
         danger=Gio.Menu();danger.append('Remove from library','win.detail-remove');more.append_section(None,danger)
         hero_more=Gtk.MenuButton(icon_name='view-more-horizontal-symbolic',menu_model=more,valign=Gtk.Align.CENTER)
         hero_more.set_tooltip_text('More options');hero_more.update_property([Gtk.AccessibleProperty.LABEL],['More options'])
-        for name,callback in (('detail-update-dlss',lambda *_:self.update_dlss_games([game])),
+        def open_overlay(*_):
+            pages.set_visible_child_name('Features')
+            overlay.set_expanded(True)
+        for name,callback in (('detail-launch-steam',lambda *_:self.play_game(game)),
+                              ('detail-copy-location',lambda *_:(self.get_clipboard().set(str(game['game'])),self.toast('Location copied.'))),
+                              ('detail-overlay-settings',open_overlay),
+                              ('detail-update-dlss',lambda *_:self.update_dlss_games([game])),
                               ('detail-repair-features',lambda *_:self.launch_action('repair',targets=[game])),
                               ('detail-adopt',lambda *_:self.choose_adoption([game])),
                               ('detail-open-folder',lambda *_:Gio.AppInfo.launch_default_for_uri(Path(game['game']).as_uri(),None)),
                               ('detail-remove',lambda *_:self.confirm_remove_game(game))):
             self.remove_action(name)
             action=Gio.SimpleAction.new(name,None);action.connect('activate',callback);self.add_action(action)
+            if name in ('detail-launch-steam','detail-open-folder','detail-repair-features'):
+                action.set_enabled(not self.options.demo)
         for widget in (hero_install,hero_restore,hero_report,hero_more):hero_actions.append(widget)
         identity.append(hero_actions)
         # Windows GamePage: below 980 px the actions drop under the text, left-aligned.
@@ -15935,7 +16005,18 @@ class Window(Adw.ApplicationWindow):
         if self.review and self.review.get('save_defaults'):self.defaults_applied(self.review['save_defaults'])
         count=len(self.review.get('rows',[])) if self.review else 0
         self.log.append('Saved report: '+str(path))
-        self.finish_progress(True,f'{count} game'+('s' if count!=1 else '')+' updated.')
+        message=f'{count} game'+('s' if count!=1 else '')+' updated.'
+        flow=getattr(self,'operation_flow',None)
+        if count and flow and getattr(flow,'overlay_refresh_after_repair',False):
+            runtime=self.runtime_api()
+            def refresh_report():
+                try:runtime.retry_installed_overlays(self.service.config)
+                except (OSError,RuntimeError,ValueError) as error:
+                    return f'{message} The overlay update still needs attention. {user_messages.friendly_error(str(error))}'
+                return message
+            self.start('Updating overlays',refresh_report,lambda result:self.finish_progress(True,result))
+        else:
+            self.finish_progress(True,message)
 
     def show_activity(self,*_):
         d,b,f=self.open_panel('Activity');text=Gtk.TextView(editable=False,monospace=True,wrap_mode=Gtk.WrapMode.WORD_CHAR);text.get_buffer().set_text('\n'.join(self.log) or 'No activity yet.');b.append(text);f.append(button('Close',lambda *_:d.close()))

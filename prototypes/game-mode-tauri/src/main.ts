@@ -41,6 +41,7 @@ let extraKind = 'reshade-import', toolImportOpen = false;
 let backend: EngineStatus = { enabled: false, reason: 'Checking the reviewed host adapter…' };
 let engineRows: EngineRow[] = [], detailsSection = 'overview';
 let operation: { stage: 'startup' | 'checking' | 'review' | 'running' | 'done' | 'error';kind?:string;targets?:Game[];cancelRequested?:boolean; title: string; review?: Review; execute: string; progress?: Record<string, unknown>; result?: unknown; error?: string; origin?: View; method?: string; changedKeys?: string[]; dismissed?: boolean;
+  overlayReportAction?:'Fix'|'Try again'; refreshOverlaysAfterRepair?:boolean;
   split?: { picker: Picker; revision: number; pending: boolean; error: string; rows: Record<string, unknown>[]; open: boolean };
   acceptedTrust?: boolean; chosenOffers?: Set<string>;
 } | null = null;
@@ -824,6 +825,73 @@ function syncReviewConfirm() {
   const summary=app.querySelector('.flow-summary h2');if(summary)summary.textContent=count?`${count} game${count===1?'':'s'} ready`:'Nothing ready yet';
   const acknowledged = !state.review.trust || Boolean(app.querySelector<HTMLInputElement>('#review-trust')?.checked);
   button.disabled = !hasChanges || !acknowledged || !!state.split?.pending || !!state.split?.error;
+}
+
+function overlayReportRows(report: Record<string,unknown>, key: string): Record<string,unknown>[] {
+  const rows = report[key];
+  return Array.isArray(rows) ? rows : [];
+}
+
+function overlayRepairGames(report: Record<string,unknown>) {
+  const paths = new Set(overlayReportRows(report,'blocked').filter(item=>item.action==='repair' && typeof item.game==='string')
+    .map(item=>pathKey(String(item.game))));
+  return (snapshot?.games||[]).filter(game=>paths.has(pathKey(game.path)));
+}
+
+function showOverlayReport(report: Record<string,unknown>) {
+  const title = 'Review Overlay Update';
+  const updated = overlayReportRows(report,'updated_games');
+  const skipped = overlayReportRows(report,'skipped');
+  const attention = overlayReportRows(report,'blocked');
+  const blocked: Record<string,unknown>[] = attention.map(item=>({...item,badge:item.action==='repair'?'Needs repair':item.action==='retry'?'Try again':'Check needed'}));
+  if(report.error) blocked.push({title:'Overlay update',detail:String(report.error),badge:'Check needed'});
+  const rows = [
+    ...updated.map(item=>({...item,game:item.game||item.target,detail:'Overlay updated',badge:'Updated'})),
+    ...skipped.map(item=>({...item,badge:item.badge||'Current'})),
+  ];
+  const repair = overlayRepairGames(report);
+  const retry = report.status==='pending' && attention.some(item=>!item.action || item.action==='retry');
+  const origin = view==='operation' ? operation?.origin : view;
+  operation = {stage:'review',title,kind:'overlay-update-report',execute:'inspect',origin,
+    review:{token:'',title,rows,blocked,summary:`${Number(report.updated)||0} updated · ${skipped.filter(item=>!item.badge).length} already current`},
+    overlayReportAction:backend.enabled ? repair.length?'Fix':retry?'Try again':undefined : undefined};
+  setView('operation');
+}
+
+async function fixOverlayReport() {
+  const report = snapshot?.overlayReport;
+  const state = operation;
+  if (!report || !state?.overlayReportAction || !backend.enabled) return;
+  if (state.overlayReportAction==='Try again') {
+    state.stage='running'; render();
+    try {
+      const result = await engineRequest<Record<string,unknown>>('overlay_refresh_retry');
+      if (result.status==='busy') throw new Error('An overlay update is already running. Try again when it finishes.');
+      if (snapshot) snapshot.overlayReport = result;
+      showOverlayReport(result);
+    } catch (problem) {
+      state.stage='error'; state.error=problem instanceof Error?problem.message:'Overlay update failed.'; render();
+    }
+    return;
+  }
+  state.stage='checking'; render();
+  try {
+    const games = overlayRepairGames(report);
+    const rows: EngineRow[] = [];
+    for (const game of games) {
+      const matching = (await getEngineRows(game)).find(row=>pathKey(row.game)===pathKey(game.path));
+      if (operation!==state || state.dismissed) return;
+      if (matching?.installed && !matching.blocked && matching.installed_on !== (snapshot?.platform==='Windows'?'linux':'windows')) rows.push(matching);
+    }
+    if (operation!==state || state.dismissed) return;
+    if (!rows.length) throw new Error('Refresh the library to verify which games can be repaired.');
+    await withOperation('Review Feature Repair','prepare_routes',{rows,operation:'repair',
+      mode:String(snapshot?.defaults.default_profile||'nr-mfg')},'execute_routes');
+    if (operation?.kind==='repair' && operation.stage==='review') operation.refreshOverlaysAfterRepair=true;
+  } catch (problem) {
+    if (operation!==state || state.dismissed) return;
+    state.stage='error'; state.error=problem instanceof Error?problem.message:'Could not prepare repairs.'; render();
+  }
 }
 function reportForm(result: unknown) {
   const draft = result as ReportDraft;
@@ -1786,6 +1854,8 @@ function action(name: string) {
   if (name === 'overlay-menu-review') { const values = { ...sharedPreferences, ...preferenceChanges }; void withOperation('Review game menus', 'overlay_ui_review', Object.fromEntries(['optiscaler_ui', 'optiscaler_intro', 'reshade_ui', 'reshade_intro', 'optiscaler_hotkey'].map(key => [key, values[key]]))); }
   if (name === 'overlay-defaults-all') void withOperation('Review applying overlay defaults to every game','settings_review',{changes:{...preferenceChanges,game_overlay_settings:{}}});
   if(name==='overlay-status')void withOperation('Overlay Status','overlay_status',{},'inspect');
+  if(name==='overlay-update-report' && snapshot?.overlayReport)showOverlayReport(snapshot.overlayReport);
+  if(name==='fix-overlay-report')void fixOverlayReport();
   if (name === 'overlay-package-review') void withOperation('Review overlay packages', 'overlay_package_review', { ...sharedPreferences, ...preferenceChanges });
   if (name === 'storage-inventory') void withOperation('App storage', 'storage_inventory', {}, 'inspect');
   if (name === 'storage-review') void withOperation('Review download cleanup', 'storage_review', {});
@@ -1823,7 +1893,7 @@ async function discardReview() {
   pendingInstall = null;
   operation = null;
   setView(state?.origin || 'details');
-  if (state?.review) {
+  if (state?.review?.token) {
     const token = state.review.token;
     try { await engineRequest(state.execute === 'execute_routes' ? 'discard_routes' : state.execute === 'run' ? 'discard' : 'discard_operation', state.execute === 'run' ? { token } : { tokens: [token] }); }
     catch (problem) { announce(problem instanceof Error ? problem.message : 'Could not release this review.'); }
@@ -1841,7 +1911,14 @@ async function confirmOperation() {
       if(state.kind){const step=app.querySelector('.operation-step');if(step)step.outerHTML=operationStep(state,snapshot?.games||[],icon);applyOperationAccent();}
       else if (label) label.textContent = String(progress.label || progress.phase || 'Working…');
     });
-    state.stage = 'done'; engineRows = [];if(state.execute==='steam_install')steamAdded=true;else if(state.execute==='steam_remove')steamAdded=false;
+    engineRows = [];if(state.execute==='steam_install')steamAdded=true;else if(state.execute==='steam_remove')steamAdded=false;
+    if (state.refreshOverlaysAfterRepair && !(state.result as Record<string,unknown>)?.cancelled) {
+      try {
+        const report = await engineRequest<Record<string,unknown>>('overlay_refresh_retry');
+        if (snapshot && report.status!=='busy') snapshot.overlayReport = report;
+      } catch (problem) { announce(problem instanceof Error ? problem.message : 'Could not refresh overlay results.'); }
+    }
+    state.stage = 'done';
     if(state.origin === 'presets' && !(state.result as Record<string,unknown>)?.cancelled) { drafts.delete(presetId); presetSelection=false; batchSelection.clear(); }
     if (['settings_review', 'executable_review', 'package_use'].includes(state.method || '') || state.origin === 'presets') {
       try {

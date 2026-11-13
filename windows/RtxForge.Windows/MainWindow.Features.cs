@@ -18,6 +18,8 @@ namespace RtxForge.Windows;
 public sealed partial class MainWindow
 {
     string? overlayRefreshNotice;
+    static string OverlayRefreshReportPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "overlay-refresh.json");
     void InitializeOverlayRefresh()
     {
         InitializeBackgroundValidation();
@@ -54,7 +56,7 @@ public sealed partial class MainWindow
         }
         var updated = result["updated"]?.GetValue<int>() ?? 0;
         var blocked = (result["blocked"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;
-        var current = (result["skipped"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;
+        var current = (result["skipped"] as System.Text.Json.Nodes.JsonArray)?.Count(row => row?["badge"] is null) ?? 0;
         var error = result["error"]?.ToString();
         var identity = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
             result["bundle"] + "|" + result["status"] + "|" + updated + "|" + current + "|" + result["blocked"]?.ToJsonString() + "|" + error)));
@@ -64,7 +66,7 @@ public sealed partial class MainWindow
         try { if (File.Exists(receipt) && File.ReadAllText(receipt) == identity) return; }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         var message = error is not null ? "Overlay update needs attention: " + error
-            : $"Overlays: {updated} updated · {current} already current" + (blocked > 0 ? $" · {blocked} need repair" : ". Ready to play.");
+            : $"Overlays: {updated} updated · {current} already current" + (blocked > 0 ? $" · {blocked} need attention" : ". Ready to play.");
         AddLog(message); ShowToast(message);
         var details = new Button { Content = "Details" };
         details.Click += async (_, _) => await ShowOverlayUpdateDetailsAsync(result);
@@ -76,29 +78,27 @@ public sealed partial class MainWindow
 
     public async Task ShowOverlayUpdateDetailsAsync(System.Text.Json.Nodes.JsonObject? result = null)
     {
-        result ??= (Service as EngineForgeService)?.OverlayRefreshResult;
+        if (Service is not EngineForgeService engine) return;
+        result ??= engine.OverlayRefreshResult;
         if (result is null)
         {
-            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rtxForge", "state", "overlay-refresh.json");
-            try { if (File.Exists(path)) result = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))?.AsObject(); }
+            try
+            {
+                if (File.Exists(OverlayRefreshReportPath))
+                    result = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(OverlayRefreshReportPath)) as System.Text.Json.Nodes.JsonObject;
+            }
             catch (Exception e) when (e is IOException or System.Text.Json.JsonException or UnauthorizedAccessException) { }
         }
-        var text = result is null ? "Checking installed overlays…" : $"{result["updated"] ?? 0} updated · {(result["skipped"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0} already current";
-        if (result?["error"] is { } error) text += "\n\n" + error;
-        if (result?["updated_games"] is System.Text.Json.Nodes.JsonArray updated)
-            foreach (var game in updated) text += "\n\nUpdated · " + game?["title"];
-        if (result?["blocked"] is System.Text.Json.Nodes.JsonArray blocked)
-            foreach (var game in blocked) text += "\n\nNeeds repair · " + game?["title"] + "\n" + game?["detail"];
-        var dialog = NewDialog(); dialog.Title = "Overlay update"; dialog.CloseButtonText = "Done";
-        dialog.Content = new ScrollViewer { MaxHeight = 480, Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, MaxWidth = 640 } };
-        // Pending games are retried only when asked, after closing the game.
-        if (result?["status"]?.ToString() == "pending" && Service is EngineForgeService) dialog.PrimaryButtonText = "Try again";
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary && Service is EngineForgeService retry)
-        {
-            ShowToast("Updating overlays…");
-            try { await retry.RetryOverlayRefreshAsync(); }
-            catch (Exception failure) { ShowToast("Overlay update needs attention: " + failure.Message); }
-        }
+        if (result is null) { ShowToast("Checking installed overlays…"); return; }
+        await OperationDialog.ShowOverlayReportAsync(this, engine, result);
+    }
+
+    public async Task RetryOverlayUpdateAsync(EngineForgeService engine)
+    {
+        ShowToast("Updating overlays…");
+        try { await engine.RetryOverlayRefreshAsync(); }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or InvalidOperationException)
+        { ShowToast("Overlay update needs attention: " + failure.Message); }
     }
     int mediaGeneration;
 

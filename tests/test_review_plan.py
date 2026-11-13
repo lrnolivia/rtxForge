@@ -120,6 +120,15 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(result['blocked'], [], 'an offered game is not also listed as refused')
         self.assertEqual(self.discarded, [])
 
+    def test_batch_repair_uses_each_games_installed_mode(self):
+        rows = [game('Combined', installed=True, runtime_provider='skynizz', feature_mode='nr-mfg'),
+                game('NR', installed=True, runtime_provider='skynizz', feature_mode='nr-only')]
+        result = self.run_plan(rows, operation='repair', mode='mfg-only')
+        self.assertEqual([(names, mode) for names, mode, *_ in self.calls],
+                         [(['Combined'], 'nr-mfg'), (['NR'], 'nr-only')])
+        self.assertEqual(len(result['steps']), 2)
+        self.assertEqual({batch['mode'] for batch in self.downloads[0]}, {'nr-mfg', 'nr-only'})
+
     def test_a_subset_that_admits_nothing_is_discarded_and_the_refusal_kept(self):
         self.refuse = {('NoFG', 'nr-mfg'): 'No native DLSS-G detected', ('NoFG', 'nr-only'): 'Still unsupported'}
         result = self.run_plan([game('NoFG', native_dlss=True)])

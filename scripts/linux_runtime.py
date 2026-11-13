@@ -214,6 +214,14 @@ def refresh_installed_overlays(config):
         lambda:overlay_packages_review(engine_bridge.module(config),None),apply_review)
 
 
+def retry_installed_overlays(config):
+    import engine_bridge
+    import overlay_refresh
+    from storage import storage
+    return overlay_refresh.run(Path(__file__).resolve().parents[1], storage(config),
+        lambda:overlay_packages_review(engine_bridge.module(config),None),apply_review)
+
+
 def apply_review(review):
     """Apply a global_review or menus_review result; every file is re-checked first.
     Waits for another change (such as the background overlay update) to finish."""

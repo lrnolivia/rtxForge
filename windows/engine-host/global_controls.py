@@ -292,4 +292,4 @@ def execute(review):
             errors.append('Overlays updated, but the update date could not be saved: ' + str(error))
     return {'message': f'Updated {len(done)} games. Other settings were preserved.', 'errors': errors,
             'failed': [{'title': plan['name'], 'detail': 'A file was in use. Close the game and try again.',
-                        'target': plan.get('target', '')} for plan in failed]}
+                        'game': plan.get('game'), 'target': plan.get('target', ''), 'action': 'retry'} for plan in failed]}
